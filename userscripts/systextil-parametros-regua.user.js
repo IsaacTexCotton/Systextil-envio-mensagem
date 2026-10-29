@@ -847,13 +847,6 @@
       lastCalculation.blocked);
   }
 
-    summaryEl.value = buildSummary(lastCalculation);
-    setStatus(lastCalculation.blocked
-      ? 'Preenchimento bloqueado por conflito entre regras de feriado. Confira o resumo.'
-      : 'Cálculo atualizado. Confira as datas antes de preencher ou executar a consulta.',
-      lastCalculation.blocked);
-  }
-
   async function fillRecognizedFields() {
     if (!lastCalculation) renderCalculation();
     if (!lastCalculation) return;
@@ -866,7 +859,7 @@
       return;
     }
 
-    // O relatório usa uma ListGrid SmartClient:    // O relatório usa uma ListGrid SmartClient: nove valores podem ser texto
+    // O relatório usa uma ListGrid SmartClient: nove valores podem ser texto
     // estático no DOM, embora sejam editáveis via a API da grade.
     const smartClientResult = await fillSmartClientGrid(lastCalculation);
     let filled = 0;
