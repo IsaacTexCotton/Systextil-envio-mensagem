@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Parâmetros da Régua de Cobrança
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.2.0
+// @version      0.3.0
 // @description  Calcula e preenche, mediante ação explícita, parâmetros de datas da régua no Systextil.
 // @match        http://systextil.texcotton.com.br/systextil/*
 // @run-at       document-idle
@@ -300,6 +300,104 @@
     return { element: ties[0].element, reason: 'ok' };
   }
 
+  function parameterRows(doc) {
+    return Array.from(doc.querySelectorAll('[eventproxy="parameterTab_body"] tr[role="listitem"], #parameterTab_body tr[role="listitem"]'));
+  }
+
+  function parameterFromRow(row) {
+    const labelCell = row && row.cells && row.cells[0];
+    if (!labelCell) return null;
+    const label = compact(labelCell.innerText || labelCell.textContent || '');
+    return PARAMETROS.find(function (param) {
+      return label === compact(param.label) || label === compact(param.label + ':');
+    }) || null;
+  }
+
+  function findSmartClientGrid(doc) {
+    const view = doc.defaultView;
+    if (!view) return null;
+    const candidates = [];
+    try { candidates.push(view.parameterTab); } catch (_) {}
+    try {
+      if (view.isc && view.isc.Canvas && typeof view.isc.Canvas.getById === 'function') {
+        candidates.push(view.isc.Canvas.getById('parameterTab'));
+      }
+    } catch (_) {}
+    return candidates.find(function (grid) {
+      return grid &&
+        typeof grid.startEditing === 'function' &&
+        typeof grid.setEditValue === 'function' &&
+        typeof grid.endEditing === 'function';
+    }) || null;
+  }
+
+  function gridValueMatches(doc, param, expected) {
+    const row = parameterRows(doc).find(function (candidate) {
+      return parameterFromRow(candidate) && parameterFromRow(candidate).key === param.key;
+    });
+    if (!row || !row.cells[1]) return false;
+    return String(row.cells[1].innerText || row.cells[1].textContent || '').trim() === expected;
+  }
+
+  async function fillSmartClientGrid(result) {
+    for (const doc of documentsInFrames()) {
+      const rows = parameterRows(doc);
+      if (!rows.length) continue;
+      const grid = findSmartClientGrid(doc);
+      if (!grid) continue;
+
+      const rowIndexes = new Map();
+      rows.forEach(function (row, rowNumber) {
+        const param = parameterFromRow(row);
+        if (!param) return;
+        const announcedPosition = Number(row.getAttribute('aria-posinset'));
+        rowIndexes.set(param.key, Number.isInteger(announcedPosition) && announcedPosition > 0
+          ? announcedPosition - 1
+          : rowNumber);
+      });
+
+      let filled = 0;
+      const skipped = [];
+      for (const param of PARAMETROS) {
+        const date = result.values[param.key];
+        if (!date) {
+          skipped.push(param.label + ': sem data calculada');
+          continue;
+        }
+        const rowIndex = rowIndexes.get(param.key);
+        if (!Number.isInteger(rowIndex)) {
+          skipped.push(param.label + ': linha não encontrada na grade');
+          continue;
+        }
+        const expected = br(date);
+        try {
+          // A grade SmartClient só renderiza um <input> para a célula que está
+          // sendo editada. Inicia a edição pela API pública da grade e altera
+          // a coluna Valor (índice 1), preservando a semântica do próprio ERP.
+          grid.startEditing(rowIndex, 1);
+          grid.setEditValue(rowIndex, 1, expected);
+          grid.endEditing();
+          await new Promise(function (resolve) { setTimeout(resolve, 35); });
+          if (gridValueMatches(doc, param, expected)) {
+            filled += 1;
+          } else {
+            skipped.push(param.label + ': o ERP não confirmou o valor na grade');
+          }
+        } catch (error) {
+          skipped.push(param.label + ': falha de edição da grade');
+          console.warn('[Systextil Régua] Falha ao editar parâmetro da grade:', param.key, error);
+          try { if (typeof grid.endEditing === 'function') grid.endEditing(); } catch (_) {}
+        }
+      }
+      return {
+        handled: true,
+        filled: filled,
+        skipped: skipped
+      };
+    }
+    return { handled: false, filled: 0, skipped: [] };
+  }
+
   function setControlValue(el, date) {
     if (!date) return false;
     const view = el.ownerDocument.defaultView || window;
@@ -362,23 +460,32 @@
     setStatus('Cálculo atualizado. Confira as datas antes de preencher ou executar a consulta.', false);
   }
 
-  function fillRecognizedFields() {
+  async function fillRecognizedFields() {
     if (!lastCalculation) renderCalculation();
     if (!lastCalculation) return;
+
+    // O relatório usa uma ListGrid SmartClient: nove valores podem ser texto
+    // estático no DOM, embora sejam editáveis via a API da grade.
+    const smartClientResult = await fillSmartClientGrid(lastCalculation);
     let filled = 0;
-    const skipped = [];
-    PARAMETROS.forEach(function (param) {
-      const value = lastCalculation.values[param.key];
-      if (!value) { skipped.push(param.label + ': sem data calculada'); return; }
-      const found = findControl(param);
-      if (!found.element) { skipped.push(param.label + ': ' + found.reason); return; }
-      if (setControlValue(found.element, value)) filled += 1;
-    });
-    const message = 'Preenchidos ' + filled + ' de ' + PARAMETROS.length + ' campos.' +
+    let skipped = [];
+    if (smartClientResult.handled) {
+      filled = smartClientResult.filled;
+      skipped = smartClientResult.skipped;
+    } else {
+      PARAMETROS.forEach(function (param) {
+        const value = lastCalculation.values[param.key];
+        if (!value) { skipped.push(param.label + ': sem data calculada'); return; }
+        const found = findControl(param);
+        if (!found.element) { skipped.push(param.label + ': ' + found.reason); return; }
+        if (setControlValue(found.element, value)) filled += 1;
+      });
+    }
+    const message = 'Preenchidos e verificados ' + filled + ' de ' + PARAMETROS.length + ' campos.' +
       (skipped.length ? ' Não preenchidos: ' + skipped.join('; ') + '.' : '');
-    setStatus(message, skipped.length > 0);
+    setStatus(message, skipped.length > 0 || filled !== PARAMETROS.length);
     console.info('[Systextil Régua] Resultado do preenchimento:', {
-      preenchidos: filled, total: PARAMETROS.length, naoPreenchidos: skipped
+      preenchidosEVerificados: filled, total: PARAMETROS.length, naoPreenchidos: skipped
     });
   }
 
