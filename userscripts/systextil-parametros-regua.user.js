@@ -778,26 +778,26 @@
   function buildSummary(result) {
     return PARAMETROS.map(function (p) {
       return p.label + ': ' + br(result.values[p.key]);
-    }).join('\\n') + '\\nReferência: ' + br(lastReferenceDate) +
-      '\\nRegra 2 dias: ' + result.twoNote +
-      '\\nOrigem da regra 2º dia: ' + (result.twoSource === 'holiday-rule'
+    }).join('\n') + '\nReferência: ' + br(lastReferenceDate) +
+      '\nRegra 2 dias: ' + result.twoNote +
+      '\nOrigem da regra 2º dia: ' + (result.twoSource === 'holiday-rule'
         ? 'matriz de feriado'
         : result.twoSource === 'holiday-no-expediente'
           ? 'SEM EXPEDIENTE'
           : result.twoSource === 'holiday-conflict'
             ? 'conflito entre regras de feriado'
             : 'calendário semanal padrão') +
-      '\\nOrigem da regra 6º dia: ' + (result.sixSource === 'holiday-rule'
+      '\nOrigem da regra 6º dia: ' + (result.sixSource === 'holiday-rule'
         ? 'matriz de feriado'
         : result.sixSource === 'holiday-no-expediente'
           ? 'SEM EXPEDIENTE'
           : result.sixSource === 'holiday-conflict'
             ? 'conflito entre regras de feriado'
             : 'busca reversa padrão') +
-      '\\nDatas de vencimento do 6º dia: ' + (result.sixDates.length ? result.sixDates.map(br).join(', ') : 'nenhuma') +
-      '\\nJanela do 6º dia contígua: ' + (result.sixCount === 0 ? 'sem correspondências' : (result.sixContiguous ? 'sim' : 'não; conferir a tabela auxiliar J:L')) +
-      '\\nConflitos de feriado: ' + (result.holidayConflicts.length ? result.holidayConflicts.join(' | ') : 'nenhum') +
-      '\\nPreenchimento permitido: ' + (result.blocked ? 'não' : 'sim');
+      '\nDatas de vencimento do 6º dia: ' + (result.sixDates.length ? result.sixDates.map(br).join(', ') : 'nenhuma') +
+      '\nJanela do 6º dia contígua: ' + (result.sixCount === 0 ? 'sem correspondências' : (result.sixContiguous ? 'sim' : 'não; conferir a tabela auxiliar J:L')) +
+      '\nConflitos de feriado: ' + (result.holidayConflicts.length ? result.holidayConflicts.join(' | ') : 'nenhum') +
+      '\nPreenchimento permitido: ' + (result.blocked ? 'não' : 'sim');
   }
 
     function renderCalculation() {
@@ -927,11 +927,21 @@
           position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
           overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
         }
+        #st-regua-parametros-panel { color-scheme: light; }
+        #st-regua-parametros-panel .st-regua-table tbody tr { background: #fff; }
         #st-regua-parametros-panel .st-regua-table tbody tr:nth-child(even) {
           background: #f8fafc;
         }
+        #st-regua-parametros-panel .st-regua-table th {
+          color: #344054; background: #f2f4f7;
+        }
         #st-regua-parametros-panel .st-regua-table td {
-          border-bottom: 1px solid #eaecf0;
+          color: #344054; background: transparent;
+          padding: 6px 9px; border-bottom: 1px solid #eaecf0;
+        }
+        #st-regua-parametros-panel .st-regua-date-input,
+        #st-regua-parametros-panel .st-regua-summary {
+          color-scheme: light; color: #101828; background: #fff;
         }
         #st-regua-parametros-panel .st-regua-actions button {
           min-height: 44px; line-height: 1.35; overflow-wrap: anywhere;
@@ -945,54 +955,19 @@
         }
         @media (max-width: 520px) {
           #st-regua-parametros-panel {
-            top: 8px !important; right: 8px !important;
-            width: calc(100vw - 16px) !important; max-width: none !important;
+            top: auto !important; right: 8px !important; bottom: 8px !important;
+            max-width: calc(100vw - 16px) !important;
             max-height: calc(100vh - 16px) !important; border-radius: 12px !important;
           }
-          #st-regua-parametros-panel .st-regua-header { padding: 10px 12px !important; }
-          #st-regua-parametros-panel .st-regua-actions { grid-template-columns: 1fr !important; }
-          #st-regua-parametros-panel .st-regua-actions button { min-height: 48px; }
-        }
-        @media (prefers-color-scheme: dark) {
-          #st-regua-parametros-panel {
-            background: #101828 !important; color: #f2f4f7 !important;
-            border-color: #475467 !important;
+          #st-regua-parametros-panel:not(.st-regua-minimized) {
+            width: calc(100vw - 16px) !important;
           }
-          #st-regua-parametros-panel .st-regua-header {
-            background: #0b1220 !important; color: #f9fafb !important;
+          #st-regua-parametros-panel.st-regua-minimized {
+            width: min(220px, calc(100vw - 16px)) !important;
           }
-          #st-regua-parametros-panel .st-regua-minimize {
-            background: #344054 !important; color: #f9fafb !important;
-          }
-          #st-regua-parametros-panel .st-regua-date-label { color: #e4e7ec !important; }
-          #st-regua-parametros-panel .st-regua-date-input,
-          #st-regua-parametros-panel .st-regua-summary {
-            background: #1d2939 !important; color: #f2f4f7 !important;
-            border-color: #667085 !important;
-          }
-          #st-regua-parametros-panel .st-regua-table th {
-            background: #344054 !important; color: #f9fafb !important;
-            border-color: #475467 !important;
-          }
-          #st-regua-parametros-panel .st-regua-table td {
-            border-color: #475467 !important;
-          }
-          #st-regua-parametros-panel .st-regua-table tbody tr:nth-child(even) {
-            background: #1d2939 !important;
-          }
-          #st-regua-parametros-panel .st-regua-details {
-            background: #1d2939 !important; color: #e4e7ec !important;
-            border-color: #475467 !important;
-          }
-          #st-regua-parametros-panel .st-regua-status {
-            background: #1d2939 !important; color: #e4e7ec !important;
-          }
-          #st-regua-parametros-panel .st-regua-warning {
-            color: #d0d5dd !important; border-color: #475467 !important;
-          }
-          #st-regua-parametros-panel .st-regua-secondary {
-            background: #344054 !important; color: #f2f4f7 !important;
-          }
+          #st-regua-parametros-panel .st-regua-header { padding: 8px 10px !important; }
+          #st-regua-parametros-panel .st-regua-actions { grid-template-columns: 1fr; }
+          #st-regua-parametros-panel .st-regua-actions button { min-height: 44px; }
         }
         @media (prefers-reduced-motion: reduce) {
           #st-regua-parametros-panel *,
@@ -1011,24 +986,27 @@
     panel.setAttribute('role', 'region');
     panel.setAttribute('aria-label', 'Parâmetros da régua de cobrança');
     Object.assign(panel.style, {
-      position: 'fixed', right: '16px', top: '96px', width: '440px',
-      maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 112px)', overflow: 'hidden',
+      position: 'fixed', right: '12px', top: 'auto', bottom: '12px', width: '360px',
+      maxWidth: 'calc(100vw - 24px)', maxHeight: '78vh', overflow: 'hidden',
       display: 'flex', flexDirection: 'column', zIndex: '2147483647',
       background: '#fff', color: '#101828', border: '1px solid #d0d5dd',
-      borderRadius: '14px', boxShadow: '0 16px 40px rgba(16,24,40,.24)',
-      font: '14px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+      borderRadius: '12px', boxShadow: '0 8px 24px rgba(16,24,40,.16)',
+      colorScheme: 'light',
+      font: '13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
     });
 
     const header = document.createElement('div');
     header.className = 'st-regua-header';
     Object.assign(header.style, {
-      background: '#102a43', color: '#fff', padding: '12px 16px', display: 'flex',
-      alignItems: 'center', justifyContent: 'space-between', gap: '12px',
-      borderRadius: '13px 13px 0 0', minHeight: '60px'
+      background: '#102a43', color: '#fff', padding: '8px 10px', display: 'flex',
+      alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+      borderRadius: '11px 11px 0 0', minHeight: '44px'
     });
     const title = document.createElement('strong');
     title.id = 'st-regua-panel-title';
-    title.textContent = 'Parâmetros da Régua de Cobrança';
+    title.textContent = 'Régua de cobrança';
+    title.style.fontSize = '13px';
+    title.style.lineHeight = '1.25';
     panel.setAttribute('aria-labelledby', title.id);
     const minimize = document.createElement('button');
     minimize.type = 'button'; minimize.textContent = '—'; minimize.title = 'Minimizar painel';
@@ -1036,15 +1014,17 @@
     minimize.setAttribute('aria-label', 'Minimizar painel');
     minimize.setAttribute('aria-expanded', 'true');
     Object.assign(minimize.style, {
-      flex: '0 0 44px', border: '0', borderRadius: '8px', cursor: 'pointer',
-      background: '#243b53', color: '#fff', width: '44px', minWidth: '44px',
-      height: '44px', fontSize: '20px'
+      flex: '0 0 30px', border: '0', borderRadius: '7px', cursor: 'pointer',
+      background: '#243b53', color: '#fff', width: '30px', minWidth: '30px',
+      height: '30px', fontSize: '18px', lineHeight: '1'
     });
     header.append(title, minimize);
 
     const body = document.createElement('div');
     body.className = 'st-regua-body';
-    Object.assign(body.style, { padding: '16px', overflow: 'auto' });
+    Object.assign(body.style, {
+      padding: '12px', overflow: 'auto', minHeight: '0', flex: '1 1 auto'
+    });
     const dateLabel = document.createElement('label');
     dateLabel.textContent = 'Data de referência: ';
     dateLabel.className = 'st-regua-date-label';
@@ -1095,6 +1075,8 @@
     summaryEl = document.createElement('textarea');
     summaryEl.readOnly = true;
     summaryEl.className = 'st-regua-summary';
+    summaryEl.style.display = 'none';
+    summaryEl.setAttribute('aria-hidden', 'true');
     summaryEl.setAttribute('aria-label', 'Resumo copiável dos parâmetros calculados');
     summaryEl.rows = 4;
     Object.assign(summaryEl.style, {
@@ -1146,15 +1128,29 @@
     panel.append(header, body);
     document.body.appendChild(panel);
 
-    let minimized = false;
-    minimize.addEventListener('click', function () {
-      minimized = !minimized;
+    let minimized = true;
+    function setMinimized(nextMinimized) {
+      minimized = nextMinimized;
+      panel.classList.toggle('st-regua-minimized', minimized);
       body.style.display = minimized ? 'none' : 'block';
-      minimize.textContent = minimized ? '+' : '—';
-      minimize.title = minimized ? 'Expandir painel' : 'Minimizar painel';
+      panel.style.width = minimized ? '220px' : '360px';
+      panel.style.maxHeight = minimized ? 'none' : '78vh';
+      panel.style.boxShadow = minimized
+        ? '0 4px 14px rgba(16,24,40,.14)'
+        : '0 8px 24px rgba(16,24,40,.16)';
+      header.style.padding = minimized ? '7px 9px' : '8px 10px';
+      header.style.minHeight = minimized ? '40px' : '44px';
+      header.style.borderRadius = minimized ? '10px' : '11px 11px 0 0';
+      title.style.fontSize = minimized ? '12px' : '13px';
+      minimize.textContent = minimized ? '+' : '−';
+      minimize.title = minimized ? 'Expandir régua de cobrança' : 'Minimizar painel';
       minimize.setAttribute('aria-label', minimize.title);
       minimize.setAttribute('aria-expanded', String(!minimized));
+    }
+    minimize.addEventListener('click', function () {
+      setMinimized(!minimized);
     });
+    setMinimized(true);
     dateInput.addEventListener('change', renderCalculation);
     fill.addEventListener('click', fillRecognizedFields);
     copy.addEventListener('click', function () { copyText(summaryEl.value); });
