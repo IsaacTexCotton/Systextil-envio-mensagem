@@ -226,15 +226,17 @@ test('03/11/2026 segue a matriz após o feriado de segunda-feira 02/11', functio
   assert.equal(result.blocked, false);
 });
 
-test('feriado na quarta-feira: quinta cobra sábado a segunda e sexta cobra terça e quarta', function () {
+test('matriz simulada: feriado na quarta, quinta cobra sábado a segunda e sexta cobra terça e quarta', function () {
   const api = calculator();
-  const thursday = api.calculate(date(2026, 10, 15));
-  assert.equal(dayIso(thursday.values.inicio2), '2026-10-10');
-  assert.equal(dayIso(thursday.values.fim2), '2026-10-12');
+  // Usa calendário isolado: 14/10/2026 não é adicionado como feriado real,
+  // pois este teste valida a regra hipotética da matriz.
+  const thursday = api.resolveHolidayWindow('two', date(2026, 10, 15), ['2026-10-14']);
+  assert.equal(dayIso(thursday.start), '2026-10-10');
+  assert.equal(dayIso(thursday.end), '2026-10-12');
 
-  const friday = api.calculate(date(2026, 10, 16));
-  assert.equal(dayIso(friday.values.inicio2), '2026-10-13');
-  assert.equal(dayIso(friday.values.fim2), '2026-10-14');
+  const friday = api.resolveHolidayWindow('two', date(2026, 10, 16), ['2026-10-14']);
+  assert.equal(dayIso(friday.start), '2026-10-13');
+  assert.equal(dayIso(friday.end), '2026-10-14');
 });
 
 test('a data vermelha da matriz é SEM EXPED. e bloqueia o preenchimento', function () {
