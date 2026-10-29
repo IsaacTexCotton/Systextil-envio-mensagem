@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         Systextil - Parâmetros da Régua de Cobrança
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.7.0
+// @version      0.8.0
 // @description  Calcula e preenche, mediante ação explícita, parâmetros de datas da régua no Systextil.
 // @match        http://systextil.texcotton.com.br/systextil/*
+// @match        https://systextil.texcotton.com.br/systextil/*
 // @updateURL    https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-parametros-regua.user.js
 // @downloadURL  https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-parametros-regua.user.js
 // @run-at       document-idle
@@ -12,6 +13,9 @@
 
 (function () {
   'use strict';
+
+  const SCRIPT_VERSION = '0.8.0';
+  const SCRIPT_BUILD_ID = '2026-10-29-calendar-runtime-check';
 
   // Um único painel no documento principal; os campos podem estar em iframes same-origin.
   if (window.top !== window || window.__systextilParametrosReguaCarregado) return;
@@ -1159,6 +1163,12 @@
 
   // API somente de leitura para diagnóstico e testes; não toca no formulário.
   window.__systextilParametrosReguaDebug = Object.freeze({
+    version: SCRIPT_VERSION,
+    buildId: SCRIPT_BUILD_ID,
+    holidayCalendarContains: function (dateString) {
+      const date = parseIso(dateString);
+      return Boolean(date && holidaysForYear(date.getFullYear()).has(iso(date)));
+    },
     calculate: calculate,
     twoDayWindow: twoDayWindow,
     calculateSixthDayDeadline: calculateSixthDayDeadline,
