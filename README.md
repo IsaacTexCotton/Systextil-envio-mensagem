@@ -15,7 +15,8 @@ Arquivo: [userscripts/systextil-parametros-regua.user.js](userscripts/systextil-
 - Se a busca reversa retornar datas em blocos separados, deixa Início/Fim do 6º dia em branco e informa o motivo. Isso evita que um intervalo único inclua vencimentos não associados ao mesmo prazo.
 - Calcula as faixas de 10, 15 e 18 dias por dias corridos, sem ajuste por fim de semana ou feriado.
 - Apresenta uma tabela de conferência e um resumo copiável.
-- Oferece um botão explícito para preencher os parâmetros da grade SmartClient (`parameterTab`). As linhas são identificadas pelo rótulo e editadas pela API pública da grade; o script verifica o valor renderizado antes de contar o preenchimento.
+- Oferece um botão explícito para preencher os parâmetros da grade SmartClient (`parameterTab`). Usa `getFields()` para identificar as colunas e `getRecord()`/`getCellValue()` para localizar as linhas pelos rótulos; a coluna Valor é editada pela API da grade.
+- Consolida as alterações com `saveAllEdits()` quando disponível (fallback para `endEditing()`) e verifica os valores após a edição, usando os registros da grade e o DOM como confirmação secundária.
 - Se uma regra não produzir data, a célula correspondente é limpa e verificada para evitar manter um valor antigo. Quando a grade é encontrada mas a API não está acessível, não tenta preencher o único `<input>` visível.
 - Mantém a busca genérica por campos para telas compatíveis alternativas e percorre frames de mesma origem.
 
