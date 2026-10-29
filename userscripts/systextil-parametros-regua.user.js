@@ -375,26 +375,6 @@
   }
 
 
-    const two = twoDayWindow(referenceDate);
-    const six = reverseSearchSixthDay(referenceDate);
-    const ten = addDays(referenceDate, -10);
-    const fifteen = addDays(referenceDate, -15);
-    const eighteen = addDays(referenceDate, -18);
-    return {
-      values: {
-        inicio2: two.start, fim2: two.end,
-        inicio6: six.contiguous ? six.start : null, fim6: six.contiguous ? six.end : null,
-        inicio10: ten, fim10: ten,
-        inicio15: fifteen, fim15: fifteen,
-        inicio18: eighteen, fim18: eighteen
-      },
-      twoNote: two.note,
-      sixCount: six.count,
-      sixDates: six.dates,
-      sixContiguous: six.contiguous
-    };
-  }
-
   function normalize(text) {
     return String(text == null ? '' : text)
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
