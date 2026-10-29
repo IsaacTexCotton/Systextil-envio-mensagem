@@ -151,7 +151,7 @@ test('matriz completa contém e aplica as 55 regras transcritas das tabelas', fu
       six: [[-1, -9, -7], [0, null, null], [1, -6, -5], [2, -4, -4], [3, -3, -3]]
     },
     3: {
-      two: [[-2, -6, -6], [-1, -5, -5], [0, null, null], [1, -3, -1], [2, 0, 1]],
+      two: [[-2, -6, -6], [-1, -5, -5], [0, null, null], [1, -4, -2], [2, -1, 0]],
       six: [[-2, -10, -8], [-1, -7, -7], [0, null, null], [1, -6, -5], [2, -4, -4]]
     },
     4: {
@@ -224,6 +224,17 @@ test('03/11/2026 segue a matriz após o feriado de segunda-feira 02/11', functio
   assert.equal(dayIso(result.values.inicio15), '2026-10-19');
   assert.equal(dayIso(result.values.inicio18), '2026-10-16');
   assert.equal(result.blocked, false);
+});
+
+test('feriado na quarta-feira: quinta cobra sábado a segunda e sexta cobra terça e quarta', function () {
+  const api = calculator();
+  const thursday = api.calculate(date(2026, 10, 15));
+  assert.equal(dayIso(thursday.values.inicio2), '2026-10-10');
+  assert.equal(dayIso(thursday.values.fim2), '2026-10-12');
+
+  const friday = api.calculate(date(2026, 10, 16));
+  assert.equal(dayIso(friday.values.inicio2), '2026-10-13');
+  assert.equal(dayIso(friday.values.fim2), '2026-10-14');
 });
 
 test('a data vermelha da matriz é SEM EXPED. e bloqueia o preenchimento', function () {
