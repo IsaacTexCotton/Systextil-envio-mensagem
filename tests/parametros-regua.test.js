@@ -226,6 +226,18 @@ test('03/11/2026 segue a matriz após o feriado de segunda-feira 02/11', functio
   assert.equal(result.blocked, false);
 });
 
+test('Sexta-feira Santa de 03/04/2026 segue a matriz e bloqueia o próprio feriado', function () {
+  const api = calculator();
+  const before = api.calculate(date(2026, 4, 1));
+  assert.equal(dayIso(before.values.inicio2), '2026-03-28');
+  assert.equal(dayIso(before.values.fim2), '2026-03-30');
+
+  const holiday = api.calculate(date(2026, 4, 3));
+  assert.equal(holiday.twoHolidayStatus, 'no-expediente');
+  assert.equal(holiday.sixHolidayStatus, 'no-expediente');
+  assert.equal(holiday.blocked, true);
+});
+
 test('matriz simulada: feriado na quarta, quinta cobra sábado a segunda e sexta cobra terça e quarta', function () {
   const api = calculator();
   // Usa calendário isolado: 14/10/2026 não é adicionado como feriado real,
