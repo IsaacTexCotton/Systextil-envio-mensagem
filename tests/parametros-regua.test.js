@@ -116,6 +116,23 @@ test('calendário inclui feriados fixos e móveis nacionais', function () {
   ].forEach(function (holiday) { assert.ok(holidays.has(holiday), 'feriado esperado: ' + holiday); });
 });
 
+test('rótulos da grade SmartClient são reconhecidos mesmo com chaves e dois-pontos', function () {
+  const api = calculator();
+  const labels = [
+    '{Início 2 Dias:}', '{Fim 2 Dias:}',
+    '{Início 6 Dias:}', '{Fim 6 Dias:}',
+    '{Início 10 Dias:}', '{Fim 10 Dias:}',
+    '{Início 15 Dias:}', '{Fim 15 Dias:}',
+    '{Início 18 Dias:}', '{Fim 18 Dias:}'
+  ];
+  const keys = labels.map(function (label) { return api.parameterKeyFromLabel(label); });
+  assert.deepEqual(keys, [
+    'inicio2', 'fim2', 'inicio6', 'fim6', 'inicio10',
+    'fim10', 'inicio15', 'fim15', 'inicio18', 'fim18'
+  ]);
+  assert.equal(api.parameterKeyFromLabel('campo desconhecido'), null);
+});
+
 test('API de cálculo não executa a consulta nem preenche campos', function () {
   const api = calculator();
   const result = api.calculate(date(2026, 10, 28));
