@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Parâmetros da Régua de Cobrança
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.4.0
+// @version      0.5.0
 // @description  Calcula e preenche, mediante ação explícita, parâmetros de datas da régua no Systextil.
 // @match        http://systextil.texcotton.com.br/systextil/*
 // @updateURL    https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-parametros-regua.user.js
@@ -35,6 +35,30 @@
     { key: 'fim15', label: 'Fim 15 Dias', target: 'fim 15 dias' },
     { key: 'inicio18', label: 'Início 18 Dias', target: 'inicio 18 dias' },
     { key: 'fim18', label: 'Fim 18 Dias', target: 'fim 18 dias' }
+  ];
+
+  // Regras operacionais extraídas dos exemplos de feriados.
+  // Δ = data de referência - data do feriado; offsets de início/fim são dias corridos relativos ao feriado.
+  const HOLIDAY_RULES = [
+    { type: 'two', holidayWeekday: 1, referenceOffset: 3, startOffset: -2, endOffset: 1, label: '2º dia: feriado na segunda; execução na quinta' },
+    { type: 'two', holidayWeekday: 2, referenceOffset: 2, startOffset: -3, endOffset: -1, label: '2º dia: feriado na terça; execução na quinta' },
+    { type: 'two', holidayWeekday: 2, referenceOffset: 3, startOffset: 0, endOffset: 1, label: '2º dia: feriado na terça; execução na sexta' },
+    { type: 'two', holidayWeekday: 3, referenceOffset: 1, startOffset: -4, endOffset: -2, label: '2º dia: feriado na quarta; execução na quinta' },
+    { type: 'two', holidayWeekday: 3, referenceOffset: 2, startOffset: -1, endOffset: 0, label: '2º dia: feriado na quarta; execução na sexta' },
+    { type: 'two', holidayWeekday: 4, referenceOffset: -1, startOffset: -5, endOffset: -3, label: '2º dia: feriado na quinta; execução na quarta anterior' },
+    { type: 'two', holidayWeekday: 4, referenceOffset: 4, startOffset: -1, endOffset: 0, label: '2º dia: feriado na quinta; execução na segunda seguinte' },
+    { type: 'two', holidayWeekday: 5, referenceOffset: -2, startOffset: -6, endOffset: -4, label: '2º dia: feriado na sexta; execução na quarta anterior' },
+    { type: 'two', holidayWeekday: 5, referenceOffset: 3, startOffset: -2, endOffset: -2, label: '2º dia: feriado na sexta; execução na segunda seguinte' },
+    { type: 'two', holidayWeekday: 5, referenceOffset: 4, startOffset: -1, endOffset: 0, label: '2º dia: feriado na sexta; execução na terça seguinte' },
+
+    { type: 'six', holidayWeekday: 1, referenceOffset: 1, startOffset: -8, endOffset: -5, label: '6º dia: feriado na segunda; execução na terça' },
+    { type: 'six', holidayWeekday: 2, referenceOffset: -1, startOffset: -9, endOffset: -7, label: '6º dia: feriado na terça; execução na segunda anterior' },
+    { type: 'six', holidayWeekday: 3, referenceOffset: -2, startOffset: -10, endOffset: -8, label: '6º dia: feriado na quarta; execução na segunda anterior' },
+    { type: 'six', holidayWeekday: 3, referenceOffset: 1, startOffset: -6, endOffset: -5, label: '6º dia: feriado na quarta; execução na quinta' },
+    { type: 'six', holidayWeekday: 4, referenceOffset: -3, startOffset: -11, endOffset: -9, label: '6º dia: feriado na quinta; execução na segunda anterior' },
+    { type: 'six', holidayWeekday: 4, referenceOffset: 1, startOffset: -6, endOffset: -5, label: '6º dia: feriado na quinta; execução na sexta' },
+    { type: 'six', holidayWeekday: 5, referenceOffset: -4, startOffset: -12, endOffset: -10, label: '6º dia: feriado na sexta; execução na segunda anterior' },
+    { type: 'six', holidayWeekday: 5, referenceOffset: 3, startOffset: -6, endOffset: -3, label: '6º dia: feriado na sexta; execução na segunda seguinte' }
   ];
 
   function localNoon(date) {
@@ -188,9 +212,143 @@
     };
   }
 
+  function calendarDayDifference(referenceDate, holidayDate) {
+    const referenceUtc = Date.UTC(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
+    const holidayUtc = Date.UTC(holidayDate.getFullYear(), holidayDate.getMonth(), holidayDate.getDate());
+    return Math.round((referenceUtc - holidayUtc) / 86400000);
+  }
+
+  function holidayDatesNear(referenceDate) {
+    const found = new Set();
+    // Busca em anos adjacentes para não falhar em referências próximas à virada do ano.
+    for (let year = referenceDate.getFullYear() - 1; year <= referenceDate.getFullYear() + 1; year += 1) {
+      holidaysForYear(year).forEach(function (holiday) {
+        const parsed = parseIso(holiday);
+        if (parsed && Math.abs(calendarDayDifference(referenceDate, parsed)) <= 4) found.add(iso(parsed));
+      });
+    }
+    return Array.from(found).sort();
+  }
+
+  function resolveHolidayWindow(type, referenceDate, explicitHolidayDates) {
+    const holidayValues = explicitHolidayDates === undefined
+      ? holidayDatesNear(referenceDate)
+      : (Array.isArray(explicitHolidayDates) ? explicitHolidayDates : []);
+    const matches = [];
+
+    holidayValues.forEach(function (value) {
+      let holidayDate = null;
+      if (typeof value === 'string') holidayDate = parseIso(value);
+      else if (value && typeof value.getFullYear === 'function') holidayDate = localNoon(value);
+      if (!holidayDate) return;
+
+      const referenceOffset = calendarDayDifference(referenceDate, holidayDate);
+      if (Math.abs(referenceOffset) > 4) return;
+      HOLIDAY_RULES.forEach(function (rule) {
+        if (rule.type !== type ||
+            rule.holidayWeekday !== holidayDate.getDay() ||
+            rule.referenceOffset !== referenceOffset) return;
+        matches.push({
+          holidayDate: localNoon(holidayDate),
+          referenceOffset: referenceOffset,
+          ruleLabel: rule.label,
+          start: addDays(holidayDate, rule.startOffset),
+          end: addDays(holidayDate, rule.endOffset)
+        });
+      });
+    });
+
+    if (!matches.length) return { status: 'none', start: null, end: null, matches: [], ranges: [] };
+
+    matches.sort(function (a, b) {
+      return a.start.getTime() - b.start.getTime() || a.end.getTime() - b.end.getTime();
+    });
+
+    // Regras referentes a feriados consecutivos podem se sobrepor. Unimos apenas
+    // janelas que se sobrepõem ou são adjacentes; blocos separados são ambíguos.
+    const ranges = [];
+    matches.forEach(function (match) {
+      const last = ranges[ranges.length - 1];
+      if (!last || iso(match.start) > iso(addDays(last.end, 1))) {
+        ranges.push({ start: match.start, end: match.end, matches: [match] });
+      } else {
+        if (match.end.getTime() > last.end.getTime()) last.end = match.end;
+        last.matches.push(match);
+      }
+    });
+
+    if (ranges.length > 1) {
+      return { status: 'conflict', start: null, end: null, matches: matches, ranges: ranges };
+    }
+    return {
+      status: 'matched',
+      start: ranges[0].start,
+      end: ranges[0].end,
+      matches: matches,
+      ranges: ranges
+    };
+  }
+
+  function datesBetweenInclusive(start, end) {
+    if (!start || !end || iso(start) > iso(end)) return [];
+    const dates = [];
+    for (let date = localNoon(start); iso(date) <= iso(end); date = addDays(date, 1)) dates.push(localNoon(date));
+    return dates;
+  }
+
+  function describeHolidayResolution(resolution) {
+    return resolution.matches.map(function (match) {
+      return match.ruleLabel + ' (feriado em ' + br(match.holidayDate) + ')';
+    }).join('; ');
+  }
+
   function calculate(referenceDate) {
-    const two = twoDayWindow(referenceDate);
-    const six = reverseSearchSixthDay(referenceDate);
+    const twoResolution = resolveHolidayWindow('two', referenceDate);
+    const sixResolution = resolveHolidayWindow('six', referenceDate);
+
+    let two;
+    if (twoResolution.status === 'matched') {
+      two = {
+        start: twoResolution.start,
+        end: twoResolution.end,
+        note: 'Exceção de feriado aplicada ao 2º dia: ' + describeHolidayResolution(twoResolution) + '.'
+      };
+    } else if (twoResolution.status === 'conflict') {
+      two = {
+        start: null,
+        end: null,
+        note: 'Conflito entre regras de feriado para o 2º dia; preenchimento bloqueado.'
+      };
+    } else {
+      two = twoDayWindow(referenceDate);
+    }
+
+    let six;
+    if (sixResolution.status === 'matched') {
+      const dates = datesBetweenInclusive(sixResolution.start, sixResolution.end);
+      six = {
+        start: sixResolution.start,
+        end: sixResolution.end,
+        count: dates.length,
+        dates: dates,
+        contiguous: true
+      };
+    } else if (sixResolution.status === 'conflict') {
+      six = { start: null, end: null, count: 0, dates: [], contiguous: false };
+    } else {
+      six = reverseSearchSixthDay(referenceDate);
+    }
+
+    const conflicts = [];
+    if (twoResolution.status === 'conflict') {
+      conflicts.push('2º dia: mais de uma janela de feriado descontínua (' +
+        twoResolution.ranges.map(function (range) { return br(range.start) + ' a ' + br(range.end); }).join(' e ') + ')');
+    }
+    if (sixResolution.status === 'conflict') {
+      conflicts.push('6º dia: mais de uma janela de feriado descontínua (' +
+        sixResolution.ranges.map(function (range) { return br(range.start) + ' a ' + br(range.end); }).join(' e ') + ')');
+    }
+
     const ten = addDays(referenceDate, -10);
     const fifteen = addDays(referenceDate, -15);
     const eighteen = addDays(referenceDate, -18);
@@ -205,9 +363,19 @@
       twoNote: two.note,
       sixCount: six.count,
       sixDates: six.dates,
-      sixContiguous: six.contiguous
+      sixContiguous: six.contiguous,
+      sixSource: sixResolution.status === 'matched'
+        ? 'holiday-rule'
+        : sixResolution.status === 'conflict' ? 'holiday-conflict' : 'reverse-search',
+      twoHolidayStatus: twoResolution.status,
+      sixHolidayStatus: sixResolution.status,
+      holidayConflicts: conflicts,
+      blocked: conflicts.length > 0,
+      twoHolidayMatches: twoResolution.matches,
+      sixHolidayMatches: sixResolution.matches
     };
   }
+
 
   function normalize(text) {
     return String(text == null ? '' : text)
@@ -526,8 +694,15 @@
       return p.label + ': ' + br(result.values[p.key]);
     }).join('\n') + '\nReferência: ' + br(lastReferenceDate) +
       '\nRegra 2 dias: ' + result.twoNote +
-      '\nDatas encontradas na busca reversa do 6º dia: ' + result.sixCount +
-      '\nJanela do 6º dia contígua: ' + (result.sixCount === 0 ? 'sem correspondências' : (result.sixContiguous ? 'sim' : 'não; conferir a tabela auxiliar J:L'));
+      '\nOrigem da regra 6º dia: ' + (result.sixSource === 'holiday-rule'
+        ? 'exceção de feriado'
+        : result.sixSource === 'holiday-conflict'
+          ? 'conflito entre exceções de feriado'
+          : 'busca reversa padrão') +
+      '\nDatas de vencimento do 6º dia: ' + (result.sixDates.length ? result.sixDates.map(br).join(', ') : 'nenhuma') +
+      '\nJanela do 6º dia contígua: ' + (result.sixCount === 0 ? 'sem correspondências' : (result.sixContiguous ? 'sim' : 'não; conferir a tabela auxiliar J:L')) +
+      '\nConflitos de feriado: ' + (result.holidayConflicts.length ? result.holidayConflicts.join(' | ') : 'nenhum') +
+      '\nPreenchimento permitido: ' + (result.blocked ? 'não' : 'sim');
   }
 
   function renderCalculation() {
@@ -547,22 +722,39 @@
       row.append(label, value);
       tableBody.appendChild(row);
     });
-    detailsEl.textContent = lastCalculation.twoNote + ' ' +
-      (!lastCalculation.sixCount
-        ? 'A busca reversa não encontrou vencimentos associados ao prazo final ' + br(reference) +
-          '. Confira se a data é compatível com o calendário e os feriados.'
-        : !lastCalculation.sixContiguous
-          ? 'A busca reversa encontrou ' + lastCalculation.sixCount +
-            ' datas de vencimento em intervalos separados. Início/Fim do 6º dia ficaram em branco para evitar incluir datas sem o mesmo prazo; confira a tabela auxiliar J:L.'
-          : 'Busca reversa do 6º dia: ' + lastCalculation.sixCount +
-            ' data(s) de vencimento associada(s) ao prazo final ' + br(reference) + '.');
+    if (lastCalculation.blocked) {
+      detailsEl.textContent = 'PREENCHIMENTO BLOQUEADO: ' + lastCalculation.holidayConflicts.join(' | ') +
+        '. Nenhum campo será alterado enquanto houver janelas de feriado descontínuas. ' + lastCalculation.twoNote;
+    } else {
+      detailsEl.textContent = lastCalculation.twoNote + ' ' +
+        (lastCalculation.sixSource === 'holiday-rule'
+          ? 'Exceção de feriado aplicada ao 6º dia: ' + describeHolidayResolution({
+              matches: lastCalculation.sixHolidayMatches
+            }) + '. Janela: ' + br(lastCalculation.values.inicio6) + ' a ' + br(lastCalculation.values.fim6) + '.'
+          : !lastCalculation.sixCount
+            ? 'A busca reversa não encontrou vencimentos associados ao prazo final ' + br(reference) +
+              '. Confira se a data é compatível com o calendário e os feriados.'
+            : !lastCalculation.sixContiguous
+              ? 'A busca reversa encontrou ' + lastCalculation.sixCount +
+                ' datas de vencimento em intervalos separados. Início/Fim do 6º dia ficaram em branco para evitar incluir datas sem o mesmo prazo; confira a tabela auxiliar J:L.'
+              : 'Busca reversa do 6º dia: ' + lastCalculation.sixCount +
+                ' data(s) de vencimento associada(s) ao prazo final ' + br(reference) + '.');
+    }
     summaryEl.value = buildSummary(lastCalculation);
-    setStatus('Cálculo atualizado. Confira as datas antes de preencher ou executar a consulta.', false);
+    setStatus(lastCalculation.blocked
+      ? 'Preenchimento bloqueado por conflito entre regras de feriado. Confira o resumo.'
+      : 'Cálculo atualizado. Confira as datas antes de preencher ou executar a consulta.',
+      lastCalculation.blocked);
   }
 
   async function fillRecognizedFields() {
     if (!lastCalculation) renderCalculation();
     if (!lastCalculation) return;
+    if (lastCalculation.blocked) {
+      setStatus('Preenchimento cancelado: ' + lastCalculation.holidayConflicts.join(' | '), true);
+      console.warn('[Systextil Régua] Preenchimento bloqueado por conflito de regras de feriado:', lastCalculation.holidayConflicts);
+      return;
+    }
 
     // O relatório usa uma ListGrid SmartClient: nove valores podem ser texto
     // estático no DOM, embora sejam editáveis via a API da grade.
@@ -729,6 +921,8 @@
     twoDayWindow: twoDayWindow,
     calculateSixthDayDeadline: calculateSixthDayDeadline,
     reverseSearchSixthDay: reverseSearchSixthDay,
+    resolveHolidayWindow: resolveHolidayWindow,
+    holidayRules: HOLIDAY_RULES,
     isBusinessDay: isBusinessDay,
     holidaysForYear: function (year) { return Array.from(holidaysForYear(year)).sort(); },
     iso: iso,

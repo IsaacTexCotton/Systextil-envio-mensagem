@@ -9,9 +9,9 @@ Arquivo: [userscripts/systextil-parametros-regua.user.js](userscripts/systextil-
 ### O que faz
 
 - Mostra um painel com os dez parâmetros: início e fim para as faixas de 2, 6, 10, 15 e 18 dias.
-- Usa a regra operacional semanal para a faixa de 2 dias: segunda busca quinta; terça busca sexta; quarta busca sábado, domingo e segunda; quinta busca terça; sexta busca quarta.
-- Calcula o prazo do 6º dia somando seis dias corridos ao vencimento. Se o prazo cair em sábado ou domingo, passa para segunda-feira. Se a data resultante for feriado, a regra configurada procura a próxima segunda-feira não feriada.
-- Faz busca reversa por datas de vencimento que resultem no prazo final selecionado.
+- Usa a regra operacional semanal para a faixa de 2 dias quando não houver exceção de feriado aplicável: segunda busca quinta; terça busca sexta; quarta busca sábado, domingo e segunda; quinta busca terça; sexta busca quarta.
+- Aplica uma tabela explícita de exceções de feriado para as réguas de 2º e 6º dia, baseada nos 18 cenários documentados abaixo. As janelas são relativas à data do feriado, não a datas literais de 2026.
+- Quando não há exceção para o 6º dia, mantém a regra padrão de vencimento + 6 dias corridos, com prorrogação de sábado/domingo para segunda e tratamento de feriado segundo a regra atual. Em seguida, faz busca reversa por vencimentos associados à referência.
 - Se a busca reversa retornar datas em blocos separados, deixa Início/Fim do 6º dia em branco e informa o motivo. Isso evita que um intervalo único inclua vencimentos não associados ao mesmo prazo.
 - Calcula as faixas de 10, 15 e 18 dias por dias corridos, sem ajuste por fim de semana ou feriado.
 - Apresenta uma tabela de conferência e um resumo copiável.
@@ -54,6 +54,42 @@ O userscript está restrito ao endereço http://systextil.texcotton.com.br/syste
 
 Esse mapeamento é a regra operacional informada para o ERP, não uma subtração genérica de dois dias. A janela de quarta-feira tem três datas deliberadamente.
 
+### Exceções quando há feriado
+
+As exceções abaixo têm prioridade sobre as regras semanais padrão. **F** representa a data do feriado; **Δ** é a data de referência menos F. Os offsets de início e fim são dias corridos em relação a F. Uma regra só é considerada quando o feriado pertence ao calendário ativo (feriados nacionais configurados ou datas adicionais confirmadas).
+
+#### Régua de 2º dia
+
+| Dia do feriado | Δ da referência | Início | Fim |
+|---|---:|---:|---:|
+| Segunda | +3 | F − 2 | F + 1 |
+| Terça | +2 | F − 3 | F − 1 |
+| Terça | +3 | F | F + 1 |
+| Quarta | +1 | F − 4 | F − 2 |
+| Quarta | +2 | F − 1 | F |
+| Quinta | −1 | F − 5 | F − 3 |
+| Quinta | +4 | F − 1 | F |
+| Sexta | −2 | F − 6 | F − 4 |
+| Sexta | +3 | F − 2 | F − 2 |
+| Sexta | +4 | F − 1 | F |
+
+#### Régua de 6º dia
+
+| Dia do feriado | Δ da referência | Início | Fim |
+|---|---:|---:|---:|
+| Segunda | +1 | F − 8 | F − 5 |
+| Terça | −1 | F − 9 | F − 7 |
+| Quarta | −2 | F − 10 | F − 8 |
+| Quarta | +1 | F − 6 | F − 5 |
+| Quinta | −3 | F − 11 | F − 9 |
+| Quinta | +1 | F − 6 | F − 5 |
+| Sexta | −4 | F − 12 | F − 10 |
+| Sexta | +3 | F − 6 | F − 3 |
+
+Quando há feriados consecutivos, as janelas aplicáveis que se sobrepõem ou são adjacentes são reunidas em uma janela contínua. Se as regras gerarem blocos separados, o painel bloqueia o preenchimento para evitar transformar as datas em uma faixa que inclua vencimentos não previstos. A regra de 6º dia por busca reversa é usada apenas quando nenhuma exceção de feriado aplicável for encontrada.
+
+**Correção de calendário nos exemplos:** 15/10/2026 é quinta-feira; a sexta-feira correspondente é 16/10/2026. Para o cenário de feriado na quinta-feira e cobrança na sexta-feira, a referência deve ser 16/10/2026 para a janela 09 a 10/10/2026.
+
 ### Prazo do 6º dia
 
 1. O vencimento é o dia zero.
@@ -74,7 +110,7 @@ O código calcula feriados nacionais fixos e datas móveis: Carnaval, Sexta-feir
 
 O cálculo está separado da interação com o formulário e é exposto numa API de diagnóstico somente leitura, chamada window.__systextilParametrosReguaDebug. Essa API não preenche campos nem executa consultas.
 
-Os testes usam o runner nativo do Node.js e não dependem de bibliotecas externas. Com Node.js 18 ou superior instalado, execute **npm test** na raiz do repositório.
+Os testes usam o runner nativo do Node.js e não dependem de bibliotecas externas. Incluem a verificação das 18 janelas de exceção, a integração com o feriado real de 12/10/2026, a união de janelas sobrepostas no Carnaval e regressões das regras padrão. Com Node.js 18 ou superior instalado, execute **npm test** na raiz do repositório.
 
 **Não há CI/CD nem workflows automatizados neste repositório.** Os testes devem ser executados localmente antes de enviar uma alteração.
 
