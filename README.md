@@ -42,75 +42,101 @@ O userscript está restrito ao endereço http://systextil.texcotton.com.br/syste
 
 ## Regras de datas
 
-### Faixa de 2 dias — calendário operacional do ERP
+### Matriz operacional de feriados
+
+A tabela de referência é a matriz fornecida pelo usuário. Cada linha relaciona o dia da execução ao conteúdo de **COBRAR**; as linhas destacadas em vermelho como **SEM EXPED.** significam que não há expediente. O código foi transcrito para 55 regras (2º e 6º dia, feriado de segunda a sexta-feira), usando offsets de calendário relativos à data real do feriado.
+
+Em todas as linhas, **F** é a data do feriado. A data de referência é relativa a F; os dias de cobrança são interpretados como as datas anteriores/posteriores indicadas na matriz.
+
+#### Feriado na segunda-feira
+
+| Execução | 2º dia — cobrar | 6º dia — cobrar |
+|---|---|---|
+| Segunda (F) | SEM EXPED. | SEM EXPED. |
+| Terça (F+1) | Quinta | Domingo a quarta |
+| Quarta (F+2) | Sexta | Quinta |
+| Quinta (F+3) | Sábado a terça | Sexta |
+| Sexta (F+4) | Quarta | Sábado |
+
+#### Feriado na terça-feira
+
+| Execução | 2º dia — cobrar | 6º dia — cobrar |
+|---|---|---|
+| Segunda (F−1) | Quinta | Domingo a terça |
+| Terça (F) | SEM EXPED. | SEM EXPED. |
+| Quarta (F+1) | Sexta | Quarta e quinta |
+| Quinta (F+2) | Sábado a segunda | Sexta |
+| Sexta (F+3) | Terça e quarta | Sábado |
+
+#### Feriado na quarta-feira
+
+| Execução | 2º dia — cobrar | 6º dia — cobrar |
+|---|---|---|
+| Segunda (F−2) | Quinta | Domingo a terça |
+| Terça (F−1) | Sexta | Quarta |
+| Quarta (F) | SEM EXPED. | SEM EXPED. |
+| Quinta (F+1) | Sábado a segunda | Quinta e sexta |
+| Sexta (F+2) | Terça e quarta | Sábado |
+
+#### Feriado na quinta-feira
+
+| Execução | 2º dia — cobrar | 6º dia — cobrar |
+|---|---|---|
+| Segunda (F−3) | Quinta | Domingo a terça |
+| Terça (F−2) | Sexta | Quarta |
+| Quarta (F−1) | Sábado a segunda | Quinta |
+| Quinta (F) | SEM EXPED. | SEM EXPED. |
+| Sexta (F+1) | Terça | Sexta e sábado |
+| Segunda seguinte (F+4) | Quarta e quinta | — |
+| Terça seguinte (F+5) | Quinta e sexta | — |
+
+#### Feriado na sexta-feira
+
+| Execução | 2º dia — cobrar | 6º dia — cobrar |
+|---|---|---|
+| Segunda (F−4) | Quinta | Domingo a terça |
+| Terça (F−3) | Sexta | Quarta |
+| Quarta (F−2) | Sábado a segunda | Quinta |
+| Quinta (F−1) | Terça | Sexta |
+| Sexta (F) | SEM EXPED. | SEM EXPED. |
+| Segunda seguinte (F+3) | Quarta | Sábado a terça |
+| Terça seguinte (F+4) | Quinta e sexta | — |
+
+Quando mais de um feriado próximo gerar regras aplicáveis, janelas sobrepostas ou adjacentes são combinadas; janelas separadas bloqueiam o preenchimento para evitar uma faixa que cobre datas indevidas. Se a própria data de referência for feriado, **SEM EXPED.** prevalece e o script não altera nenhum campo.
+
+Quando não há regra de feriado aplicável, o script mantém o mapeamento semanal padrão para o 2º dia e a busca reversa de vencimento + 6 dias para o 6º dia. Esse fallback não substitui nenhuma linha aplicável da matriz.
+
+### Faixa semanal padrão do 2º dia — sem exceção de feriado
 
 | Dia da execução | Janela de vencimento |
 |---|---|
 | Segunda-feira | Quinta-feira |
 | Terça-feira | Sexta-feira |
-| Quarta-feira | Sábado a segunda-feira (três datas) |
+| Quarta-feira | Sábado a segunda-feira |
 | Quinta-feira | Terça-feira |
 | Sexta-feira | Quarta-feira |
 
-Esse mapeamento é a regra operacional informada para o ERP, não uma subtração genérica de dois dias. A janela de quarta-feira tem três datas deliberadamente.
-
-### Exceções quando há feriado
-
-As exceções abaixo têm prioridade sobre as regras semanais padrão. **F** representa a data do feriado; **Δ** é a data de referência menos F. Os offsets de início e fim são dias corridos em relação a F. Uma regra só é considerada quando o feriado pertence ao calendário ativo (feriados nacionais configurados ou datas adicionais confirmadas).
-
-#### Régua de 2º dia
-
-| Dia do feriado | Δ da referência | Início | Fim |
-|---|---:|---:|---:|
-| Segunda | +3 | F − 2 | F + 1 |
-| Terça | +2 | F − 3 | F − 1 |
-| Terça | +3 | F | F + 1 |
-| Quarta | +1 | F − 4 | F − 2 |
-| Quarta | +2 | F − 1 | F |
-| Quinta | −1 | F − 5 | F − 3 |
-| Quinta | +4 | F − 1 | F |
-| Sexta | −2 | F − 6 | F − 4 |
-| Sexta | +3 | F − 2 | F − 2 |
-| Sexta | +4 | F − 1 | F |
-
-#### Régua de 6º dia
-
-| Dia do feriado | Δ da referência | Início | Fim |
-|---|---:|---:|---:|
-| Segunda | +1 | F − 8 | F − 5 |
-| Terça | −1 | F − 9 | F − 7 |
-| Quarta | −2 | F − 10 | F − 8 |
-| Quarta | +1 | F − 6 | F − 5 |
-| Quinta | −3 | F − 11 | F − 9 |
-| Quinta | +1 | F − 6 | F − 5 |
-| Sexta | −4 | F − 12 | F − 10 |
-| Sexta | +3 | F − 6 | F − 3 |
-
-Quando há feriados consecutivos, as janelas aplicáveis que se sobrepõem ou são adjacentes são reunidas em uma janela contínua. Se as regras gerarem blocos separados, o painel bloqueia o preenchimento para evitar transformar as datas em uma faixa que inclua vencimentos não previstos. A regra de 6º dia por busca reversa é usada apenas quando nenhuma exceção de feriado aplicável for encontrada.
-
-**Correção de calendário nos exemplos:** 15/10/2026 é quinta-feira; a sexta-feira correspondente é 16/10/2026. Para o cenário de feriado na quinta-feira e cobrança na sexta-feira, a referência deve ser 16/10/2026 para a janela 09 a 10/10/2026.
-
-### Prazo do 6º dia
+### Prazo padrão do 6º dia — sem exceção de feriado
 
 1. O vencimento é o dia zero.
 2. São somados seis dias corridos.
 3. Se o prazo cair em sábado ou domingo, passa para segunda-feira.
 4. Se a data do prazo ou a segunda-feira resultante for feriado, procura-se a próxima segunda-feira não feriada.
-5. A janela é obtida por busca reversa: o cálculo testa datas anteriores e identifica quais datas de vencimento resultam na data de referência.
+5. A janela é obtida por busca reversa. Esse cálculo só é utilizado quando nenhuma regra da matriz de feriados se aplica.
 
-### Faixas corridas
+### Faixas corridas de 10, 15 e 18 dias
 
 Para 10, 15 e 18 dias, início e fim são a mesma data: referência menos a quantidade de dias corridos. Não se aplica ajuste de fim de semana ou feriado.
 
-### Feriados
+### Calendário de feriados
 
-O código calcula feriados nacionais fixos e datas móveis: Carnaval, Sexta-feira Santa e Corpus Christi. A lista adicional está vazia por padrão. As datas de 05/06/2026 e 02/09/2026 citadas na planilha não são ativadas sem confirmação de que devem ser feriados para o processo. Feriados duplicados são eliminados pelo conjunto de datas.
+O código calcula feriados nacionais fixos e datas móveis: Carnaval, Sexta-feira Santa e Corpus Christi. A lista adicional de feriados locais está vazia por padrão. As datas de 05/06/2026 e 02/09/2026 não são ativadas sem confirmação. Feriados duplicados são eliminados pelo conjunto de datas.
 
 ## Qualidade e testes locais
 
 O cálculo está separado da interação com o formulário e é exposto numa API de diagnóstico somente leitura, chamada window.__systextilParametrosReguaDebug. Essa API não preenche campos nem executa consultas.
 
-Os testes usam o runner nativo do Node.js e não dependem de bibliotecas externas. Incluem a verificação das 18 janelas de exceção, a integração com o feriado real de 12/10/2026, a união de janelas sobrepostas no Carnaval e regressões das regras padrão. Com Node.js 18 ou superior instalado, execute **npm test** na raiz do repositório.
+Os testes usam o runner nativo do Node.js e não dependem de bibliotecas externas. Incluem a validação das 55 linhas da matriz de feriados, o cenário de referência 03/11/2026 após o feriado de 02/11, o bloqueio de preenchimento em dias SEM EXPED., a união de janelas sobrepostas no Carnaval e regressões das regras padrão. Com Node.js 18 ou superior instalado, execute **npm test** na raiz do repositório.
 
 **Não há CI/CD nem workflows automatizados neste repositório.** Os testes devem ser executados localmente antes de enviar uma alteração.
 

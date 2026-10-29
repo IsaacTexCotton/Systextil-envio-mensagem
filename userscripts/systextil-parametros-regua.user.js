@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Parâmetros da Régua de Cobrança
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.5.0
+// @version      0.6.0
 // @description  Calcula e preenche, mediante ação explícita, parâmetros de datas da régua no Systextil.
 // @match        http://systextil.texcotton.com.br/systextil/*
 // @updateURL    https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-parametros-regua.user.js
@@ -37,29 +37,77 @@
     { key: 'fim18', label: 'Fim 18 Dias', target: 'fim 18 dias' }
   ];
 
-  // Regras operacionais extraídas dos exemplos de feriados.
-  // Δ = data de referência - data do feriado; offsets de início/fim são dias corridos relativos ao feriado.
+  // Matriz operacional validada a partir das tabelas fornecidas pelo usuário.
+  // referenceOffset = data de execução - data do feriado; start/end são offsets
+  // de dias corridos em relação ao próprio feriado. "SEM EXPED." bloqueia a execução.
   const HOLIDAY_RULES = [
-    { type: 'two', holidayWeekday: 1, referenceOffset: 3, startOffset: -2, endOffset: 1, label: '2º dia: feriado na segunda; execução na quinta' },
-    { type: 'two', holidayWeekday: 2, referenceOffset: 2, startOffset: -3, endOffset: -1, label: '2º dia: feriado na terça; execução na quinta' },
-    { type: 'two', holidayWeekday: 2, referenceOffset: 3, startOffset: 0, endOffset: 1, label: '2º dia: feriado na terça; execução na sexta' },
-    { type: 'two', holidayWeekday: 3, referenceOffset: 1, startOffset: -4, endOffset: -2, label: '2º dia: feriado na quarta; execução na quinta' },
-    { type: 'two', holidayWeekday: 3, referenceOffset: 2, startOffset: -1, endOffset: 0, label: '2º dia: feriado na quarta; execução na sexta' },
-    { type: 'two', holidayWeekday: 4, referenceOffset: -1, startOffset: -5, endOffset: -3, label: '2º dia: feriado na quinta; execução na quarta anterior' },
-    { type: 'two', holidayWeekday: 4, referenceOffset: 4, startOffset: -1, endOffset: 0, label: '2º dia: feriado na quinta; execução na segunda seguinte' },
-    { type: 'two', holidayWeekday: 5, referenceOffset: -2, startOffset: -6, endOffset: -4, label: '2º dia: feriado na sexta; execução na quarta anterior' },
-    { type: 'two', holidayWeekday: 5, referenceOffset: 3, startOffset: -2, endOffset: -2, label: '2º dia: feriado na sexta; execução na segunda seguinte' },
-    { type: 'two', holidayWeekday: 5, referenceOffset: 4, startOffset: -1, endOffset: 0, label: '2º dia: feriado na sexta; execução na terça seguinte' },
+    // Feriado na SEGUNDA
+    { type: 'two', holidayWeekday: 1, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '2º dia: feriado na segunda; sem expediente' },
+    { type: 'two', holidayWeekday: 1, referenceOffset: 1, startOffset: -4, endOffset: -4, cobrar: 'QUINTA', label: '2º dia: segunda feriado; terça cobra quinta' },
+    { type: 'two', holidayWeekday: 1, referenceOffset: 2, startOffset: -3, endOffset: -3, cobrar: 'SEXTA', label: '2º dia: segunda feriado; quarta cobra sexta' },
+    { type: 'two', holidayWeekday: 1, referenceOffset: 3, startOffset: -2, endOffset: 1, cobrar: 'SÁB A TER', label: '2º dia: segunda feriado; quinta cobra sábado a terça' },
+    { type: 'two', holidayWeekday: 1, referenceOffset: 4, startOffset: 2, endOffset: 2, cobrar: 'QUARTA', label: '2º dia: segunda feriado; sexta cobra quarta' },
+    { type: 'six', holidayWeekday: 1, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '6º dia: feriado na segunda; sem expediente' },
+    { type: 'six', holidayWeekday: 1, referenceOffset: 1, startOffset: -8, endOffset: -5, cobrar: 'DOM A QUA', label: '6º dia: segunda feriado; terça cobra domingo a quarta' },
+    { type: 'six', holidayWeekday: 1, referenceOffset: 2, startOffset: -4, endOffset: -4, cobrar: 'QUINTA', label: '6º dia: segunda feriado; quarta cobra quinta' },
+    { type: 'six', holidayWeekday: 1, referenceOffset: 3, startOffset: -3, endOffset: -3, cobrar: 'SEXTA', label: '6º dia: segunda feriado; quinta cobra sexta' },
+    { type: 'six', holidayWeekday: 1, referenceOffset: 4, startOffset: -2, endOffset: -2, cobrar: 'SÁBADO', label: '6º dia: segunda feriado; sexta cobra sábado' },
 
-    { type: 'six', holidayWeekday: 1, referenceOffset: 1, startOffset: -8, endOffset: -5, label: '6º dia: feriado na segunda; execução na terça' },
-    { type: 'six', holidayWeekday: 2, referenceOffset: -1, startOffset: -9, endOffset: -7, label: '6º dia: feriado na terça; execução na segunda anterior' },
-    { type: 'six', holidayWeekday: 3, referenceOffset: -2, startOffset: -10, endOffset: -8, label: '6º dia: feriado na quarta; execução na segunda anterior' },
-    { type: 'six', holidayWeekday: 3, referenceOffset: 1, startOffset: -6, endOffset: -5, label: '6º dia: feriado na quarta; execução na quinta' },
-    { type: 'six', holidayWeekday: 4, referenceOffset: -3, startOffset: -11, endOffset: -9, label: '6º dia: feriado na quinta; execução na segunda anterior' },
-    { type: 'six', holidayWeekday: 4, referenceOffset: 1, startOffset: -6, endOffset: -5, label: '6º dia: feriado na quinta; execução na sexta' },
-    { type: 'six', holidayWeekday: 5, referenceOffset: -4, startOffset: -12, endOffset: -10, label: '6º dia: feriado na sexta; execução na segunda anterior' },
-    { type: 'six', holidayWeekday: 5, referenceOffset: 3, startOffset: -6, endOffset: -3, label: '6º dia: feriado na sexta; execução na segunda seguinte' }
+    // Feriado na TERÇA
+    { type: 'two', holidayWeekday: 2, referenceOffset: -1, startOffset: -5, endOffset: -5, cobrar: 'QUINTA', label: '2º dia: terça feriado; segunda cobra quinta' },
+    { type: 'two', holidayWeekday: 2, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '2º dia: feriado na terça; sem expediente' },
+    { type: 'two', holidayWeekday: 2, referenceOffset: 1, startOffset: -4, endOffset: -4, cobrar: 'SEXTA', label: '2º dia: terça feriado; quarta cobra sexta' },
+    { type: 'two', holidayWeekday: 2, referenceOffset: 2, startOffset: -3, endOffset: -1, cobrar: 'SÁB A SEG', label: '2º dia: terça feriado; quinta cobra sábado a segunda' },
+    { type: 'two', holidayWeekday: 2, referenceOffset: 3, startOffset: 0, endOffset: 1, cobrar: 'TER E QUA', label: '2º dia: terça feriado; sexta cobra terça e quarta' },
+    { type: 'six', holidayWeekday: 2, referenceOffset: -1, startOffset: -9, endOffset: -7, cobrar: 'DOM A TER', label: '6º dia: terça feriado; segunda cobra domingo a terça' },
+    { type: 'six', holidayWeekday: 2, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '6º dia: feriado na terça; sem expediente' },
+    { type: 'six', holidayWeekday: 2, referenceOffset: 1, startOffset: -6, endOffset: -5, cobrar: 'QUA E QUI', label: '6º dia: terça feriado; quarta cobra quarta e quinta' },
+    { type: 'six', holidayWeekday: 2, referenceOffset: 2, startOffset: -4, endOffset: -4, cobrar: 'SEXTA', label: '6º dia: terça feriado; quinta cobra sexta' },
+    { type: 'six', holidayWeekday: 2, referenceOffset: 3, startOffset: -3, endOffset: -3, cobrar: 'SÁBADO', label: '6º dia: terça feriado; sexta cobra sábado' },
+
+    // Feriado na QUARTA
+    { type: 'two', holidayWeekday: 3, referenceOffset: -2, startOffset: -6, endOffset: -6, cobrar: 'QUINTA', label: '2º dia: quarta feriado; segunda cobra quinta' },
+    { type: 'two', holidayWeekday: 3, referenceOffset: -1, startOffset: -5, endOffset: -5, cobrar: 'SEXTA', label: '2º dia: quarta feriado; terça cobra sexta' },
+    { type: 'two', holidayWeekday: 3, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '2º dia: feriado na quarta; sem expediente' },
+    { type: 'two', holidayWeekday: 3, referenceOffset: 1, startOffset: -4, endOffset: -2, cobrar: 'SÁB A SEG', label: '2º dia: quarta feriado; quinta cobra sábado a segunda' },
+    { type: 'two', holidayWeekday: 3, referenceOffset: 2, startOffset: -1, endOffset: 0, cobrar: 'TER E QUA', label: '2º dia: quarta feriado; sexta cobra terça e quarta' },
+    { type: 'six', holidayWeekday: 3, referenceOffset: -2, startOffset: -10, endOffset: -8, cobrar: 'DOM A TER', label: '6º dia: quarta feriado; segunda cobra domingo a terça' },
+    { type: 'six', holidayWeekday: 3, referenceOffset: -1, startOffset: -7, endOffset: -7, cobrar: 'QUARTA', label: '6º dia: quarta feriado; terça cobra quarta' },
+    { type: 'six', holidayWeekday: 3, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '6º dia: feriado na quarta; sem expediente' },
+    { type: 'six', holidayWeekday: 3, referenceOffset: 1, startOffset: -6, endOffset: -5, cobrar: 'QUI E SEX', label: '6º dia: quarta feriado; quinta cobra quinta e sexta' },
+    { type: 'six', holidayWeekday: 3, referenceOffset: 2, startOffset: -4, endOffset: -4, cobrar: 'SÁBADO', label: '6º dia: quarta feriado; sexta cobra sábado' },
+
+    // Feriado na QUINTA
+    { type: 'two', holidayWeekday: 4, referenceOffset: -3, startOffset: -7, endOffset: -7, cobrar: 'QUINTA', label: '2º dia: quinta feriado; segunda cobra quinta' },
+    { type: 'two', holidayWeekday: 4, referenceOffset: -2, startOffset: -6, endOffset: -6, cobrar: 'SEXTA', label: '2º dia: quinta feriado; terça cobra sexta' },
+    { type: 'two', holidayWeekday: 4, referenceOffset: -1, startOffset: -5, endOffset: -3, cobrar: 'SÁB A SEG', label: '2º dia: quinta feriado; quarta cobra sábado a segunda' },
+    { type: 'two', holidayWeekday: 4, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '2º dia: feriado na quinta; sem expediente' },
+    { type: 'two', holidayWeekday: 4, referenceOffset: 1, startOffset: -2, endOffset: -2, cobrar: 'TERÇA', label: '2º dia: quinta feriado; sexta cobra terça' },
+    { type: 'two', holidayWeekday: 4, referenceOffset: 4, startOffset: -1, endOffset: 0, cobrar: 'QUA E QUI', label: '2º dia: quinta feriado; segunda seguinte cobra quarta e quinta' },
+    { type: 'two', holidayWeekday: 4, referenceOffset: 5, startOffset: 0, endOffset: 1, cobrar: 'QUI E SEX', label: '2º dia: quinta feriado; terça seguinte cobra quinta e sexta' },
+    { type: 'six', holidayWeekday: 4, referenceOffset: -3, startOffset: -11, endOffset: -9, cobrar: 'DOM A TER', label: '6º dia: quinta feriado; segunda cobra domingo a terça' },
+    { type: 'six', holidayWeekday: 4, referenceOffset: -2, startOffset: -8, endOffset: -8, cobrar: 'QUARTA', label: '6º dia: quinta feriado; terça cobra quarta' },
+    { type: 'six', holidayWeekday: 4, referenceOffset: -1, startOffset: -7, endOffset: -7, cobrar: 'QUINTA', label: '6º dia: quinta feriado; quarta cobra quinta' },
+    { type: 'six', holidayWeekday: 4, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '6º dia: feriado na quinta; sem expediente' },
+    { type: 'six', holidayWeekday: 4, referenceOffset: 1, startOffset: -6, endOffset: -5, cobrar: 'SEX E SÁB', label: '6º dia: quinta feriado; sexta cobra sexta e sábado' },
+
+    // Feriado na SEXTA
+    { type: 'two', holidayWeekday: 5, referenceOffset: -4, startOffset: -8, endOffset: -8, cobrar: 'QUINTA', label: '2º dia: sexta feriado; segunda cobra quinta' },
+    { type: 'two', holidayWeekday: 5, referenceOffset: -3, startOffset: -7, endOffset: -7, cobrar: 'SEXTA', label: '2º dia: sexta feriado; terça cobra sexta' },
+    { type: 'two', holidayWeekday: 5, referenceOffset: -2, startOffset: -6, endOffset: -4, cobrar: 'SÁB A SEG', label: '2º dia: sexta feriado; quarta cobra sábado a segunda' },
+    { type: 'two', holidayWeekday: 5, referenceOffset: -1, startOffset: -3, endOffset: -3, cobrar: 'TERÇA', label: '2º dia: sexta feriado; quinta cobra terça' },
+    { type: 'two', holidayWeekday: 5, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '2º dia: feriado na sexta; sem expediente' },
+    { type: 'two', holidayWeekday: 5, referenceOffset: 3, startOffset: -2, endOffset: -2, cobrar: 'QUARTA', label: '2º dia: sexta feriado; segunda seguinte cobra quarta' },
+    { type: 'two', holidayWeekday: 5, referenceOffset: 4, startOffset: -1, endOffset: 0, cobrar: 'QUI E SEX', label: '2º dia: sexta feriado; terça seguinte cobra quinta e sexta' },
+    { type: 'six', holidayWeekday: 5, referenceOffset: -4, startOffset: -12, endOffset: -10, cobrar: 'DOM A TER', label: '6º dia: sexta feriado; segunda cobra domingo a terça' },
+    { type: 'six', holidayWeekday: 5, referenceOffset: -3, startOffset: -9, endOffset: -9, cobrar: 'QUARTA', label: '6º dia: sexta feriado; terça cobra quarta' },
+    { type: 'six', holidayWeekday: 5, referenceOffset: -2, startOffset: -8, endOffset: -8, cobrar: 'QUINTA', label: '6º dia: sexta feriado; quarta cobra quinta' },
+    { type: 'six', holidayWeekday: 5, referenceOffset: -1, startOffset: -7, endOffset: -7, cobrar: 'SEXTA', label: '6º dia: sexta feriado; quinta cobra sexta' },
+    { type: 'six', holidayWeekday: 5, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '6º dia: feriado na sexta; sem expediente' },
+    { type: 'six', holidayWeekday: 5, referenceOffset: 3, startOffset: -6, endOffset: -3, cobrar: 'SÁB A TER', label: '6º dia: sexta feriado; segunda seguinte cobra sábado a terça' }
   ];
+
+
 
   function localNoon(date) {
     const d = new Date(date);
@@ -224,7 +272,7 @@
     for (let year = referenceDate.getFullYear() - 1; year <= referenceDate.getFullYear() + 1; year += 1) {
       holidaysForYear(year).forEach(function (holiday) {
         const parsed = parseIso(holiday);
-        if (parsed && Math.abs(calendarDayDifference(referenceDate, parsed)) <= 4) found.add(iso(parsed));
+        if (parsed && Math.abs(calendarDayDifference(referenceDate, parsed)) <= 5) found.add(iso(parsed));
       });
     }
     return Array.from(found).sort();
@@ -243,7 +291,7 @@
       if (!holidayDate) return;
 
       const referenceOffset = calendarDayDifference(referenceDate, holidayDate);
-      if (Math.abs(referenceOffset) > 4) return;
+      if (Math.abs(referenceOffset) > 5) return;
       HOLIDAY_RULES.forEach(function (rule) {
         if (rule.type !== type ||
             rule.holidayWeekday !== holidayDate.getDay() ||
@@ -252,22 +300,44 @@
           holidayDate: localNoon(holidayDate),
           referenceOffset: referenceOffset,
           ruleLabel: rule.label,
-          start: addDays(holidayDate, rule.startOffset),
-          end: addDays(holidayDate, rule.endOffset)
+          cobrar: rule.cobrar,
+          noExpediente: Boolean(rule.noExpediente),
+          start: rule.noExpediente ? null : addDays(holidayDate, rule.startOffset),
+          end: rule.noExpediente ? null : addDays(holidayDate, rule.endOffset)
         });
       });
     });
 
     if (!matches.length) return { status: 'none', start: null, end: null, matches: [], ranges: [] };
 
-    matches.sort(function (a, b) {
+    // Se a própria data de referência é feriado, a linha vermelha "SEM EXPED."
+    // prevalece sobre regras de compensação associadas a feriados próximos.
+    const noExpediente = matches.filter(function (match) {
+      return match.noExpediente && match.referenceOffset === 0;
+    });
+    if (noExpediente.length) {
+      return {
+        status: 'no-expediente',
+        start: null,
+        end: null,
+        matches: noExpediente,
+        ranges: []
+      };
+    }
+
+    const validMatches = matches.filter(function (match) {
+      return !match.noExpediente && match.start && match.end;
+    });
+    if (!validMatches.length) return { status: 'none', start: null, end: null, matches: [], ranges: [] };
+
+    validMatches.sort(function (a, b) {
       return a.start.getTime() - b.start.getTime() || a.end.getTime() - b.end.getTime();
     });
 
-    // Regras referentes a feriados consecutivos podem se sobrepor. Unimos apenas
-    // janelas que se sobrepõem ou são adjacentes; blocos separados são ambíguos.
+    // Feriados próximos podem gerar mais de uma regra aplicável. Unimos somente
+    // janelas sobrepostas/adjacentes; blocos separados são ambíguos.
     const ranges = [];
-    matches.forEach(function (match) {
+    validMatches.forEach(function (match) {
       const last = ranges[ranges.length - 1];
       if (!last || iso(match.start) > iso(addDays(last.end, 1))) {
         ranges.push({ start: match.start, end: match.end, matches: [match] });
@@ -278,13 +348,13 @@
     });
 
     if (ranges.length > 1) {
-      return { status: 'conflict', start: null, end: null, matches: matches, ranges: ranges };
+      return { status: 'conflict', start: null, end: null, matches: validMatches, ranges: ranges };
     }
     return {
       status: 'matched',
       start: ranges[0].start,
       end: ranges[0].end,
-      matches: matches,
+      matches: validMatches,
       ranges: ranges
     };
   }
@@ -311,13 +381,20 @@
       two = {
         start: twoResolution.start,
         end: twoResolution.end,
-        note: 'Exceção de feriado aplicada ao 2º dia: ' + describeHolidayResolution(twoResolution) + '.'
+        note: 'Matriz de feriado aplicada ao 2º dia: ' + describeHolidayResolution(twoResolution) + '.'
       };
     } else if (twoResolution.status === 'conflict') {
       two = {
         start: null,
         end: null,
-        note: 'Conflito entre regras de feriado para o 2º dia; preenchimento bloqueado.'
+        note: 'Conflito entre regras da matriz de feriados para o 2º dia; preenchimento bloqueado.'
+      };
+    } else if (twoResolution.status === 'no-expediente') {
+      two = {
+        start: null,
+        end: null,
+        note: 'SEM EXPEDIENTE para o 2º dia: a data de referência é feriado (' +
+          describeHolidayResolution(twoResolution) + ').'
       };
     } else {
       two = twoDayWindow(referenceDate);
@@ -333,7 +410,7 @@
         dates: dates,
         contiguous: true
       };
-    } else if (sixResolution.status === 'conflict') {
+    } else if (sixResolution.status === 'conflict' || sixResolution.status === 'no-expediente') {
       six = { start: null, end: null, count: 0, dates: [], contiguous: false };
     } else {
       six = reverseSearchSixthDay(referenceDate);
@@ -341,14 +418,16 @@
 
     const conflicts = [];
     if (twoResolution.status === 'conflict') {
-      conflicts.push('2º dia: mais de uma janela de feriado descontínua (' +
+      conflicts.push('2º dia: mais de uma janela da matriz de feriados descontínua (' +
         twoResolution.ranges.map(function (range) { return br(range.start) + ' a ' + br(range.end); }).join(' e ') + ')');
     }
     if (sixResolution.status === 'conflict') {
-      conflicts.push('6º dia: mais de uma janela de feriado descontínua (' +
+      conflicts.push('6º dia: mais de uma janela da matriz de feriados descontínua (' +
         sixResolution.ranges.map(function (range) { return br(range.start) + ' a ' + br(range.end); }).join(' e ') + ')');
     }
 
+    const noExpediente = twoResolution.status === 'no-expediente' ||
+      sixResolution.status === 'no-expediente';
     const ten = addDays(referenceDate, -10);
     const fifteen = addDays(referenceDate, -15);
     const eighteen = addDays(referenceDate, -18);
@@ -366,18 +445,25 @@
       sixContiguous: six.contiguous,
       sixSource: sixResolution.status === 'matched'
         ? 'holiday-rule'
-        : sixResolution.status === 'conflict' ? 'holiday-conflict' : 'reverse-search',
+        : sixResolution.status === 'no-expediente'
+          ? 'holiday-no-expediente'
+          : sixResolution.status === 'conflict' ? 'holiday-conflict' : 'reverse-search',
+      twoSource: twoResolution.status === 'matched'
+        ? 'holiday-rule'
+        : twoResolution.status === 'no-expediente'
+          ? 'holiday-no-expediente'
+          : twoResolution.status === 'conflict' ? 'holiday-conflict' : 'weekly-default',
       twoHolidayStatus: twoResolution.status,
       sixHolidayStatus: sixResolution.status,
       holidayConflicts: conflicts,
-      blocked: conflicts.length > 0,
+      noExpediente: noExpediente,
+      blocked: conflicts.length > 0 || noExpediente,
       twoHolidayMatches: twoResolution.matches,
       sixHolidayMatches: sixResolution.matches
     };
   }
 
-
-  function normalize(text) {
+    function normalize(text) {
     return String(text == null ? '' : text)
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -692,20 +778,29 @@
   function buildSummary(result) {
     return PARAMETROS.map(function (p) {
       return p.label + ': ' + br(result.values[p.key]);
-    }).join('\n') + '\nReferência: ' + br(lastReferenceDate) +
-      '\nRegra 2 dias: ' + result.twoNote +
-      '\nOrigem da regra 6º dia: ' + (result.sixSource === 'holiday-rule'
-        ? 'exceção de feriado'
-        : result.sixSource === 'holiday-conflict'
-          ? 'conflito entre exceções de feriado'
-          : 'busca reversa padrão') +
-      '\nDatas de vencimento do 6º dia: ' + (result.sixDates.length ? result.sixDates.map(br).join(', ') : 'nenhuma') +
-      '\nJanela do 6º dia contígua: ' + (result.sixCount === 0 ? 'sem correspondências' : (result.sixContiguous ? 'sim' : 'não; conferir a tabela auxiliar J:L')) +
-      '\nConflitos de feriado: ' + (result.holidayConflicts.length ? result.holidayConflicts.join(' | ') : 'nenhum') +
-      '\nPreenchimento permitido: ' + (result.blocked ? 'não' : 'sim');
+    }).join('\\n') + '\\nReferência: ' + br(lastReferenceDate) +
+      '\\nRegra 2 dias: ' + result.twoNote +
+      '\\nOrigem da regra 2º dia: ' + (result.twoSource === 'holiday-rule'
+        ? 'matriz de feriado'
+        : result.twoSource === 'holiday-no-expediente'
+          ? 'SEM EXPEDIENTE'
+          : result.twoSource === 'holiday-conflict'
+            ? 'conflito entre regras de feriado'
+            : 'calendário semanal padrão') +
+      '\\nOrigem da regra 6º dia: ' + (result.sixSource === 'holiday-rule'
+        ? 'matriz de feriado'
+        : result.sixSource === 'holiday-no-expediente'
+          ? 'SEM EXPEDIENTE'
+          : result.sixSource === 'holiday-conflict'
+            ? 'conflito entre regras de feriado'
+            : 'busca reversa padrão') +
+      '\\nDatas de vencimento do 6º dia: ' + (result.sixDates.length ? result.sixDates.map(br).join(', ') : 'nenhuma') +
+      '\\nJanela do 6º dia contígua: ' + (result.sixCount === 0 ? 'sem correspondências' : (result.sixContiguous ? 'sim' : 'não; conferir a tabela auxiliar J:L')) +
+      '\\nConflitos de feriado: ' + (result.holidayConflicts.length ? result.holidayConflicts.join(' | ') : 'nenhum') +
+      '\\nPreenchimento permitido: ' + (result.blocked ? 'não' : 'sim');
   }
 
-  function renderCalculation() {
+    function renderCalculation() {
     const reference = parseIso(dateInput.value);
     if (!reference) { setStatus('Informe uma data de referência válida.', true); return; }
     lastReferenceDate = reference;
@@ -723,8 +818,11 @@
       tableBody.appendChild(row);
     });
     if (lastCalculation.blocked) {
-      detailsEl.textContent = 'PREENCHIMENTO BLOQUEADO: ' + lastCalculation.holidayConflicts.join(' | ') +
-        '. Nenhum campo será alterado enquanto houver janelas de feriado descontínuas. ' + lastCalculation.twoNote;
+      detailsEl.textContent = lastCalculation.noExpediente
+        ? 'SEM EXPEDIENTE: a data de referência coincide com feriado assinalado em vermelho na matriz. Nenhum parâmetro será alterado. ' +
+          lastCalculation.twoNote
+        : 'PREENCHIMENTO BLOQUEADO: ' + lastCalculation.holidayConflicts.join(' | ') +
+          '. Nenhum campo será alterado enquanto houver janelas de feriado descontínuas. ' + lastCalculation.twoNote;
     } else {
       detailsEl.textContent = lastCalculation.twoNote + ' ' +
         (lastCalculation.sixSource === 'holiday-rule'
@@ -742,7 +840,9 @@
     }
     summaryEl.value = buildSummary(lastCalculation);
     setStatus(lastCalculation.blocked
-      ? 'Preenchimento bloqueado por conflito entre regras de feriado. Confira o resumo.'
+      ? (lastCalculation.noExpediente
+        ? 'SEM EXPEDIENTE na data de referência. Preenchimento bloqueado.'
+        : 'Preenchimento bloqueado por conflito entre regras de feriado. Confira o resumo.')
       : 'Cálculo atualizado. Confira as datas antes de preencher ou executar a consulta.',
       lastCalculation.blocked);
   }
@@ -751,8 +851,11 @@
     if (!lastCalculation) renderCalculation();
     if (!lastCalculation) return;
     if (lastCalculation.blocked) {
-      setStatus('Preenchimento cancelado: ' + lastCalculation.holidayConflicts.join(' | '), true);
-      console.warn('[Systextil Régua] Preenchimento bloqueado por conflito de regras de feriado:', lastCalculation.holidayConflicts);
+      const reason = lastCalculation.noExpediente
+        ? 'SEM EXPEDIENTE na data de referência.'
+        : lastCalculation.holidayConflicts.join(' | ');
+      setStatus('Preenchimento cancelado: ' + reason, true);
+      console.warn('[Systextil Régua] Preenchimento bloqueado:', reason);
       return;
     }
 
