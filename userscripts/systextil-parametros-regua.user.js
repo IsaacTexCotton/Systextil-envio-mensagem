@@ -107,28 +107,7 @@
     { type: 'six', holidayWeekday: 5, referenceOffset: 3, startOffset: -6, endOffset: -3, cobrar: 'SÁB A TER', label: '6º dia: sexta feriado; segunda seguinte cobra sábado a terça' }
   ];
 
-  // Δ = data de referência - data do feriado; offsets de início/fim são dias corridos relativos ao feriado.
-  const HOLIDAY_RULES = [
-    { type: 'two', holidayWeekday: 1, referenceOffset: 3, startOffset: -2, endOffset: 1, label: '2º dia: feriado na segunda; execução na quinta' },
-    { type: 'two', holidayWeekday: 2, referenceOffset: 2, startOffset: -3, endOffset: -1, label: '2º dia: feriado na terça; execução na quinta' },
-    { type: 'two', holidayWeekday: 2, referenceOffset: 3, startOffset: 0, endOffset: 1, label: '2º dia: feriado na terça; execução na sexta' },
-    { type: 'two', holidayWeekday: 3, referenceOffset: 1, startOffset: -4, endOffset: -2, label: '2º dia: feriado na quarta; execução na quinta' },
-    { type: 'two', holidayWeekday: 3, referenceOffset: 2, startOffset: -1, endOffset: 0, label: '2º dia: feriado na quarta; execução na sexta' },
-    { type: 'two', holidayWeekday: 4, referenceOffset: -1, startOffset: -5, endOffset: -3, label: '2º dia: feriado na quinta; execução na quarta anterior' },
-    { type: 'two', holidayWeekday: 4, referenceOffset: 4, startOffset: -1, endOffset: 0, label: '2º dia: feriado na quinta; execução na segunda seguinte' },
-    { type: 'two', holidayWeekday: 5, referenceOffset: -2, startOffset: -6, endOffset: -4, label: '2º dia: feriado na sexta; execução na quarta anterior' },
-    { type: 'two', holidayWeekday: 5, referenceOffset: 3, startOffset: -2, endOffset: -2, label: '2º dia: feriado na sexta; execução na segunda seguinte' },
-    { type: 'two', holidayWeekday: 5, referenceOffset: 4, startOffset: -1, endOffset: 0, label: '2º dia: feriado na sexta; execução na terça seguinte' },
 
-    { type: 'six', holidayWeekday: 1, referenceOffset: 1, startOffset: -8, endOffset: -5, label: '6º dia: feriado na segunda; execução na terça' },
-    { type: 'six', holidayWeekday: 2, referenceOffset: -1, startOffset: -9, endOffset: -7, label: '6º dia: feriado na terça; execução na segunda anterior' },
-    { type: 'six', holidayWeekday: 3, referenceOffset: -2, startOffset: -10, endOffset: -8, label: '6º dia: feriado na quarta; execução na segunda anterior' },
-    { type: 'six', holidayWeekday: 3, referenceOffset: 1, startOffset: -6, endOffset: -5, label: '6º dia: feriado na quarta; execução na quinta' },
-    { type: 'six', holidayWeekday: 4, referenceOffset: -3, startOffset: -11, endOffset: -9, label: '6º dia: feriado na quinta; execução na segunda anterior' },
-    { type: 'six', holidayWeekday: 4, referenceOffset: 1, startOffset: -6, endOffset: -5, label: '6º dia: feriado na quinta; execução na sexta' },
-    { type: 'six', holidayWeekday: 5, referenceOffset: -4, startOffset: -12, endOffset: -10, label: '6º dia: feriado na sexta; execução na segunda anterior' },
-    { type: 'six', holidayWeekday: 5, referenceOffset: 3, startOffset: -6, endOffset: -3, label: '6º dia: feriado na sexta; execução na segunda seguinte' }
-  ];
 
   function localNoon(date) {
     const d = new Date(date);
