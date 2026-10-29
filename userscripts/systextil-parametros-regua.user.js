@@ -141,13 +141,17 @@
       const dueDate = addDays(referenceDate, -offset);
       if (iso(calculateSixthDayDeadline(dueDate)) === wanted) matches.push(dueDate);
     }
-    if (!matches.length) return { start: null, end: null, count: 0, dates: [] };
+    if (!matches.length) return { start: null, end: null, count: 0, dates: [], contiguous: false };
     matches.sort(function (a, b) { return a.getTime() - b.getTime(); });
+    const contiguous = matches.every(function (match, index) {
+      return index === 0 || iso(match) === iso(addDays(matches[index - 1], 1));
+    });
     return {
       start: matches[0],
       end: matches[matches.length - 1],
       count: matches.length,
-      dates: matches
+      dates: matches,
+      contiguous: contiguous
     };
   }
 
@@ -191,14 +195,15 @@
     return {
       values: {
         inicio2: two.start, fim2: two.end,
-        inicio6: six.start, fim6: six.end,
+        inicio6: six.contiguous ? six.start : null, fim6: six.contiguous ? six.end : null,
         inicio10: ten, fim10: ten,
         inicio15: fifteen, fim15: fifteen,
         inicio18: eighteen, fim18: eighteen
       },
       twoNote: two.note,
       sixCount: six.count,
-      sixDates: six.dates
+      sixDates: six.dates,
+      sixContiguous: six.contiguous
     };
   }
 
@@ -323,7 +328,8 @@
       return p.label + ': ' + br(result.values[p.key]);
     }).join('\n') + '\nReferência: ' + br(lastReferenceDate) +
       '\nRegra 2 dias: ' + result.twoNote +
-      '\nDatas encontradas na busca reversa do 6º dia: ' + result.sixCount;
+      '\nDatas encontradas na busca reversa do 6º dia: ' + result.sixCount +
+      '\nJanela do 6º dia contígua: ' + (result.sixCount === 0 ? 'sem correspondências' : (result.sixContiguous ? 'sim' : 'não; conferir a tabela auxiliar J:L'));
   }
 
   function renderCalculation() {
@@ -344,11 +350,14 @@
       tableBody.appendChild(row);
     });
     detailsEl.textContent = lastCalculation.twoNote + ' ' +
-      (lastCalculation.sixCount
-        ? 'Busca reversa do 6º dia: ' + lastCalculation.sixCount +
-          ' data(s) de vencimento associada(s) ao prazo final ' + br(reference) + '.'
-        : 'A busca reversa não encontrou vencimentos associados ao prazo final ' + br(reference) +
-          '. Confira se a data é compatível com o calendário e os feriados.');
+      (!lastCalculation.sixCount
+        ? 'A busca reversa não encontrou vencimentos associados ao prazo final ' + br(reference) +
+          '. Confira se a data é compatível com o calendário e os feriados.'
+        : !lastCalculation.sixContiguous
+          ? 'A busca reversa encontrou ' + lastCalculation.sixCount +
+            ' datas de vencimento em intervalos separados. Início/Fim do 6º dia ficaram em branco para evitar incluir datas sem o mesmo prazo; confira a tabela auxiliar J:L.'
+          : 'Busca reversa do 6º dia: ' + lastCalculation.sixCount +
+            ' data(s) de vencimento associada(s) ao prazo final ' + br(reference) + '.');
     summaryEl.value = buildSummary(lastCalculation);
     setStatus('Cálculo atualizado. Confira as datas antes de preencher ou executar a consulta.', false);
   }
