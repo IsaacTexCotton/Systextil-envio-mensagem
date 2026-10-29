@@ -213,7 +213,7 @@ test('matriz completa contém e aplica as 55 regras transcritas das tabelas', fu
   });
 });
 
-test('03/11/2026 segue a matriz após o feriado de segunda-feira 02/11', function () {
+test('03/11/2026 aplica a matriz após o feriado de segunda-feira 02/11', function () {
   const api = calculator();
   const result = api.calculate(date(2026, 11, 3));
   assert.equal(dayIso(result.values.inicio2), '2026-10-29');
@@ -223,6 +223,12 @@ test('03/11/2026 segue a matriz após o feriado de segunda-feira 02/11', functio
   assert.equal(dayIso(result.values.inicio10), '2026-10-24');
   assert.equal(dayIso(result.values.inicio15), '2026-10-19');
   assert.equal(dayIso(result.values.inicio18), '2026-10-16');
+  assert.equal(result.twoSource, 'holiday-rule');
+  assert.equal(result.sixSource, 'holiday-rule');
+  assert.equal(result.twoHolidayStatus, 'matched');
+  assert.equal(result.sixHolidayStatus, 'matched');
+  assert.equal(result.sixCount, 4);
+  assert.equal(result.sixContiguous, true);
   assert.equal(result.blocked, false);
 });
 
