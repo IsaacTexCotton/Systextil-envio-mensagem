@@ -36,6 +36,8 @@ Arquivo: [userscripts/systextil-parametros-regua.user.js](userscripts/systextil-
 5. Clique em **Preencher campos encontrados** somente depois de validar os valores.
 6. Confira os campos no ERP e execute a consulta manualmente.
 
+O cabeçalho do userscript inclui `@updateURL` e `@downloadURL` apontando para a versão `main`; as atualizações automáticas ficam disponíveis depois que a versão corrigida for integrada à `main`. Para testar antes disso, instale manualmente o arquivo da branch do PR de correção.
+
 O userscript está restrito ao endereço http://systextil.texcotton.com.br/systextil/*. Revise o endereço alvo antes de instalar em outro ambiente.
 
 ## Regras de datas
