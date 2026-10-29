@@ -38,7 +38,7 @@ Arquivo: [userscripts/systextil-parametros-regua.user.js](userscripts/systextil-
 
 O cabeçalho do userscript inclui `@updateURL` e `@downloadURL` apontando para a versão `main`; as atualizações automáticas ficam disponíveis depois que a versão corrigida for integrada à `main`. Para testar antes disso, instale manualmente o arquivo da branch do PR de correção.
 
-O userscript está restrito ao endereço http://systextil.texcotton.com.br/systextil/*. Revise o endereço alvo antes de instalar em outro ambiente.
+O userscript é executado em http://systextil.texcotton.com.br/systextil/* e https://systextil.texcotton.com.br/systextil/*. O cabeçalho e a API de diagnóstico expõem a versão instalada para facilitar a confirmação da atualização. Revise os endereços alvo antes de instalar em outro ambiente.
 
 ## Regras de datas
 
