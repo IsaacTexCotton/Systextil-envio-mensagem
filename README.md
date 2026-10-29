@@ -12,6 +12,7 @@ Arquivo: [userscripts/systextil-parametros-regua.user.js](userscripts/systextil-
 - Usa a regra operacional semanal para a faixa de 2 dias: segunda busca quinta; terça busca sexta; quarta busca sábado, domingo e segunda; quinta busca terça; sexta busca quarta.
 - Calcula o prazo do 6º dia somando seis dias corridos ao vencimento. Se o prazo cair em sábado ou domingo, passa para segunda-feira. Se a data resultante for feriado, a regra configurada procura a próxima segunda-feira não feriada.
 - Faz busca reversa por datas de vencimento que resultem no prazo final selecionado.
+- Se a busca reversa retornar datas em blocos separados, deixa Início/Fim do 6º dia em branco e informa o motivo. Isso evita que um intervalo único inclua vencimentos não associados ao mesmo prazo.
 - Calcula as faixas de 10, 15 e 18 dias por dias corridos, sem ajuste por fim de semana ou feriado.
 - Apresenta uma tabela de conferência e um resumo copiável.
 - Oferece um botão explícito para preencher campos identificados sem ambiguidade. Os campos são procurados novamente quando o botão é clicado; o script também tenta percorrer frames de mesma origem.
