@@ -381,13 +381,20 @@
       two = {
         start: twoResolution.start,
         end: twoResolution.end,
-        note: 'Exceção de feriado aplicada ao 2º dia: ' + describeHolidayResolution(twoResolution) + '.'
+        note: 'Matriz de feriado aplicada ao 2º dia: ' + describeHolidayResolution(twoResolution) + '.'
       };
     } else if (twoResolution.status === 'conflict') {
       two = {
         start: null,
         end: null,
-        note: 'Conflito entre regras de feriado para o 2º dia; preenchimento bloqueado.'
+        note: 'Conflito entre regras da matriz de feriados para o 2º dia; preenchimento bloqueado.'
+      };
+    } else if (twoResolution.status === 'no-expediente') {
+      two = {
+        start: null,
+        end: null,
+        note: 'SEM EXPEDIENTE para o 2º dia: a data de referência é feriado (' +
+          describeHolidayResolution(twoResolution) + ').'
       };
     } else {
       two = twoDayWindow(referenceDate);
@@ -403,7 +410,7 @@
         dates: dates,
         contiguous: true
       };
-    } else if (sixResolution.status === 'conflict') {
+    } else if (sixResolution.status === 'conflict' || sixResolution.status === 'no-expediente') {
       six = { start: null, end: null, count: 0, dates: [], contiguous: false };
     } else {
       six = reverseSearchSixthDay(referenceDate);
@@ -411,14 +418,16 @@
 
     const conflicts = [];
     if (twoResolution.status === 'conflict') {
-      conflicts.push('2º dia: mais de uma janela de feriado descontínua (' +
+      conflicts.push('2º dia: mais de uma janela da matriz de feriados descontínua (' +
         twoResolution.ranges.map(function (range) { return br(range.start) + ' a ' + br(range.end); }).join(' e ') + ')');
     }
     if (sixResolution.status === 'conflict') {
-      conflicts.push('6º dia: mais de uma janela de feriado descontínua (' +
+      conflicts.push('6º dia: mais de uma janela da matriz de feriados descontínua (' +
         sixResolution.ranges.map(function (range) { return br(range.start) + ' a ' + br(range.end); }).join(' e ') + ')');
     }
 
+    const noExpediente = twoResolution.status === 'no-expediente' ||
+      sixResolution.status === 'no-expediente';
     const ten = addDays(referenceDate, -10);
     const fifteen = addDays(referenceDate, -15);
     const eighteen = addDays(referenceDate, -18);
@@ -436,18 +445,25 @@
       sixContiguous: six.contiguous,
       sixSource: sixResolution.status === 'matched'
         ? 'holiday-rule'
-        : sixResolution.status === 'conflict' ? 'holiday-conflict' : 'reverse-search',
+        : sixResolution.status === 'no-expediente'
+          ? 'holiday-no-expediente'
+          : sixResolution.status === 'conflict' ? 'holiday-conflict' : 'reverse-search',
+      twoSource: twoResolution.status === 'matched'
+        ? 'holiday-rule'
+        : twoResolution.status === 'no-expediente'
+          ? 'holiday-no-expediente'
+          : twoResolution.status === 'conflict' ? 'holiday-conflict' : 'weekly-default',
       twoHolidayStatus: twoResolution.status,
       sixHolidayStatus: sixResolution.status,
       holidayConflicts: conflicts,
-      blocked: conflicts.length > 0,
+      noExpediente: noExpediente,
+      blocked: conflicts.length > 0 || noExpediente,
       twoHolidayMatches: twoResolution.matches,
       sixHolidayMatches: sixResolution.matches
     };
   }
 
-
-  function normalize(text) {
+    function normalize(text) {
     return String(text == null ? '' : text)
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -762,20 +778,29 @@
   function buildSummary(result) {
     return PARAMETROS.map(function (p) {
       return p.label + ': ' + br(result.values[p.key]);
-    }).join('\n') + '\nReferência: ' + br(lastReferenceDate) +
-      '\nRegra 2 dias: ' + result.twoNote +
-      '\nOrigem da regra 6º dia: ' + (result.sixSource === 'holiday-rule'
-        ? 'exceção de feriado'
-        : result.sixSource === 'holiday-conflict'
-          ? 'conflito entre exceções de feriado'
-          : 'busca reversa padrão') +
-      '\nDatas de vencimento do 6º dia: ' + (result.sixDates.length ? result.sixDates.map(br).join(', ') : 'nenhuma') +
-      '\nJanela do 6º dia contígua: ' + (result.sixCount === 0 ? 'sem correspondências' : (result.sixContiguous ? 'sim' : 'não; conferir a tabela auxiliar J:L')) +
-      '\nConflitos de feriado: ' + (result.holidayConflicts.length ? result.holidayConflicts.join(' | ') : 'nenhum') +
-      '\nPreenchimento permitido: ' + (result.blocked ? 'não' : 'sim');
+    }).join('\\n') + '\\nReferência: ' + br(lastReferenceDate) +
+      '\\nRegra 2 dias: ' + result.twoNote +
+      '\\nOrigem da regra 2º dia: ' + (result.twoSource === 'holiday-rule'
+        ? 'matriz de feriado'
+        : result.twoSource === 'holiday-no-expediente'
+          ? 'SEM EXPEDIENTE'
+          : result.twoSource === 'holiday-conflict'
+            ? 'conflito entre regras de feriado'
+            : 'calendário semanal padrão') +
+      '\\nOrigem da regra 6º dia: ' + (result.sixSource === 'holiday-rule'
+        ? 'matriz de feriado'
+        : result.sixSource === 'holiday-no-expediente'
+          ? 'SEM EXPEDIENTE'
+          : result.sixSource === 'holiday-conflict'
+            ? 'conflito entre regras de feriado'
+            : 'busca reversa padrão') +
+      '\\nDatas de vencimento do 6º dia: ' + (result.sixDates.length ? result.sixDates.map(br).join(', ') : 'nenhuma') +
+      '\\nJanela do 6º dia contígua: ' + (result.sixCount === 0 ? 'sem correspondências' : (result.sixContiguous ? 'sim' : 'não; conferir a tabela auxiliar J:L')) +
+      '\\nConflitos de feriado: ' + (result.holidayConflicts.length ? result.holidayConflicts.join(' | ') : 'nenhum') +
+      '\\nPreenchimento permitido: ' + (result.blocked ? 'não' : 'sim');
   }
 
-  function renderCalculation() {
+    function renderCalculation() {
     const reference = parseIso(dateInput.value);
     if (!reference) { setStatus('Informe uma data de referência válida.', true); return; }
     lastReferenceDate = reference;
@@ -793,8 +818,11 @@
       tableBody.appendChild(row);
     });
     if (lastCalculation.blocked) {
-      detailsEl.textContent = 'PREENCHIMENTO BLOQUEADO: ' + lastCalculation.holidayConflicts.join(' | ') +
-        '. Nenhum campo será alterado enquanto houver janelas de feriado descontínuas. ' + lastCalculation.twoNote;
+      detailsEl.textContent = lastCalculation.noExpediente
+        ? 'SEM EXPEDIENTE: a data de referência coincide com feriado assinalado em vermelho na matriz. Nenhum parâmetro será alterado. ' +
+          lastCalculation.twoNote
+        : 'PREENCHIMENTO BLOQUEADO: ' + lastCalculation.holidayConflicts.join(' | ') +
+          '. Nenhum campo será alterado enquanto houver janelas de feriado descontínuas. ' + lastCalculation.twoNote;
     } else {
       detailsEl.textContent = lastCalculation.twoNote + ' ' +
         (lastCalculation.sixSource === 'holiday-rule'
@@ -812,6 +840,15 @@
     }
     summaryEl.value = buildSummary(lastCalculation);
     setStatus(lastCalculation.blocked
+      ? (lastCalculation.noExpediente
+        ? 'SEM EXPEDIENTE na data de referência. Preenchimento bloqueado.'
+        : 'Preenchimento bloqueado por conflito entre regras de feriado. Confira o resumo.')
+      : 'Cálculo atualizado. Confira as datas antes de preencher ou executar a consulta.',
+      lastCalculation.blocked);
+  }
+
+    summaryEl.value = buildSummary(lastCalculation);
+    setStatus(lastCalculation.blocked
       ? 'Preenchimento bloqueado por conflito entre regras de feriado. Confira o resumo.'
       : 'Cálculo atualizado. Confira as datas antes de preencher ou executar a consulta.',
       lastCalculation.blocked);
@@ -821,12 +858,15 @@
     if (!lastCalculation) renderCalculation();
     if (!lastCalculation) return;
     if (lastCalculation.blocked) {
-      setStatus('Preenchimento cancelado: ' + lastCalculation.holidayConflicts.join(' | '), true);
-      console.warn('[Systextil Régua] Preenchimento bloqueado por conflito de regras de feriado:', lastCalculation.holidayConflicts);
+      const reason = lastCalculation.noExpediente
+        ? 'SEM EXPEDIENTE na data de referência.'
+        : lastCalculation.holidayConflicts.join(' | ');
+      setStatus('Preenchimento cancelado: ' + reason, true);
+      console.warn('[Systextil Régua] Preenchimento bloqueado:', reason);
       return;
     }
 
-    // O relatório usa uma ListGrid SmartClient: nove valores podem ser texto
+    // O relatório usa uma ListGrid SmartClient:    // O relatório usa uma ListGrid SmartClient: nove valores podem ser texto
     // estático no DOM, embora sejam editáveis via a API da grade.
     const smartClientResult = await fillSmartClientGrid(lastCalculation);
     let filled = 0;
