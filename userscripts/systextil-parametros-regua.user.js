@@ -304,13 +304,17 @@
     return Array.from(doc.querySelectorAll('[eventproxy="parameterTab_body"] tr[role="listitem"], #parameterTab_body tr[role="listitem"]'));
   }
 
-  function parameterFromRow(row) {
-    const labelCell = row && row.cells && row.cells[0];
-    if (!labelCell) return null;
-    const label = compact(labelCell.innerText || labelCell.textContent || '');
+  function parameterFromLabel(text) {
+    const label = compact(text);
     return PARAMETROS.find(function (param) {
       return label === compact(param.label) || label === compact(param.label + ':');
     }) || null;
+  }
+
+  function parameterFromRow(row) {
+    const labelCell = row && row.cells && row.cells[0];
+    if (!labelCell) return null;
+    return parameterFromLabel(labelCell.innerText || labelCell.textContent || '');
   }
 
   function findSmartClientGrid(doc) {
@@ -480,13 +484,13 @@
     // estático no DOM, embora sejam editáveis via a API da grade.
     const smartClientResult = await fillSmartClientGrid(lastCalculation);
     let filled = 0;
+    let cleared = 0;
     let skipped = [];
     if (smartClientResult.handled) {
       filled = smartClientResult.filled;
+      cleared = smartClientResult.cleared || 0;
       skipped = smartClientResult.skipped;
-      var cleared = smartClientResult.cleared || 0;
     } else {
-      var cleared = 0;
       PARAMETROS.forEach(function (param) {
         const value = lastCalculation.values[param.key];
         if (!value) { skipped.push(param.label + ': sem data calculada'); return; }
@@ -644,7 +648,11 @@
     isBusinessDay: isBusinessDay,
     holidaysForYear: function (year) { return Array.from(holidaysForYear(year)).sort(); },
     iso: iso,
-    br: br
+    br: br,
+    parameterKeyFromLabel: function (label) {
+      const param = parameterFromLabel(label);
+      return param ? param.key : null;
+    }
   });
 
   function initialize() {
