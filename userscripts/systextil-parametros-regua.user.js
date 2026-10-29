@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Parâmetros da Régua de Cobrança
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.5.0
+// @version      0.6.0
 // @description  Calcula e preenche, mediante ação explícita, parâmetros de datas da régua no Systextil.
 // @match        http://systextil.texcotton.com.br/systextil/*
 // @updateURL    https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-parametros-regua.user.js
@@ -37,7 +37,76 @@
     { key: 'fim18', label: 'Fim 18 Dias', target: 'fim 18 dias' }
   ];
 
-  // Regras operacionais extraídas dos exemplos de feriados.
+  // Matriz operacional validada a partir das tabelas fornecidas pelo usuário.
+  // referenceOffset = data de execução - data do feriado; start/end são offsets
+  // de dias corridos em relação ao próprio feriado. "SEM EXPED." bloqueia a execução.
+  const HOLIDAY_RULES = [
+    // Feriado na SEGUNDA
+    { type: 'two', holidayWeekday: 1, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '2º dia: feriado na segunda; sem expediente' },
+    { type: 'two', holidayWeekday: 1, referenceOffset: 1, startOffset: -4, endOffset: -4, cobrar: 'QUINTA', label: '2º dia: segunda feriado; terça cobra quinta' },
+    { type: 'two', holidayWeekday: 1, referenceOffset: 2, startOffset: -3, endOffset: -3, cobrar: 'SEXTA', label: '2º dia: segunda feriado; quarta cobra sexta' },
+    { type: 'two', holidayWeekday: 1, referenceOffset: 3, startOffset: -2, endOffset: 1, cobrar: 'SÁB A TER', label: '2º dia: segunda feriado; quinta cobra sábado a terça' },
+    { type: 'two', holidayWeekday: 1, referenceOffset: 4, startOffset: 2, endOffset: 2, cobrar: 'QUARTA', label: '2º dia: segunda feriado; sexta cobra quarta' },
+    { type: 'six', holidayWeekday: 1, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '6º dia: feriado na segunda; sem expediente' },
+    { type: 'six', holidayWeekday: 1, referenceOffset: 1, startOffset: -8, endOffset: -5, cobrar: 'DOM A QUA', label: '6º dia: segunda feriado; terça cobra domingo a quarta' },
+    { type: 'six', holidayWeekday: 1, referenceOffset: 2, startOffset: -4, endOffset: -4, cobrar: 'QUINTA', label: '6º dia: segunda feriado; quarta cobra quinta' },
+    { type: 'six', holidayWeekday: 1, referenceOffset: 3, startOffset: -3, endOffset: -3, cobrar: 'SEXTA', label: '6º dia: segunda feriado; quinta cobra sexta' },
+    { type: 'six', holidayWeekday: 1, referenceOffset: 4, startOffset: -2, endOffset: -2, cobrar: 'SÁBADO', label: '6º dia: segunda feriado; sexta cobra sábado' },
+
+    // Feriado na TERÇA
+    { type: 'two', holidayWeekday: 2, referenceOffset: -1, startOffset: -5, endOffset: -5, cobrar: 'QUINTA', label: '2º dia: terça feriado; segunda cobra quinta' },
+    { type: 'two', holidayWeekday: 2, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '2º dia: feriado na terça; sem expediente' },
+    { type: 'two', holidayWeekday: 2, referenceOffset: 1, startOffset: -4, endOffset: -4, cobrar: 'SEXTA', label: '2º dia: terça feriado; quarta cobra sexta' },
+    { type: 'two', holidayWeekday: 2, referenceOffset: 2, startOffset: -3, endOffset: -1, cobrar: 'SÁB A SEG', label: '2º dia: terça feriado; quinta cobra sábado a segunda' },
+    { type: 'two', holidayWeekday: 2, referenceOffset: 3, startOffset: 0, endOffset: 1, cobrar: 'TER E QUA', label: '2º dia: terça feriado; sexta cobra terça e quarta' },
+    { type: 'six', holidayWeekday: 2, referenceOffset: -1, startOffset: -9, endOffset: -7, cobrar: 'DOM A TER', label: '6º dia: terça feriado; segunda cobra domingo a terça' },
+    { type: 'six', holidayWeekday: 2, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '6º dia: feriado na terça; sem expediente' },
+    { type: 'six', holidayWeekday: 2, referenceOffset: 1, startOffset: -6, endOffset: -5, cobrar: 'QUA E QUI', label: '6º dia: terça feriado; quarta cobra quarta e quinta' },
+    { type: 'six', holidayWeekday: 2, referenceOffset: 2, startOffset: -4, endOffset: -4, cobrar: 'SEXTA', label: '6º dia: terça feriado; quinta cobra sexta' },
+    { type: 'six', holidayWeekday: 2, referenceOffset: 3, startOffset: -3, endOffset: -3, cobrar: 'SÁBADO', label: '6º dia: terça feriado; sexta cobra sábado' },
+
+    // Feriado na QUARTA
+    { type: 'two', holidayWeekday: 3, referenceOffset: -2, startOffset: -6, endOffset: -6, cobrar: 'QUINTA', label: '2º dia: quarta feriado; segunda cobra quinta' },
+    { type: 'two', holidayWeekday: 3, referenceOffset: -1, startOffset: -5, endOffset: -5, cobrar: 'SEXTA', label: '2º dia: quarta feriado; terça cobra sexta' },
+    { type: 'two', holidayWeekday: 3, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '2º dia: feriado na quarta; sem expediente' },
+    { type: 'two', holidayWeekday: 3, referenceOffset: 1, startOffset: -3, endOffset: -1, cobrar: 'SÁB A SEG', label: '2º dia: quarta feriado; quinta cobra sábado a segunda' },
+    { type: 'two', holidayWeekday: 3, referenceOffset: 2, startOffset: 0, endOffset: 1, cobrar: 'TER E QUA', label: '2º dia: quarta feriado; sexta cobra terça e quarta' },
+    { type: 'six', holidayWeekday: 3, referenceOffset: -2, startOffset: -10, endOffset: -8, cobrar: 'DOM A TER', label: '6º dia: quarta feriado; segunda cobra domingo a terça' },
+    { type: 'six', holidayWeekday: 3, referenceOffset: -1, startOffset: -7, endOffset: -7, cobrar: 'QUARTA', label: '6º dia: quarta feriado; terça cobra quarta' },
+    { type: 'six', holidayWeekday: 3, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '6º dia: feriado na quarta; sem expediente' },
+    { type: 'six', holidayWeekday: 3, referenceOffset: 1, startOffset: -6, endOffset: -5, cobrar: 'QUI E SEX', label: '6º dia: quarta feriado; quinta cobra quinta e sexta' },
+    { type: 'six', holidayWeekday: 3, referenceOffset: 2, startOffset: -4, endOffset: -4, cobrar: 'SÁBADO', label: '6º dia: quarta feriado; sexta cobra sábado' },
+
+    // Feriado na QUINTA
+    { type: 'two', holidayWeekday: 4, referenceOffset: -3, startOffset: -7, endOffset: -7, cobrar: 'QUINTA', label: '2º dia: quinta feriado; segunda cobra quinta' },
+    { type: 'two', holidayWeekday: 4, referenceOffset: -2, startOffset: -6, endOffset: -6, cobrar: 'SEXTA', label: '2º dia: quinta feriado; terça cobra sexta' },
+    { type: 'two', holidayWeekday: 4, referenceOffset: -1, startOffset: -5, endOffset: -3, cobrar: 'SÁB A SEG', label: '2º dia: quinta feriado; quarta cobra sábado a segunda' },
+    { type: 'two', holidayWeekday: 4, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '2º dia: feriado na quinta; sem expediente' },
+    { type: 'two', holidayWeekday: 4, referenceOffset: 1, startOffset: -2, endOffset: -2, cobrar: 'TERÇA', label: '2º dia: quinta feriado; sexta cobra terça' },
+    { type: 'two', holidayWeekday: 4, referenceOffset: 4, startOffset: -1, endOffset: 0, cobrar: 'QUA E QUI', label: '2º dia: quinta feriado; segunda seguinte cobra quarta e quinta' },
+    { type: 'two', holidayWeekday: 4, referenceOffset: 5, startOffset: 0, endOffset: 1, cobrar: 'QUI E SEX', label: '2º dia: quinta feriado; terça seguinte cobra quinta e sexta' },
+    { type: 'six', holidayWeekday: 4, referenceOffset: -3, startOffset: -11, endOffset: -9, cobrar: 'DOM A TER', label: '6º dia: quinta feriado; segunda cobra domingo a terça' },
+    { type: 'six', holidayWeekday: 4, referenceOffset: -2, startOffset: -8, endOffset: -8, cobrar: 'QUARTA', label: '6º dia: quinta feriado; terça cobra quarta' },
+    { type: 'six', holidayWeekday: 4, referenceOffset: -1, startOffset: -7, endOffset: -7, cobrar: 'QUINTA', label: '6º dia: quinta feriado; quarta cobra quinta' },
+    { type: 'six', holidayWeekday: 4, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '6º dia: feriado na quinta; sem expediente' },
+    { type: 'six', holidayWeekday: 4, referenceOffset: 1, startOffset: -6, endOffset: -5, cobrar: 'SEX E SÁB', label: '6º dia: quinta feriado; sexta cobra sexta e sábado' },
+
+    // Feriado na SEXTA
+    { type: 'two', holidayWeekday: 5, referenceOffset: -4, startOffset: -8, endOffset: -8, cobrar: 'QUINTA', label: '2º dia: sexta feriado; segunda cobra quinta' },
+    { type: 'two', holidayWeekday: 5, referenceOffset: -3, startOffset: -7, endOffset: -7, cobrar: 'SEXTA', label: '2º dia: sexta feriado; terça cobra sexta' },
+    { type: 'two', holidayWeekday: 5, referenceOffset: -2, startOffset: -6, endOffset: -4, cobrar: 'SÁB A SEG', label: '2º dia: sexta feriado; quarta cobra sábado a segunda' },
+    { type: 'two', holidayWeekday: 5, referenceOffset: -1, startOffset: -3, endOffset: -3, cobrar: 'TERÇA', label: '2º dia: sexta feriado; quinta cobra terça' },
+    { type: 'two', holidayWeekday: 5, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '2º dia: feriado na sexta; sem expediente' },
+    { type: 'two', holidayWeekday: 5, referenceOffset: 3, startOffset: -2, endOffset: -2, cobrar: 'QUARTA', label: '2º dia: sexta feriado; segunda seguinte cobra quarta' },
+    { type: 'two', holidayWeekday: 5, referenceOffset: 4, startOffset: -1, endOffset: 0, cobrar: 'QUI E SEX', label: '2º dia: sexta feriado; terça seguinte cobra quinta e sexta' },
+    { type: 'six', holidayWeekday: 5, referenceOffset: -4, startOffset: -12, endOffset: -10, cobrar: 'DOM A TER', label: '6º dia: sexta feriado; segunda cobra domingo a terça' },
+    { type: 'six', holidayWeekday: 5, referenceOffset: -3, startOffset: -9, endOffset: -9, cobrar: 'QUARTA', label: '6º dia: sexta feriado; terça cobra quarta' },
+    { type: 'six', holidayWeekday: 5, referenceOffset: -2, startOffset: -8, endOffset: -8, cobrar: 'QUINTA', label: '6º dia: sexta feriado; quarta cobra quinta' },
+    { type: 'six', holidayWeekday: 5, referenceOffset: -1, startOffset: -7, endOffset: -7, cobrar: 'SEXTA', label: '6º dia: sexta feriado; quinta cobra sexta' },
+    { type: 'six', holidayWeekday: 5, referenceOffset: 0, noExpediente: true, cobrar: 'SEM EXPED.', label: '6º dia: feriado na sexta; sem expediente' },
+    { type: 'six', holidayWeekday: 5, referenceOffset: 3, startOffset: -6, endOffset: -3, cobrar: 'SÁB A TER', label: '6º dia: sexta feriado; segunda seguinte cobra sábado a terça' }
+  ];
+
   // Δ = data de referência - data do feriado; offsets de início/fim são dias corridos relativos ao feriado.
   const HOLIDAY_RULES = [
     { type: 'two', holidayWeekday: 1, referenceOffset: 3, startOffset: -2, endOffset: 1, label: '2º dia: feriado na segunda; execução na quinta' },
