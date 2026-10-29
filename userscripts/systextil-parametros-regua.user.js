@@ -910,95 +910,236 @@
 
   function createPanel() {
     if (document.getElementById(CONFIG.ID_PAINEL) || !document.body) return;
+
+    if (!document.getElementById('st-regua-parametros-styles')) {
+      const style = document.createElement('style');
+      style.id = 'st-regua-parametros-styles';
+      style.textContent = String.raw`
+        #st-regua-parametros-panel,
+        #st-regua-parametros-panel * { box-sizing: border-box; }
+        #st-regua-parametros-panel button,
+        #st-regua-parametros-panel input,
+        #st-regua-parametros-panel textarea { font: inherit; }
+        #st-regua-parametros-panel .st-regua-body {
+          min-height: 0; overflow: auto; overscroll-behavior: contain;
+        }
+        #st-regua-parametros-panel .st-regua-table caption {
+          position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+          overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+        }
+        #st-regua-parametros-panel .st-regua-table tbody tr:nth-child(even) {
+          background: #f8fafc;
+        }
+        #st-regua-parametros-panel .st-regua-table td {
+          border-bottom: 1px solid #eaecf0;
+        }
+        #st-regua-parametros-panel .st-regua-actions button {
+          min-height: 44px; line-height: 1.35; overflow-wrap: anywhere;
+          transition: background-color 120ms ease, box-shadow 120ms ease;
+        }
+        #st-regua-parametros-panel button:hover { filter: brightness(.96); }
+        #st-regua-parametros-panel button:focus-visible,
+        #st-regua-parametros-panel input:focus-visible,
+        #st-regua-parametros-panel textarea:focus-visible {
+          outline: 3px solid #84adff !important; outline-offset: 2px;
+        }
+        @media (max-width: 520px) {
+          #st-regua-parametros-panel {
+            top: 8px !important; right: 8px !important;
+            width: calc(100vw - 16px) !important; max-width: none !important;
+            max-height: calc(100vh - 16px) !important; border-radius: 12px !important;
+          }
+          #st-regua-parametros-panel .st-regua-header { padding: 10px 12px !important; }
+          #st-regua-parametros-panel .st-regua-actions { grid-template-columns: 1fr !important; }
+          #st-regua-parametros-panel .st-regua-actions button { min-height: 48px; }
+        }
+        @media (prefers-color-scheme: dark) {
+          #st-regua-parametros-panel {
+            background: #101828 !important; color: #f2f4f7 !important;
+            border-color: #475467 !important;
+          }
+          #st-regua-parametros-panel .st-regua-header {
+            background: #0b1220 !important; color: #f9fafb !important;
+          }
+          #st-regua-parametros-panel .st-regua-minimize {
+            background: #344054 !important; color: #f9fafb !important;
+          }
+          #st-regua-parametros-panel .st-regua-date-label { color: #e4e7ec !important; }
+          #st-regua-parametros-panel .st-regua-date-input,
+          #st-regua-parametros-panel .st-regua-summary {
+            background: #1d2939 !important; color: #f2f4f7 !important;
+            border-color: #667085 !important;
+          }
+          #st-regua-parametros-panel .st-regua-table th {
+            background: #344054 !important; color: #f9fafb !important;
+            border-color: #475467 !important;
+          }
+          #st-regua-parametros-panel .st-regua-table td {
+            border-color: #475467 !important;
+          }
+          #st-regua-parametros-panel .st-regua-table tbody tr:nth-child(even) {
+            background: #1d2939 !important;
+          }
+          #st-regua-parametros-panel .st-regua-details {
+            background: #1d2939 !important; color: #e4e7ec !important;
+            border-color: #475467 !important;
+          }
+          #st-regua-parametros-panel .st-regua-status {
+            background: #1d2939 !important; color: #e4e7ec !important;
+          }
+          #st-regua-parametros-panel .st-regua-warning {
+            color: #d0d5dd !important; border-color: #475467 !important;
+          }
+          #st-regua-parametros-panel .st-regua-secondary {
+            background: #344054 !important; color: #f2f4f7 !important;
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          #st-regua-parametros-panel *,
+          #st-regua-parametros-panel *::before,
+          #st-regua-parametros-panel *::after {
+            transition: none !important; animation: none !important;
+          }
+        }
+      `;
+      (document.head || document.documentElement).appendChild(style);
+    }
+
     const panel = document.createElement('section');
     panel.id = CONFIG.ID_PAINEL;
+    panel.className = 'st-regua-panel';
+    panel.setAttribute('role', 'region');
+    panel.setAttribute('aria-label', 'Parâmetros da régua de cobrança');
     Object.assign(panel.style, {
-      position: 'fixed', right: '14px', top: '110px', width: '390px',
-      maxWidth: 'calc(100vw - 28px)', maxHeight: 'calc(100vh - 130px)', overflow: 'auto',
-      zIndex: '2147483647', background: '#fff', color: '#101828',
-      border: '1px solid #cbd5e1', borderRadius: '10px',
-      boxShadow: '0 8px 30px rgba(16,24,40,.22)', font: '13px/1.4 Arial, sans-serif'
+      position: 'fixed', right: '16px', top: '96px', width: '440px',
+      maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 112px)', overflow: 'hidden',
+      display: 'flex', flexDirection: 'column', zIndex: '2147483647',
+      background: '#fff', color: '#101828', border: '1px solid #d0d5dd',
+      borderRadius: '14px', boxShadow: '0 16px 40px rgba(16,24,40,.24)',
+      font: '14px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
     });
 
     const header = document.createElement('div');
+    header.className = 'st-regua-header';
     Object.assign(header.style, {
-      background: '#16232f', color: '#fff', padding: '10px 12px', display: 'flex',
-      alignItems: 'center', justifyContent: 'space-between', gap: '8px', borderRadius: '9px 9px 0 0'
+      background: '#102a43', color: '#fff', padding: '12px 16px', display: 'flex',
+      alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+      borderRadius: '13px 13px 0 0', minHeight: '60px'
     });
     const title = document.createElement('strong');
+    title.id = 'st-regua-panel-title';
     title.textContent = 'Parâmetros da Régua de Cobrança';
+    panel.setAttribute('aria-labelledby', title.id);
     const minimize = document.createElement('button');
     minimize.type = 'button'; minimize.textContent = '—'; minimize.title = 'Minimizar painel';
+    minimize.className = 'st-regua-minimize';
+    minimize.setAttribute('aria-label', 'Minimizar painel');
+    minimize.setAttribute('aria-expanded', 'true');
     Object.assign(minimize.style, {
-      border: '0', borderRadius: '5px', cursor: 'pointer',
-      background: '#344054', color: '#fff', width: '27px', height: '25px'
+      flex: '0 0 44px', border: '0', borderRadius: '8px', cursor: 'pointer',
+      background: '#243b53', color: '#fff', width: '44px', minWidth: '44px',
+      height: '44px', fontSize: '20px'
     });
     header.append(title, minimize);
 
     const body = document.createElement('div');
-    body.style.padding = '12px';
+    body.className = 'st-regua-body';
+    Object.assign(body.style, { padding: '16px', overflow: 'auto' });
     const dateLabel = document.createElement('label');
     dateLabel.textContent = 'Data de referência: ';
+    dateLabel.className = 'st-regua-date-label';
     dateLabel.style.display = 'block';
-    dateLabel.style.fontWeight = '600';
+    dateLabel.style.fontWeight = '650';
     dateInput = document.createElement('input');
     dateInput.type = 'date';
+    dateInput.id = 'st-regua-reference-date';
+    dateInput.className = 'st-regua-date-input';
     dateInput.value = iso(new Date());
     Object.assign(dateInput.style, {
-      display: 'block', width: '100%', boxSizing: 'border-box', margin: '5px 0 10px',
-      padding: '7px', border: '1px solid #98a2b3', borderRadius: '5px', background: '#fff', color: '#101828'
+      display: 'block', width: '100%', minHeight: '44px', boxSizing: 'border-box',
+      margin: '6px 0 14px', padding: '9px 10px', border: '1px solid #98a2b3',
+      borderRadius: '8px', background: '#fff', color: '#101828', fontSize: '14px'
     });
     dateLabel.appendChild(dateInput);
 
     const table = document.createElement('table');
-    Object.assign(table.style, { borderCollapse: 'collapse', width: '100%', marginBottom: '8px' });
+    table.className = 'st-regua-table';
+    Object.assign(table.style, {
+      borderCollapse: 'collapse', width: '100%', marginBottom: '12px',
+      fontSize: '13px', border: '1px solid #eaecf0', borderRadius: '8px'
+    });
+    const caption = document.createElement('caption');
+    caption.textContent = 'Valores calculados para os parâmetros da régua de cobrança';
     const head = document.createElement('thead');
     const row = document.createElement('tr');
     ['Parâmetro', 'Valor calculado'].forEach(function (text) {
       const th = document.createElement('th');
       th.textContent = text;
       Object.assign(th.style, {
-        textAlign: 'left', padding: '6px 4px', borderBottom: '1px solid #cbd5e1', background: '#f2f4f7'
+        textAlign: 'left', padding: '9px 10px', borderBottom: '1px solid #d0d5dd',
+        background: '#f2f4f7', color: '#344054', fontWeight: '650'
       });
       row.appendChild(th);
     });
     head.appendChild(row);
     tableBody = document.createElement('tbody');
-    table.append(head, tableBody);
+    table.append(caption, head, tableBody);
 
     detailsEl = document.createElement('p');
-    Object.assign(detailsEl.style, { margin: '8px 0', color: '#475467', fontSize: '12px' });
+    detailsEl.className = 'st-regua-details';
+    Object.assign(detailsEl.style, {
+      margin: '0 0 12px', padding: '10px 12px', color: '#344054',
+      background: '#f8fafc', border: '1px solid #e4e7ec', borderRadius: '8px',
+      fontSize: '13px', lineHeight: '1.5'
+    });
     summaryEl = document.createElement('textarea');
     summaryEl.readOnly = true;
-    summaryEl.rows = 3;
+    summaryEl.className = 'st-regua-summary';
+    summaryEl.setAttribute('aria-label', 'Resumo copiável dos parâmetros calculados');
+    summaryEl.rows = 4;
     Object.assign(summaryEl.style, {
-      width: '100%', boxSizing: 'border-box', padding: '6px',
-      border: '1px solid #d0d5dd', borderRadius: '5px',
-      font: '11px/1.35 monospace', marginBottom: '8px'
+      width: '100%', boxSizing: 'border-box', padding: '9px 10px',
+      border: '1px solid #d0d5dd', borderRadius: '8px',
+      font: '12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+      marginBottom: '12px', background: '#fff', color: '#344054', resize: 'vertical'
     });
 
     const actions = document.createElement('div');
-    Object.assign(actions.style, { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' });
+    actions.className = 'st-regua-actions';
+    Object.assign(actions.style, { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' });
     const fill = document.createElement('button');
     fill.type = 'button'; fill.textContent = 'Preencher campos encontrados';
+    fill.className = 'st-regua-primary';
+    fill.setAttribute('aria-describedby', 'st-regua-status');
     const copy = document.createElement('button');
     copy.type = 'button'; copy.textContent = 'Copiar resumo';
+    copy.className = 'st-regua-secondary';
     [fill, copy].forEach(function (button, index) {
       Object.assign(button.style, {
-        padding: '8px 6px', border: '0', borderRadius: '5px', cursor: 'pointer',
+        padding: '10px 12px', border: '0', borderRadius: '8px', cursor: 'pointer',
         background: index === 0 ? '#175cd3' : '#eaecf0',
-        color: index === 0 ? '#fff' : '#344054', fontWeight: '600'
+        color: index === 0 ? '#fff' : '#344054', fontWeight: '650'
       });
     });
     actions.append(fill, copy);
 
     statusEl = document.createElement('div');
-    Object.assign(statusEl.style, { fontSize: '12px', marginTop: '8px', color: '#475467', overflowWrap: 'anywhere' });
+    statusEl.id = 'st-regua-status';
+    statusEl.className = 'st-regua-status';
+    statusEl.setAttribute('role', 'status');
+    statusEl.setAttribute('aria-live', 'polite');
+    statusEl.setAttribute('aria-atomic', 'true');
+    Object.assign(statusEl.style, {
+      fontSize: '13px', lineHeight: '1.45', marginTop: '10px', padding: '9px 10px',
+      borderLeft: '3px solid #84adff', borderRadius: '4px', background: '#eff8ff',
+      color: '#344054', overflowWrap: 'anywhere'
+    });
     const warning = document.createElement('p');
+    warning.className = 'st-regua-warning';
     warning.textContent = 'O painel não executa a consulta. Confira os campos antes de confirmar no Systextil. Feriados locais precisam ser configurados no script.';
     Object.assign(warning.style, {
-      margin: '10px 0 0', paddingTop: '8px', borderTop: '1px solid #eaecf0',
-      color: '#667085', fontSize: '11px'
+      margin: '12px 0 0', paddingTop: '10px', borderTop: '1px solid #eaecf0',
+      color: '#475467', fontSize: '12px', lineHeight: '1.45'
     });
 
     body.append(dateLabel, table, detailsEl, summaryEl, actions, statusEl, warning);
@@ -1011,6 +1152,8 @@
       body.style.display = minimized ? 'none' : 'block';
       minimize.textContent = minimized ? '+' : '—';
       minimize.title = minimized ? 'Expandir painel' : 'Minimizar painel';
+      minimize.setAttribute('aria-label', minimize.title);
+      minimize.setAttribute('aria-expanded', String(!minimized));
     });
     dateInput.addEventListener('change', renderCalculation);
     fill.addEventListener('click', fillRecognizedFields);
