@@ -344,7 +344,18 @@
       const rows = parameterRows(doc);
       if (!rows.length) continue;
       const grid = findSmartClientGrid(doc);
-      if (!grid) continue;
+      if (!grid) {
+        // Se a grade já foi reconhecida, não cair na busca genérica de inputs:
+        // ela poderia atingir apenas a célula atualmente selecionada.
+        return {
+          handled: true,
+          filled: 0,
+          cleared: 0,
+          skipped: PARAMETROS.map(function (param) {
+            return param.label + ': grade encontrada, API SmartClient indisponível';
+          })
+        };
+      }
 
       const rowIndexes = new Map();
       rows.forEach(function (row, rowNumber) {
@@ -357,29 +368,29 @@
       });
 
       let filled = 0;
+      let cleared = 0;
       const skipped = [];
       for (const param of PARAMETROS) {
         const date = result.values[param.key];
-        if (!date) {
-          skipped.push(param.label + ': sem data calculada');
-          continue;
-        }
+        const expected = date ? br(date) : '';
         const rowIndex = rowIndexes.get(param.key);
         if (!Number.isInteger(rowIndex)) {
           skipped.push(param.label + ': linha não encontrada na grade');
           continue;
         }
-        const expected = br(date);
         try {
           // A grade SmartClient só renderiza um <input> para a célula que está
           // sendo editada. Inicia a edição pela API pública da grade e altera
           // a coluna Valor (índice 1), preservando a semântica do próprio ERP.
+          // Quando não há data calculada, limpa-se o valor antigo para evitar
+          // que uma execução anterior deixe um parâmetro obsoleto ativo.
           grid.startEditing(rowIndex, 1);
           grid.setEditValue(rowIndex, 1, expected);
           grid.endEditing();
           await new Promise(function (resolve) { setTimeout(resolve, 35); });
           if (gridValueMatches(doc, param, expected)) {
-            filled += 1;
+            if (date) filled += 1;
+            else cleared += 1;
           } else {
             skipped.push(param.label + ': o ERP não confirmou o valor na grade');
           }
@@ -392,6 +403,7 @@
       return {
         handled: true,
         filled: filled,
+        cleared: cleared,
         skipped: skipped
       };
     }
@@ -472,7 +484,9 @@
     if (smartClientResult.handled) {
       filled = smartClientResult.filled;
       skipped = smartClientResult.skipped;
+      var cleared = smartClientResult.cleared || 0;
     } else {
+      var cleared = 0;
       PARAMETROS.forEach(function (param) {
         const value = lastCalculation.values[param.key];
         if (!value) { skipped.push(param.label + ': sem data calculada'); return; }
@@ -481,11 +495,13 @@
         if (setControlValue(found.element, value)) filled += 1;
       });
     }
-    const message = 'Preenchidos e verificados ' + filled + ' de ' + PARAMETROS.length + ' campos.' +
-      (skipped.length ? ' Não preenchidos: ' + skipped.join('; ') + '.' : '');
-    setStatus(message, skipped.length > 0 || filled !== PARAMETROS.length);
+    const message = 'Preenchidos e verificados: ' + filled + '; campos limpos por ausência de data: ' + cleared +
+      '; total: ' + PARAMETROS.length + '.' +
+      (skipped.length ? ' Não confirmados: ' + skipped.join('; ') + '.' : '');
+    setStatus(message, skipped.length > 0 || filled + cleared !== PARAMETROS.length);
     console.info('[Systextil Régua] Resultado do preenchimento:', {
-      preenchidosEVerificados: filled, total: PARAMETROS.length, naoPreenchidos: skipped
+      preenchidosEVerificados: filled, camposLimpos: cleared,
+      total: PARAMETROS.length, naoConfirmados: skipped
     });
   }
 
