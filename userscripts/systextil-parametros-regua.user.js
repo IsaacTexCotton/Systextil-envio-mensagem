@@ -364,7 +364,9 @@
       sixCount: six.count,
       sixDates: six.dates,
       sixContiguous: six.contiguous,
-      sixSource: sixResolution.status === 'matched' ? 'holiday-rule' : 'reverse-search',
+      sixSource: sixResolution.status === 'matched'
+        ? 'holiday-rule'
+        : sixResolution.status === 'conflict' ? 'holiday-conflict' : 'reverse-search',
       twoHolidayStatus: twoResolution.status,
       sixHolidayStatus: sixResolution.status,
       holidayConflicts: conflicts,
@@ -692,7 +694,11 @@
       return p.label + ': ' + br(result.values[p.key]);
     }).join('\n') + '\nReferência: ' + br(lastReferenceDate) +
       '\nRegra 2 dias: ' + result.twoNote +
-      '\nOrigem da regra 6º dia: ' + (result.sixSource === 'holiday-rule' ? 'exceção de feriado' : 'busca reversa padrão') +
+      '\nOrigem da regra 6º dia: ' + (result.sixSource === 'holiday-rule'
+        ? 'exceção de feriado'
+        : result.sixSource === 'holiday-conflict'
+          ? 'conflito entre exceções de feriado'
+          : 'busca reversa padrão') +
       '\nDatas de vencimento do 6º dia: ' + (result.sixDates.length ? result.sixDates.map(br).join(', ') : 'nenhuma') +
       '\nJanela do 6º dia contígua: ' + (result.sixCount === 0 ? 'sem correspondências' : (result.sixContiguous ? 'sim' : 'não; conferir a tabela auxiliar J:L')) +
       '\nConflitos de feriado: ' + (result.holidayConflicts.length ? result.holidayConflicts.join(' | ') : 'nenhum') +
