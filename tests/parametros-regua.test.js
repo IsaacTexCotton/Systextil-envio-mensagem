@@ -133,6 +133,92 @@ test('rótulos da grade SmartClient são reconhecidos mesmo com chaves e dois-po
   assert.equal(api.parameterKeyFromLabel('campo desconhecido'), null);
 });
 
+
+function parseDay(value) {
+  const parts = value.split('-').map(Number);
+  return date(parts[0], parts[1], parts[2]);
+}
+
+test('as 18 janelas especiais de feriado reproduzem os exemplos documentados', function () {
+  const api = calculator();
+  const scenarios = [
+    // 2º dia
+    { type: 'two', reference: '2026-10-15', holiday: '2026-10-12', start: '2026-10-10', end: '2026-10-13' },
+    { type: 'two', reference: '2026-10-15', holiday: '2026-10-13', start: '2026-10-10', end: '2026-10-12' },
+    { type: 'two', reference: '2026-10-16', holiday: '2026-10-13', start: '2026-10-13', end: '2026-10-14' },
+    { type: 'two', reference: '2026-10-15', holiday: '2026-10-14', start: '2026-10-10', end: '2026-10-12' },
+    { type: 'two', reference: '2026-10-16', holiday: '2026-10-14', start: '2026-10-13', end: '2026-10-14' },
+    { type: 'two', reference: '2026-10-14', holiday: '2026-10-15', start: '2026-10-10', end: '2026-10-12' },
+    { type: 'two', reference: '2026-10-19', holiday: '2026-10-15', start: '2026-10-14', end: '2026-10-15' },
+    { type: 'two', reference: '2026-10-14', holiday: '2026-10-16', start: '2026-10-10', end: '2026-10-12' },
+    { type: 'two', reference: '2026-10-19', holiday: '2026-10-16', start: '2026-10-14', end: '2026-10-14' },
+    { type: 'two', reference: '2026-10-20', holiday: '2026-10-16', start: '2026-10-15', end: '2026-10-16' },
+
+    // 6º dia
+    { type: 'six', reference: '2026-10-13', holiday: '2026-10-12', start: '2026-10-04', end: '2026-10-07' },
+    { type: 'six', reference: '2026-10-12', holiday: '2026-10-13', start: '2026-10-04', end: '2026-10-06' },
+    { type: 'six', reference: '2026-10-12', holiday: '2026-10-14', start: '2026-10-04', end: '2026-10-06' },
+    { type: 'six', reference: '2026-10-15', holiday: '2026-10-14', start: '2026-10-08', end: '2026-10-09' },
+    { type: 'six', reference: '2026-10-12', holiday: '2026-10-15', start: '2026-10-04', end: '2026-10-06' },
+    // O exemplo de sexta-feira deve usar 16/10/2026; 15/10/2026 é quinta-feira.
+    { type: 'six', reference: '2026-10-16', holiday: '2026-10-15', start: '2026-10-09', end: '2026-10-10' },
+    { type: 'six', reference: '2026-10-12', holiday: '2026-10-16', start: '2026-10-04', end: '2026-10-06' },
+    { type: 'six', reference: '2026-10-19', holiday: '2026-10-16', start: '2026-10-10', end: '2026-10-13' }
+  ];
+
+  scenarios.forEach(function (scenario) {
+    const result = api.resolveHolidayWindow(
+      scenario.type,
+      parseDay(scenario.reference),
+      [scenario.holiday]
+    );
+    assert.equal(result.status, 'matched',
+      scenario.type + ', referência ' + scenario.reference + ', feriado ' + scenario.holiday);
+    assert.equal(dayIso(result.start), scenario.start,
+      'início para ' + scenario.type + ', referência ' + scenario.reference);
+    assert.equal(dayIso(result.end), scenario.end,
+      'fim para ' + scenario.type + ', referência ' + scenario.reference);
+  });
+});
+
+test('o cálculo integra a exceção real do feriado nacional de 12/10/2026', function () {
+  const api = calculator();
+  const two = api.calculate(date(2026, 10, 15));
+  assert.equal(dayIso(two.values.inicio2), '2026-10-10');
+  assert.equal(dayIso(two.values.fim2), '2026-10-13');
+  assert.equal(two.twoHolidayStatus, 'matched');
+
+  const six = api.calculate(date(2026, 10, 13));
+  assert.equal(dayIso(six.values.inicio6), '2026-10-04');
+  assert.equal(dayIso(six.values.fim6), '2026-10-07');
+  assert.equal(six.sixHolidayStatus, 'matched');
+  assert.equal(six.sixSource, 'holiday-rule');
+});
+
+test('feriados consecutivos de Carnaval mesclam janelas sobrepostas sem gerar conflito', function () {
+  const api = calculator();
+  const result = api.resolveHolidayWindow('two', date(2026, 2, 19), [
+    '2026-02-16',
+    '2026-02-17'
+  ]);
+  assert.equal(result.status, 'matched');
+  assert.equal(result.matches.length, 2);
+  assert.equal(dayIso(result.start), '2026-02-14');
+  assert.equal(dayIso(result.end), '2026-02-17');
+});
+
+test('regras especiais não alteram a régua padrão quando não há feriado aplicável', function () {
+  const api = calculator();
+  const result = api.resolveHolidayWindow('two', date(2026, 10, 28), []);
+  assert.equal(result.status, 'none');
+  const normal = api.calculate(date(2026, 10, 28));
+  assert.equal(dayIso(normal.values.inicio2), '2026-10-24');
+  assert.equal(dayIso(normal.values.fim2), '2026-10-26');
+  assert.equal(dayIso(normal.values.inicio10), '2026-10-18');
+  assert.equal(dayIso(normal.values.inicio15), '2026-10-13');
+  assert.equal(dayIso(normal.values.inicio18), '2026-10-10');
+});
+
 test('API de cálculo não executa a consulta nem preenche campos', function () {
   const api = calculator();
   const result = api.calculate(date(2026, 10, 28));
