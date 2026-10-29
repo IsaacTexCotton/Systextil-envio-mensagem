@@ -81,11 +81,20 @@ test('busca reversa encontra vencimentos com o mesmo prazo final', function () {
   const api = calculator();
   const result = api.reverseSearchSixthDay(date(2026, 11, 9));
   assert.equal(result.count, 6);
+  assert.equal(result.contiguous, false);
   assert.equal(dayIso(result.start), '2026-10-25');
   assert.equal(dayIso(result.end), '2026-11-03');
   assert.ok(result.dates.every(function (due) {
     return dayIso(api.calculateSixthDayDeadline(due)) === '2026-11-09';
   }));
+});
+
+test('não preenche uma janela do 6º dia quando as datas encontradas são separadas', function () {
+  const api = calculator();
+  const result = api.calculate(date(2026, 11, 9));
+  assert.equal(result.sixContiguous, false);
+  assert.equal(result.values.inicio6, null);
+  assert.equal(result.values.fim6, null);
 });
 
 test('faixas de 10, 15 e 18 dias usam dias corridos sem ajuste de calendário', function () {
