@@ -272,7 +272,7 @@
     for (let year = referenceDate.getFullYear() - 1; year <= referenceDate.getFullYear() + 1; year += 1) {
       holidaysForYear(year).forEach(function (holiday) {
         const parsed = parseIso(holiday);
-        if (parsed && Math.abs(calendarDayDifference(referenceDate, parsed)) <= 4) found.add(iso(parsed));
+        if (parsed && Math.abs(calendarDayDifference(referenceDate, parsed)) <= 5) found.add(iso(parsed));
       });
     }
     return Array.from(found).sort();
@@ -291,7 +291,7 @@
       if (!holidayDate) return;
 
       const referenceOffset = calendarDayDifference(referenceDate, holidayDate);
-      if (Math.abs(referenceOffset) > 4) return;
+      if (Math.abs(referenceOffset) > 5) return;
       HOLIDAY_RULES.forEach(function (rule) {
         if (rule.type !== type ||
             rule.holidayWeekday !== holidayDate.getDay() ||
@@ -300,22 +300,44 @@
           holidayDate: localNoon(holidayDate),
           referenceOffset: referenceOffset,
           ruleLabel: rule.label,
-          start: addDays(holidayDate, rule.startOffset),
-          end: addDays(holidayDate, rule.endOffset)
+          cobrar: rule.cobrar,
+          noExpediente: Boolean(rule.noExpediente),
+          start: rule.noExpediente ? null : addDays(holidayDate, rule.startOffset),
+          end: rule.noExpediente ? null : addDays(holidayDate, rule.endOffset)
         });
       });
     });
 
     if (!matches.length) return { status: 'none', start: null, end: null, matches: [], ranges: [] };
 
-    matches.sort(function (a, b) {
+    // Se a própria data de referência é feriado, a linha vermelha "SEM EXPED."
+    // prevalece sobre regras de compensação associadas a feriados próximos.
+    const noExpediente = matches.filter(function (match) {
+      return match.noExpediente && match.referenceOffset === 0;
+    });
+    if (noExpediente.length) {
+      return {
+        status: 'no-expediente',
+        start: null,
+        end: null,
+        matches: noExpediente,
+        ranges: []
+      };
+    }
+
+    const validMatches = matches.filter(function (match) {
+      return !match.noExpediente && match.start && match.end;
+    });
+    if (!validMatches.length) return { status: 'none', start: null, end: null, matches: [], ranges: [] };
+
+    validMatches.sort(function (a, b) {
       return a.start.getTime() - b.start.getTime() || a.end.getTime() - b.end.getTime();
     });
 
-    // Regras referentes a feriados consecutivos podem se sobrepor. Unimos apenas
-    // janelas que se sobrepõem ou são adjacentes; blocos separados são ambíguos.
+    // Feriados próximos podem gerar mais de uma regra aplicável. Unimos somente
+    // janelas sobrepostas/adjacentes; blocos separados são ambíguos.
     const ranges = [];
-    matches.forEach(function (match) {
+    validMatches.forEach(function (match) {
       const last = ranges[ranges.length - 1];
       if (!last || iso(match.start) > iso(addDays(last.end, 1))) {
         ranges.push({ start: match.start, end: match.end, matches: [match] });
@@ -326,13 +348,13 @@
     });
 
     if (ranges.length > 1) {
-      return { status: 'conflict', start: null, end: null, matches: matches, ranges: ranges };
+      return { status: 'conflict', start: null, end: null, matches: validMatches, ranges: ranges };
     }
     return {
       status: 'matched',
       start: ranges[0].start,
       end: ranges[0].end,
-      matches: matches,
+      matches: validMatches,
       ranges: ranges
     };
   }
