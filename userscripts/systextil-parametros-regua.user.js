@@ -1,9 +1,11 @@
 // ==UserScript==
 // @name         Systextil - Parâmetros da Régua de Cobrança
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.2.0
+// @version      0.4.0
 // @description  Calcula e preenche, mediante ação explícita, parâmetros de datas da régua no Systextil.
 // @match        http://systextil.texcotton.com.br/systextil/*
+// @updateURL    https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-parametros-regua.user.js
+// @downloadURL  https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-parametros-regua.user.js
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==
@@ -300,6 +302,202 @@
     return { element: ties[0].element, reason: 'ok' };
   }
 
+  function parameterRows(doc) {
+    return Array.from(doc.querySelectorAll('[eventproxy="parameterTab_body"] tr[role="listitem"], #parameterTab_body tr[role="listitem"]'));
+  }
+
+  function parameterFromLabel(text) {
+    const label = compact(text);
+    return PARAMETROS.find(function (param) {
+      return label === compact(param.label) || label === compact(param.label + ':');
+    }) || null;
+  }
+
+  function parameterFromRow(row) {
+    const labelCell = row && row.cells && row.cells[0];
+    if (!labelCell) return null;
+    return parameterFromLabel(labelCell.innerText || labelCell.textContent || '');
+  }
+
+  function findSmartClientGrid(doc) {
+    const view = doc.defaultView;
+    if (!view) return null;
+    const candidates = [];
+    try { candidates.push(view.parameterTab); } catch (_) {}
+    try {
+      if (view.isc && view.isc.Canvas && typeof view.isc.Canvas.getById === 'function') {
+        candidates.push(view.isc.Canvas.getById('parameterTab'));
+      }
+    } catch (_) {}
+    return candidates.find(function (grid) {
+      return grid &&
+        typeof grid.getTotalRows === 'function' &&
+        typeof grid.getRecord === 'function' &&
+        typeof grid.getFields === 'function' &&
+        typeof grid.startEditing === 'function' &&
+        typeof grid.setEditValue === 'function' &&
+        typeof grid.endEditing === 'function';
+    }) || null;
+  }
+
+  function smartClientFieldIndexes(grid) {
+    const fields = grid.getFields() || [];
+    const indexes = { label: -1, value: -1 };
+    fields.forEach(function (field, index) {
+      const name = normalize([field.name, field.title, field.prompt].filter(Boolean).join(' '));
+      if (indexes.label < 0 && /^(parametro|parameter)$/.test(name)) indexes.label = index;
+      if (indexes.value < 0 && /^(valor|value)$/.test(name)) indexes.value = index;
+    });
+    // Fallback baseado na estrutura fornecida: coluna 0 = Parâmetro, coluna 1 = Valor.
+    if (indexes.label < 0 && fields.length >= 2) indexes.label = 0;
+    if (indexes.value < 0 && fields.length >= 2) indexes.value = 1;
+    return indexes;
+  }
+
+  function smartClientCell(grid, record, rowIndex, fieldIndex) {
+    if (fieldIndex < 0) return undefined;
+    try {
+      if (typeof grid.getCellValue === 'function') {
+        const value = grid.getCellValue(record, rowIndex, fieldIndex);
+        if (value !== undefined && value !== null) return value;
+      }
+    } catch (_) {}
+    const fields = grid.getFields() || [];
+    const field = fields[fieldIndex];
+    if (field && field.name && record && record[field.name] !== undefined) return record[field.name];
+    return undefined;
+  }
+
+  function gridValueMatches(doc, grid, param, expected, indexes) {
+    const total = Number(grid.getTotalRows()) || 0;
+    for (let rowIndex = 0; rowIndex < total; rowIndex += 1) {
+      const record = grid.getRecord(rowIndex);
+      if (!record) continue;
+      const label = smartClientCell(grid, record, rowIndex, indexes.label);
+      const mapped = parameterFromLabel(label);
+      if (mapped && mapped.key === param.key) {
+        const value = smartClientCell(grid, record, rowIndex, indexes.value);
+        if (value !== undefined && String(value).trim() === expected) return true;
+        break;
+      }
+    }
+
+    // O DOM é uma verificação secundária; a fonte principal é o registro da grade.
+    const row = parameterRows(doc).find(function (candidate) {
+      return parameterFromRow(candidate) && parameterFromRow(candidate).key === param.key;
+    });
+    return !!(row && row.cells[1] &&
+      String(row.cells[1].innerText || row.cells[1].textContent || '').trim() === expected);
+  }
+
+  async function fillSmartClientGrid(result) {
+    for (const doc of documentsInFrames()) {
+      const rows = parameterRows(doc);
+      if (!rows.length) continue;
+      const grid = findSmartClientGrid(doc);
+      if (!grid) {
+        // Se a grade já foi reconhecida, não cair na busca genérica de inputs:
+        // ela poderia atingir apenas a célula atualmente selecionada.
+        return {
+          handled: true,
+          filled: 0,
+          cleared: 0,
+          skipped: PARAMETROS.map(function (param) {
+            return param.label + ': grade encontrada, API SmartClient indisponível';
+          })
+        };
+      }
+
+      const indexes = smartClientFieldIndexes(grid);
+      if (indexes.label < 0 || indexes.value < 0) {
+        return {
+          handled: true,
+          filled: 0,
+          cleared: 0,
+          skipped: PARAMETROS.map(function (param) {
+            return param.label + ': colunas Parâmetro/Valor não identificadas em getFields()';
+          })
+        };
+      }
+
+      const rowIndexes = new Map();
+      const totalRows = Number(grid.getTotalRows()) || 0;
+      for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
+        const record = grid.getRecord(rowIndex);
+        if (!record) continue;
+        const label = smartClientCell(grid, record, rowIndex, indexes.label);
+        const param = parameterFromLabel(label);
+        if (param) rowIndexes.set(param.key, rowIndex);
+      }
+      // Fallback para a posição publicada no DOM se a API não devolver rótulos.
+      if (!rowIndexes.size) {
+        rows.forEach(function (row, rowNumber) {
+          const param = parameterFromRow(row);
+          if (!param) return;
+          const announcedPosition = Number(row.getAttribute('aria-posinset'));
+          rowIndexes.set(param.key, Number.isInteger(announcedPosition) && announcedPosition > 0
+            ? announcedPosition - 1
+            : rowNumber);
+        });
+      }
+
+      let filled = 0;
+      let cleared = 0;
+      const skipped = [];
+      for (const param of PARAMETROS) {
+        const date = result.values[param.key];
+        const expected = date ? br(date) : '';
+        const rowIndex = rowIndexes.get(param.key);
+        if (!Number.isInteger(rowIndex)) {
+          skipped.push(param.label + ': linha não encontrada na grade');
+          continue;
+        }
+        try {
+          // Edita via API do SmartClient; o índice da coluna Valor vem de getFields().
+          // Se a regra não produzir data, limpa-se um eventual valor antigo.
+          grid.startEditing(rowIndex, indexes.value);
+          grid.setEditValue(rowIndex, indexes.value, expected);
+          // Não finalizar cada célula: deixar a grade consolidar a edição evita
+          // descartar mudanças anteriores enquanto percorremos os parâmetros.
+          if (date) filled += 1;
+          else cleared += 1;
+        } catch (error) {
+          skipped.push(param.label + ': falha de edição da grade');
+          console.warn('[Systextil Régua] Falha ao editar parâmetro da grade:', param.key, error);
+        }
+      }
+      try {
+        if (typeof grid.saveAllEdits === 'function') grid.saveAllEdits();
+        else grid.endEditing();
+      } catch (error) {
+        skipped.push('A grade não conseguiu concluir as edições');
+        console.warn('[Systextil Régua] Falha ao concluir as edições:', error);
+      }
+      await new Promise(function (resolve) { setTimeout(resolve, 100); });
+      let verified = 0;
+      let clearedVerified = 0;
+      for (const param of PARAMETROS) {
+        const date = result.values[param.key];
+        const expected = date ? br(date) : '';
+        if (gridValueMatches(doc, grid, param, expected, indexes)) {
+          if (date) verified += 1;
+          else clearedVerified += 1;
+        } else {
+          skipped.push(param.label + ': o ERP não confirmou o valor na grade');
+        }
+      }
+      filled = verified;
+      cleared = clearedVerified;
+      return {
+        handled: true,
+        filled: filled,
+        cleared: cleared,
+        skipped: skipped
+      };
+    }
+    return { handled: false, filled: 0, skipped: [] };
+  }
+
   function setControlValue(el, date) {
     if (!date) return false;
     const view = el.ownerDocument.defaultView || window;
@@ -362,23 +560,36 @@
     setStatus('Cálculo atualizado. Confira as datas antes de preencher ou executar a consulta.', false);
   }
 
-  function fillRecognizedFields() {
+  async function fillRecognizedFields() {
     if (!lastCalculation) renderCalculation();
     if (!lastCalculation) return;
+
+    // O relatório usa uma ListGrid SmartClient: nove valores podem ser texto
+    // estático no DOM, embora sejam editáveis via a API da grade.
+    const smartClientResult = await fillSmartClientGrid(lastCalculation);
     let filled = 0;
-    const skipped = [];
-    PARAMETROS.forEach(function (param) {
-      const value = lastCalculation.values[param.key];
-      if (!value) { skipped.push(param.label + ': sem data calculada'); return; }
-      const found = findControl(param);
-      if (!found.element) { skipped.push(param.label + ': ' + found.reason); return; }
-      if (setControlValue(found.element, value)) filled += 1;
-    });
-    const message = 'Preenchidos ' + filled + ' de ' + PARAMETROS.length + ' campos.' +
-      (skipped.length ? ' Não preenchidos: ' + skipped.join('; ') + '.' : '');
-    setStatus(message, skipped.length > 0);
+    let cleared = 0;
+    let skipped = [];
+    if (smartClientResult.handled) {
+      filled = smartClientResult.filled;
+      cleared = smartClientResult.cleared || 0;
+      skipped = smartClientResult.skipped;
+    } else {
+      PARAMETROS.forEach(function (param) {
+        const value = lastCalculation.values[param.key];
+        if (!value) { skipped.push(param.label + ': sem data calculada'); return; }
+        const found = findControl(param);
+        if (!found.element) { skipped.push(param.label + ': ' + found.reason); return; }
+        if (setControlValue(found.element, value)) filled += 1;
+      });
+    }
+    const message = 'Preenchidos e verificados: ' + filled + '; campos limpos por ausência de data: ' + cleared +
+      '; total: ' + PARAMETROS.length + '.' +
+      (skipped.length ? ' Não confirmados: ' + skipped.join('; ') + '.' : '');
+    setStatus(message, skipped.length > 0 || filled + cleared !== PARAMETROS.length);
     console.info('[Systextil Régua] Resultado do preenchimento:', {
-      preenchidos: filled, total: PARAMETROS.length, naoPreenchidos: skipped
+      preenchidosEVerificados: filled, camposLimpos: cleared,
+      total: PARAMETROS.length, naoConfirmados: skipped
     });
   }
 
@@ -521,7 +732,11 @@
     isBusinessDay: isBusinessDay,
     holidaysForYear: function (year) { return Array.from(holidaysForYear(year)).sort(); },
     iso: iso,
-    br: br
+    br: br,
+    parameterKeyFromLabel: function (label) {
+      const param = parameterFromLabel(label);
+      return param ? param.key : null;
+    }
   });
 
   function initialize() {

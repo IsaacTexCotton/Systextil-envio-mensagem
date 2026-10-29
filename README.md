@@ -15,7 +15,9 @@ Arquivo: [userscripts/systextil-parametros-regua.user.js](userscripts/systextil-
 - Se a busca reversa retornar datas em blocos separados, deixa Início/Fim do 6º dia em branco e informa o motivo. Isso evita que um intervalo único inclua vencimentos não associados ao mesmo prazo.
 - Calcula as faixas de 10, 15 e 18 dias por dias corridos, sem ajuste por fim de semana ou feriado.
 - Apresenta uma tabela de conferência e um resumo copiável.
-- Oferece um botão explícito para preencher campos identificados sem ambiguidade. Os campos são procurados novamente quando o botão é clicado; o script também tenta percorrer frames de mesma origem.
+- Oferece um botão explícito para preencher os parâmetros da grade SmartClient (`parameterTab`). As linhas são identificadas pelo rótulo e editadas pela API pública da grade; o script verifica o valor renderizado antes de contar o preenchimento.
+- Se uma regra não produzir data, a célula correspondente é limpa e verificada para evitar manter um valor antigo. Quando a grade é encontrada mas a API não está acessível, não tenta preencher o único `<input>` visível.
+- Mantém a busca genérica por campos para telas compatíveis alternativas e percorre frames de mesma origem.
 
 ### O que não faz
 
@@ -33,6 +35,8 @@ Arquivo: [userscripts/systextil-parametros-regua.user.js](userscripts/systextil-
 4. Confira a data de referência e os valores exibidos no painel.
 5. Clique em **Preencher campos encontrados** somente depois de validar os valores.
 6. Confira os campos no ERP e execute a consulta manualmente.
+
+O cabeçalho do userscript inclui `@updateURL` e `@downloadURL` apontando para a versão `main`; as atualizações automáticas ficam disponíveis depois que a versão corrigida for integrada à `main`. Para testar antes disso, instale manualmente o arquivo da branch do PR de correção.
 
 O userscript está restrito ao endereço http://systextil.texcotton.com.br/systextil/*. Revise o endereço alvo antes de instalar em outro ambiente.
 
