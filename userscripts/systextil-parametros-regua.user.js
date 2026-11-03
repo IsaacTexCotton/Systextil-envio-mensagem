@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Parâmetros da Régua de Cobrança
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.8.0
+// @version      0.8.1
 // @description  Calcula e preenche, mediante ação explícita, parâmetros de datas da régua no Systextil.
 // @match        http://systextil.texcotton.com.br/systextil/*
 // @match        https://systextil.texcotton.com.br/systextil/*
@@ -14,8 +14,8 @@
 (function () {
   'use strict';
 
-  const SCRIPT_VERSION = '0.8.0';
-  const SCRIPT_BUILD_ID = '2026-10-29-calendar-runtime-check';
+  const SCRIPT_VERSION = '0.8.1';
+  const SCRIPT_BUILD_ID = '2026-11-03-set-iteration-fix';
 
   // Um único painel no documento principal; os campos podem estar em iframes same-origin.
   if (window.top !== window || window.__systextilParametrosReguaCarregado) return;
