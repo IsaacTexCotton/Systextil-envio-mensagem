@@ -166,6 +166,14 @@
     return new Date(year, month - 1, day, 12);
   }
 
+  // Converte Set usando seu método de visita direta, sem depender do iterador global.
+  function setToSortedArray(set) {
+    const values = [];
+    set.forEach(function (value) { values.push(value); });
+    values.sort();
+    return values;
+  }
+
   function holidaysForYear(year) {
     const fixed = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '12-25'];
     const dates = fixed.map(function (md) { return year + '-' + md; });
@@ -279,7 +287,7 @@
         if (parsed && Math.abs(calendarDayDifference(referenceDate, parsed)) <= 5) found.add(iso(parsed));
       });
     }
-    return Array.from(found).sort();
+    return setToSortedArray(found);
   }
 
   function resolveHolidayWindow(type, referenceDate, explicitHolidayDates) {
@@ -1176,7 +1184,7 @@
     resolveHolidayWindow: resolveHolidayWindow,
     holidayRules: HOLIDAY_RULES,
     isBusinessDay: isBusinessDay,
-    holidaysForYear: function (year) { return Array.from(holidaysForYear(year)).sort(); },
+    holidaysForYear: function (year) { return setToSortedArray(holidaysForYear(year)); },
     iso: iso,
     br: br,
     parameterKeyFromLabel: function (label) {
