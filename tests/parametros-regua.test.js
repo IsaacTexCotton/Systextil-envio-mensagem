@@ -9,7 +9,7 @@ const vm = require('node:vm');
 const scriptPath = path.join(__dirname, '..', 'userscripts', 'systextil-parametros-regua.user.js');
 const source = fs.readFileSync(scriptPath, 'utf8');
 
-function calculator() {
+function calculator(options) {
   const document = {
     readyState: 'loading',
     addEventListener: function () {},
@@ -17,7 +17,18 @@ function calculator() {
   };
   const window = { document: document, console: console };
   window.top = window;
-  vm.runInNewContext(source, { window: window, document: document, console: console, Date: Date }, { filename: scriptPath });
+  const context = { window: window, document: document, console: console, Date: Date };
+  if (options && options.arrayFromEmptyForSets) {
+    // Simula um ambiente em que Array.from não enumera Set, mas continua tratando NodeLists.
+    const nativeFrom = Array.from;
+    const pageArray = Object.create(Array);
+    pageArray.from = function (value) {
+      if (value && typeof value.has === 'function' && typeof value.forEach === 'function') return [];
+      return nativeFrom.call(Array, value);
+    };
+    context.Array = pageArray;
+  }
+  vm.runInNewContext(source, context, { filename: scriptPath });
   assert.ok(window.__systextilParametrosReguaDebug);
   return window.__systextilParametrosReguaDebug;
 }
@@ -38,6 +49,20 @@ test('API de diagnóstico identifica a versão ativa e reconhece 02/11/2026', fu
   assert.equal(api.buildId, '2026-10-29-calendar-runtime-check');
   assert.equal(api.holidayCalendarContains('2026-11-02'), true);
   assert.equal(api.holidayCalendarContains('2026-11-03'), false);
+});
+
+test('descoberta de feriados não depende da enumeração de Set por Array.from', function () {
+  const api = calculator({ arrayFromEmptyForSets: true });
+  assert.ok(api.holidaysForYear(2026).includes('2026-11-02'));
+  assert.equal(api.holidayCalendarContains('2026-11-02'), true);
+
+  const result = api.calculate(date(2026, 11, 3));
+  assert.equal(dayIso(result.values.inicio2), '2026-10-29');
+  assert.equal(dayIso(result.values.fim2), '2026-10-29');
+  assert.equal(dayIso(result.values.inicio6), '2026-10-25');
+  assert.equal(dayIso(result.values.fim6), '2026-10-28');
+  assert.equal(result.twoSource, 'holiday-rule');
+  assert.equal(result.sixSource, 'holiday-rule');
 });
 
 test('faixa de 2 dias segue o calendário operacional semanal', function () {
