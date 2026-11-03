@@ -45,8 +45,8 @@ function dayIso(value) {
 
 test('API de diagnóstico identifica a versão ativa e reconhece 02/11/2026', function () {
   const api = calculator();
-  assert.equal(api.version, '0.8.0');
-  assert.equal(api.buildId, '2026-10-29-calendar-runtime-check');
+  assert.equal(api.version, '0.8.1');
+  assert.equal(api.buildId, '2026-11-03-set-iteration-fix');
   assert.equal(api.holidayCalendarContains('2026-11-02'), true);
   assert.equal(api.holidayCalendarContains('2026-11-03'), false);
 });
