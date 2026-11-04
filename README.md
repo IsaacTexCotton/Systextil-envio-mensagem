@@ -10,7 +10,7 @@ Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/syste
 
 Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
 
-**Status atual:** versão 0.1.0 adiciona apenas leitura assistida dos campos e prévia do nome do PDF. Ela não consulta, emite nem baixa boletos. O download autenticado com nome personalizado foi validado manualmente antes desta implementação. Permanecem pendentes a confirmação da semântica de sequência/parcela e razão social, a seleção inequívoca do processo e a integração do download ao fluxo completo.
+**Status atual:** versão 0.1.1 adiciona leitura assistida dos campos e prévia do nome do PDF. O userscript usa `@run-at context-menu`: abra o menu do Tampermonkey na aba já aberta do Systextil e selecione o script para executá-lo sem recarregar a página. Requer Tampermonkey 5.6.6239 ou superior. Não consulta, emite nem baixa boletos. Permanecem pendentes a confirmação da semântica de sequência/parcela e razão social, a seleção inequívoca do processo e a integração do download ao fluxo completo.
 
 
 ## Script: Parâmetros da Régua de Cobrança
