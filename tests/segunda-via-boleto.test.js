@@ -45,7 +45,7 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
   const url = 'https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js';
 
-  assert.match(source, /^\/\/ @version\\s+0\\.1\\.4$/m);
+  assert.match(source, /^\/\/ @version\s+0\.1\.4$/m);
   assert.ok(source.includes('// @updateURL     ' + url));
   assert.ok(source.includes('// @downloadURL   ' + url));
 });
