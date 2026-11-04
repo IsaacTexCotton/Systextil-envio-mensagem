@@ -698,7 +698,7 @@ Se a grade não expuser `DataView.currentRow` ou o índice atribuído não refle
 
 ### Causa identificada pelo operador
 
-O operador confirmou que a consulta funciona quando a parcela é digitada manualmente como um único dígito (exemplo: `3`). A implementação anterior tratava `maxLength=2` como largura obrigatória e transformava automaticamente `3` em `03`.
+O operador confirmou que a consulta funciona quando a parcela é digitada manualmente como um único dígito (exemplo: `3`). A implementação anterior usava a largura declarada pelo campo (ou o fallback padrão de 2 caracteres) como tamanho obrigatório e transformava automaticamente `3` em `03`.
 
 `maxLength` define o limite máximo permitido pelo campo, não exige que o valor tenha dois caracteres. O zero acrescentado altera o identificador enviado ao Systextil e faz a consulta retornar títulos de outras parcelas da mesma nota.
 
