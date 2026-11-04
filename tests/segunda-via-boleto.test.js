@@ -44,13 +44,13 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
   assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.4.0');
+  assert.equal(api.version, '0.4.1');
 });
 
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
   const url = 'https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js';
 
-  assert.match(source, /^\/\/ @version\s+0\.4\.0$/m);
+  assert.match(source, /^\/\/ @version\s+0\.4\.1$/m);
   assert.ok(source.includes('// @updateURL     ' + url));
   assert.ok(source.includes('// @downloadURL   ' + url));
 });
@@ -64,18 +64,20 @@ test('valida códigos de consulta sem remover zeros à esquerda', () => {
 });
 
 
-test('completa dois zeros no título e um zero na parcela', () => {
+test('normaliza o número do título e preserva a parcela sem acrescentar zeros', () => {
   const api = carregarApi();
 
   assert.equal(api.normalizarCodigoConsulta('936520', 'Número do título', 8), '00936520');
-  assert.equal(api.normalizarCodigoConsulta('1', 'Parcela', 2), '01');
+  assert.equal(api.preservarCodigoConsulta('3', 'Parcela', 2), '3');
+  assert.equal(api.preservarCodigoConsulta('1', 'Parcela', 2), '1');
+  assert.equal(api.preservarCodigoConsulta('01', 'Parcela', 2), '01');
 });
 
 test('preserva códigos que já estão completos e respeita a largura declarada pelo ERP', () => {
   const api = carregarApi();
 
   assert.equal(api.normalizarCodigoConsulta('00936520', 'Número do título', 8), '00936520');
-  assert.equal(api.normalizarCodigoConsulta('01', 'Parcela', 2), '01');
+  assert.equal(api.preservarCodigoConsulta('01', 'Parcela', 2), '01');
   assert.equal(api.obterLarguraCampo({ maxLength: 9 }, 8), 9);
   assert.equal(api.obterLarguraCampo({ maxLength: 3 }, 2), 3);
   assert.equal(api.obterLarguraCampo({}, 8), 8);
@@ -86,6 +88,10 @@ test('rejeita código maior que a largura do campo sem truncar dígitos', () => 
 
   assert.throws(
     () => api.normalizarCodigoConsulta('123456789', 'Número do título', 8),
+    /Nenhum dígito foi removido/
+  );
+  assert.throws(
+    () => api.preservarCodigoConsulta('123', 'Parcela', 2),
     /Nenhum dígito foi removido/
   );
 });
@@ -140,13 +146,13 @@ test('preenche número e parcela, dispara eventos de atualização e mantém foc
 
   const resultado = api.preencherCamposConsulta({
     titulo: '936520',
-    parcela: '1'
+    parcela: '3'
   });
 
   assert.equal(resultado.titulo, '00936520');
-  assert.equal(resultado.parcela, '01');
+  assert.equal(resultado.parcela, '3');
   assert.equal(campos['num_duplicata.'].value, '00936520');
-  assert.equal(campos['seq_duplicatas.'].value, '01');
+  assert.equal(campos['seq_duplicatas.'].value, '3');
   assert.deepEqual(campos['num_duplicata.'].eventos, ['input', 'change']);
   assert.deepEqual(campos['seq_duplicatas.'].eventos, ['input', 'change']);
   assert.equal(campos['num_duplicata.'].focado, true);
@@ -224,15 +230,15 @@ test('usa o setter nativo do input e InputEvent ao preencher os campos do Systex
 
   const resultado = api.preencherCamposConsulta({
     titulo: '936520',
-    parcela: '1'
+    parcela: '3'
   });
 
   assert.equal(resultado.titulo, '00936520');
-  assert.equal(resultado.parcela, '01');
+  assert.equal(resultado.parcela, '3');
   assert.equal(chamadasSetterNativo, 2);
   assert.equal(chamadasSetterDireto, 0);
   assert.equal(campos['num_duplicata.'].value, '00936520');
-  assert.equal(campos['seq_duplicatas.'].value, '01');
+  assert.equal(campos['seq_duplicatas.'].value, '3');
   assert.equal(eventos.filter(evento => evento.tipo === 'input').length, 2);
   assert.equal(eventos.filter(evento => evento.tipo === 'change').length, 2);
   assert.ok(eventos.filter(evento => evento.tipo === 'input').every(evento =>
@@ -305,6 +311,7 @@ test('não envia F7 nem submete o formulário automaticamente', () => {
   assert.equal(source.includes('.submit('), false);
   assert.equal(source.includes('new KeyboardEvent('), false);
   assert.equal(typeof api.preencherCamposConsulta, 'function');
+  assert.equal(typeof api.preservarCodigoConsulta, 'function');
 });
 
 
