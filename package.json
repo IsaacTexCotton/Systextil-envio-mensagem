@@ -4,7 +4,8 @@
   "private": true,
   "description": "Userscripts Tampermonkey para automação assistida no Systextil.",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "verify": "node scripts/verificar.js"
   },
   "engines": {
     "node": ">=18"
