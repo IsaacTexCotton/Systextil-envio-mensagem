@@ -44,13 +44,13 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
   assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.2.0');
+  assert.equal(api.version, '0.2.1');
 });
 
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
   const url = 'https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js';
 
-  assert.match(source, /^\/\/ @version\s+0\.2\.0$/m);
+  assert.match(source, /^\/\/ @version\s+0\.2\.1$/m);
   assert.ok(source.includes('// @updateURL     ' + url));
   assert.ok(source.includes('// @downloadURL   ' + url));
 });
@@ -61,6 +61,33 @@ test('valida códigos de consulta sem remover zeros à esquerda', () => {
 
   assert.equal(api.validarCodigoConsulta(' 000936312 ', 'Número do título'), '000936312');
   assert.equal(api.validarCodigoConsulta('01', 'Parcela'), '01');
+});
+
+
+test('completa dois zeros no título e um zero na parcela', () => {
+  const api = carregarApi();
+
+  assert.equal(api.normalizarCodigoConsulta('936520', 'Número do título', 8), '00936520');
+  assert.equal(api.normalizarCodigoConsulta('1', 'Parcela', 2), '01');
+});
+
+test('preserva códigos que já estão completos e respeita a largura declarada pelo ERP', () => {
+  const api = carregarApi();
+
+  assert.equal(api.normalizarCodigoConsulta('00936520', 'Número do título', 8), '00936520');
+  assert.equal(api.normalizarCodigoConsulta('01', 'Parcela', 2), '01');
+  assert.equal(api.obterLarguraCampo({ maxLength: 9 }, 8), 9);
+  assert.equal(api.obterLarguraCampo({ maxLength: 3 }, 2), 3);
+  assert.equal(api.obterLarguraCampo({}, 8), 8);
+});
+
+test('rejeita código maior que a largura do campo sem truncar dígitos', () => {
+  const api = carregarApi();
+
+  assert.throws(
+    () => api.normalizarCodigoConsulta('123456789', 'Número do título', 8),
+    /Nenhum dígito foi removido/
+  );
 });
 
 test('rejeita códigos de consulta vazios ou com caracteres inesperados', () => {
@@ -112,13 +139,13 @@ test('preenche número e parcela, dispara eventos de atualização e mantém foc
   const api = carregarApi([formulario]);
 
   const resultado = api.preencherCamposConsulta({
-    titulo: '000936312',
-    parcela: '01'
+    titulo: '936520',
+    parcela: '1'
   });
 
-  assert.equal(resultado.titulo, '000936312');
+  assert.equal(resultado.titulo, '00936520');
   assert.equal(resultado.parcela, '01');
-  assert.equal(campos['num_duplicata.'].value, '000936312');
+  assert.equal(campos['num_duplicata.'].value, '00936520');
   assert.equal(campos['seq_duplicatas.'].value, '01');
   assert.deepEqual(campos['num_duplicata.'].eventos, ['input', 'change']);
   assert.deepEqual(campos['seq_duplicatas.'].eventos, ['input', 'change']);
