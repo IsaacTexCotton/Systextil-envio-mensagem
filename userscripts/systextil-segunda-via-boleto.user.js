@@ -169,6 +169,24 @@
 
 
   /**
+   * Valida identificadores antes de preencher os campos do ERP.
+   * Mantém zeros à esquerda e não converte os valores em números.
+   */
+  function validarCodigoConsulta(valor, rotulo) {
+    const codigo = String(valor ?? "").trim();
+
+    if (!codigo) {
+      throw new Error(rotulo + " não informado.");
+    }
+
+    if (!/^[A-Za-z0-9_-]+$/.test(codigo)) {
+      throw new Error(rotulo + " contém caracteres não permitidos.");
+    }
+
+    return codigo;
+  }
+
+  /**
    * Normaliza códigos numéricos com zeros à esquerda.
    * A largura é derivada do maxlength do campo do ERP quando disponível;
    * caso contrário, usa os tamanhos padrão conhecidos: título 8 e parcela 2.
