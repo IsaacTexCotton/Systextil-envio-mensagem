@@ -720,6 +720,35 @@
     return destino.href;
   }
 
+  function obterRelatorioSelecionado(documento) {
+    if (!documento || typeof documento.querySelectorAll !== "function") {
+      throw new Error("Não foi possível conferir o relatório selecionado pelo Systextil.");
+    }
+
+    const relatorios = [];
+    Array.from(documento.querySelectorAll("select")).forEach(seletor => {
+      const opcoes = Array.from(seletor.options || []);
+      const opcaoSelecionada =
+        (seletor.selectedOptions && seletor.selectedOptions[0]) ||
+        opcoes.find(opcao => opcao.selected);
+
+      const valor = String(opcaoSelecionada?.value ?? "").trim();
+      if (/^[A-Za-z0-9_-]+\.jrprint$/i.test(valor)) {
+        relatorios.push(valor);
+      }
+    });
+
+    if (relatorios.length !== 1) {
+      throw new Error(
+        relatorios.length === 0
+          ? "O Systextil não apresenta um único relatório .jrprint selecionado."
+          : "Mais de um relatório .jrprint está selecionado. Download interrompido."
+      );
+    }
+
+    return relatorios[0];
+  }
+
   function obterUrlPdfSelecionado(janelaPagina, urlBase) {
     if (typeof janelaPagina?.getFileUrl !== "function") {
       throw new Error("A função getFileUrl do Systextil não está disponível. Nenhum download foi iniciado.");
@@ -736,7 +765,15 @@
       throw new Error("A função getFileUrl retornou uma operação assíncrona não suportada. Download interrompido.");
     }
 
-    return validarUrlPdf(url, urlBase);
+    const urlValidada = validarUrlPdf(url, urlBase);
+    const relatorioDaUrl = new URL(urlValidada).searchParams.get("report");
+    const relatorioSelecionado = obterRelatorioSelecionado(janelaPagina.document);
+
+    if (relatorioDaUrl !== relatorioSelecionado) {
+      throw new Error("A URL do PDF não corresponde ao relatório atualmente selecionado no Systextil.");
+    }
+
+    return urlValidada;
   }
 
   function prepararUrlDownloadProcesso(registro, janelaPagina, urlBase, lerRegistrosAtuais) {
@@ -1430,11 +1467,18 @@
 
         iniciarDownloadPdf(preparado.url, nomeArquivo, {
           onload() {
-            concluirDownload(armazenamento, chaveDownload, Date.now());
-            downloadEmAndamento = false;
-            statusDownload.textContent =
+            let avisoConclusao =
               "Download concluído: " + nomeArquivo +
               ". O arquivo foi enviado para a pasta padrão de downloads do Chrome.";
+
+            try {
+              concluirDownload(armazenamento, chaveDownload, Date.now());
+            } catch (_) {
+              avisoConclusao += " Atenção: não foi possível gravar a proteção contra duplicidade; não clique novamente.";
+            }
+
+            downloadEmAndamento = false;
+            statusDownload.textContent = avisoConclusao;
             statusDownload.style.color = "#166534";
             atualizarBotaoDownload();
           },
@@ -1786,11 +1830,13 @@
     mesmoRegistroProcesso,
     selecionarRegistroProcesso,
     obterUrlPdfSelecionado,
+    obterRelatorioSelecionado,
     prepararUrlDownloadProcesso,
     montarChaveDownload,
     reservarDownload,
     concluirDownload,
-    liberarDownload
+    liberarDownload,
+    iniciarDownloadPdf
   });
 
   function ehTelaSuportada() {
