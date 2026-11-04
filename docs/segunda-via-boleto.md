@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-**Status:** Fase 4 v0.4.0 implementada; `npm run verify` aprovado no Codespace em 04/11/2026 (2 userscripts e 76/76 testes); validação operacional da seleção e do download no Systextil ainda pendente  
+**Status:** Fase 4 v0.4.0 integrada; correção v0.4.1 para preservar a parcela sem zero à esquerda em branch de correção; testes e validação operacional desta correção pendentes  
 **Última atualização:** 2026-11-04  
 **Escopo:** obter o PDF de um boleto já existente no Systextil e salvá-lo com nome padronizado em uma pasta de rede.
 
@@ -692,3 +692,30 @@ A implementação está protegida para interromper o fluxo caso a API da grade s
 Se a grade não expuser `DataView.currentRow` ou o índice atribuído não refletir a linha selecionada, a função interromperá antes de chamar `getFileUrl()` ou `GM_download`. Nesse caso, não forçar a seleção: coletar o erro exibido e investigar a API real do ERP.
 
 **Estado:** verificação local da v0.4.0 aprovada pelo operador no Codespace (76/76 testes). A validação operacional da seleção de linha, correspondência do PDF, nome/pasta de destino e bloqueio de duplicidade permanece pendente.
+
+
+## 15. Correção do preenchimento da parcela (v0.4.1 — 04/11/2026)
+
+### Causa identificada pelo operador
+
+O operador confirmou que a consulta funciona quando a parcela é digitada manualmente como um único dígito (exemplo: `3`). A implementação anterior usava a largura declarada pelo campo (ou o fallback padrão de 2 caracteres) como tamanho obrigatório e transformava automaticamente `3` em `03`.
+
+`maxLength` define o limite máximo permitido pelo campo, não exige que o valor tenha dois caracteres. O zero acrescentado altera o identificador enviado ao Systextil e faz a consulta retornar títulos de outras parcelas da mesma nota.
+
+### Alteração da v0.4.1
+
+- O número do título continua sendo normalizado com zeros à esquerda, preservando o comportamento já validado.
+- A parcela passa a ser validada sem alteração: `3` continua `3`; `01` continua `01`.
+- O comprimento máximo do campo continua sendo respeitado; valores maiores que o limite são rejeitados, sem truncamento.
+- Não há mudança no mecanismo de eventos, no F7, na emissão de boleto ou no download.
+
+### Testes de regressão adicionados/ajustados
+
+- título `936520` continua sendo preenchido como `00936520`;
+- parcela `3` permanece `3`;
+- parcela `1` permanece `1`;
+- parcela `01` permanece `01`;
+- parcela acima do comprimento permitido é rejeitada;
+- os testes de preenchimento com setter nativo confirmam que o valor enviado ao campo é `3`, não `03`.
+
+**Estado:** correção implementada na branch `fix/parcela-sem-zero-esquerda`. A execução de `npm run verify` no Codespace e a confirmação da consulta no Systextil ainda estão pendentes. Não atualizar o userscript instalado pela URL da `main` antes da integração.
