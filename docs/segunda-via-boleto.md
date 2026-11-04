@@ -263,6 +263,29 @@ Coberturas:
 
 Os testes foram adicionados, mas ainda **não foram executados** nesta sessão: a tentativa de clonar o repositório no ambiente de execução falhou por indisponibilidade de resolução de `github.com`. Não declarar os testes como aprovados até executar `npm test` localmente (Node.js 18 ou superior).
 
+## 8.4. Ativação sem recarregar a sessão (04/11/2026)
+
+Após o teste da versão 0.1.0, foi identificado que a ativação automática em `document-idle` exigia que a página fosse recarregada depois da instalação/atualização do userscript. Isso não é aceitável no Systextil porque recarregar a tela pode encerrar a sessão autenticada.
+
+A versão `0.1.1` altera o cabeçalho para:
+
+`// @run-at context-menu`
+
+O script passa a ser iniciado sob demanda pelo popup/menu do Tampermonkey na aba ativa. Conforme o changelog oficial do Tampermonkey, scripts com `@run-at context-menu` podem ser iniciados pelo popup a partir da versão 5.6.6239 (25/06/2026). A versão 5.6.6242 (03/09/2026) contém correções posteriores do menu de contexto.
+
+### Instruções de uso
+
+1. Salvar/atualizar a versão 0.1.1 no Tampermonkey.
+2. Manter a aba e a sessão do Systextil abertas, sem recarregar.
+3. Abrir a tela **Consulta de títulos**.
+4. Clicar no ícone do Tampermonkey na barra do Chrome.
+5. Selecionar **Systextil - Segunda Via de Boleto (conferência)** no popup.
+6. O painel de conferência será inserido na página atual. Selecionar o item novamente alterna/fecha o painel se ele já estiver aberto.
+
+Se o item não aparecer no popup, confirmar que o Tampermonkey está atualizado para 5.6.6239 ou superior e que o userscript está habilitado.
+
+A alteração não muda a política de segurança da automação: a versão 0.1.1 continua sem enviar consulta, emitir boleto, abrir Processos agendados ou baixar arquivos.
+
 ## 9. Pendências antes da implementação funcional
 
 1. Confirmar o rótulo e o significado do campo `seq_duplicatas.`.
@@ -298,4 +321,4 @@ Para a nova funcionalidade:
 | Download autenticado com `GM_download` | Validado |
 | Nome personalizado e pasta de rede | Validados |
 | Seleção automática do processo | Pendente |
-| Userscript funcional da segunda via | Ainda não implementado |
+| Userscript da segunda via | v0.1.1: painel de leitura sob demanda; sem emissão ou download integrado |
