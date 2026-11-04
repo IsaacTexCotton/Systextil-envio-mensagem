@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-**Status:** levantamento concluído parcialmente; implementação funcional ainda não iniciada  
+**Status:** levantamento técnico concluído parcialmente; userscript inicial em validação assistida  
 **Última atualização:** 2026-11-04  
 **Escopo:** obter o PDF de um boleto já existente no Systextil e salvá-lo com nome padronizado em uma pasta de rede.
 
@@ -294,6 +294,31 @@ Se o item não aparecer no popup, confirmar que o Tampermonkey está atualizado 
 
 A alteração não muda a política de segurança da automação: a versão 0.1.2 continua sem enviar consulta, emitir boleto, abrir Processos agendados ou baixar arquivos.
 
+## 8.5. Prefixo curto da razão social (04/11/2026)
+
+A versão `0.1.3` ajusta a construção do nome de arquivo para usar somente o começo do nome/razão social, evitando nomes excessivamente longos.
+
+Regra implementada:
+
+- Limite do prefixo: **35 caracteres Unicode**.
+- Prioriza palavras inteiras: não corta uma palavra quando já existe um prefixo anterior que cabe no limite.
+- Acrescenta reticências (`…`) quando o nome original é maior que o prefixo exibido.
+- Se a primeira palavra, sozinha, ultrapassar 35 caracteres, aplica truncamento por caracteres como fallback.
+- Mantém número do título e parcela completos no sufixo.
+- Mantém o limite geral de 180 caracteres para o nome completo do arquivo.
+
+Exemplo:
+
+Entrada:
+`Confecções Industriais e Comércio de Tecidos Ltda.`
+
+Nome final:
+`Confecções Industriais e Comércio… - 936312.01.pdf`
+
+A prévia do painel também mostra somente o início da razão social, e não o texto completo do campo.
+
+O limite de 35 caracteres é uma configuração interna (`MAX_INICIO_RAZAO_SOCIAL`) e poderá ser ajustado depois de validar alguns nomes reais no uso operacional. Os testes verificam o limite, o corte em limite de palavra, as reticências e a preservação do identificador do título/parcela.
+
 ## 9. Pendências antes da implementação funcional
 
 1. Confirmar o rótulo e o significado do campo `seq_duplicatas.`.
@@ -329,4 +354,4 @@ Para a nova funcionalidade:
 | Download autenticado com `GM_download` | Validado |
 | Nome personalizado e pasta de rede | Validados |
 | Seleção automática do processo | Pendente |
-| Userscript da segunda via | v0.1.1: painel de leitura sob demanda; sem emissão ou download integrado |
+| Userscript da segunda via | v0.1.3: painel sob demanda, atalho de teclado e prefixo de razão social limitado; sem emissão ou download integrado |
