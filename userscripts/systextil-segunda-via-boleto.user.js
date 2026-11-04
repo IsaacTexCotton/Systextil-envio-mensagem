@@ -1532,6 +1532,29 @@
     document.body.append(painel);
   }
 
+  function criarElemento(tag, texto, classe) {
+    const elemento = document.createElement(tag);
+
+    if (texto !== undefined) {
+      elemento.textContent = texto;
+    }
+
+    if (classe) {
+      elemento.className = classe;
+    }
+
+    return elemento;
+  }
+
+  function ehTelaConsultaTitulo() {
+    return Array.from(document.forms).some(form =>
+      Object.values(CAMPOS).every(nome => {
+        const campo = form.elements.namedItem(nome);
+        return campo && typeof campo.value === "string";
+      })
+    );
+  }
+
   function montarPainel() {
     if (
       !document.body ||
