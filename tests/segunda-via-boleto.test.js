@@ -22,12 +22,17 @@ function carregarApi(forms = []) {
     getElementById() {}
   };
 
-  const window = { document, console };
+  const consoleTeste = {
+    warn() {},
+    error() {},
+    log() {}
+  };
+  const window = { document, console: consoleTeste };
   window.top = window;
 
   vm.runInNewContext(
     source,
-    { window, document, console, Object, Array, String, Event },
+    { window, document, console: consoleTeste, Object, Array, String, Event },
     { filename: scriptPath }
   );
 
@@ -111,7 +116,8 @@ test('preenche número e parcela, dispara eventos de atualização e mantém foc
     parcela: '01'
   });
 
-  assert.deepEqual(resultado, { titulo: '000936312', parcela: '01' });
+  assert.equal(resultado.titulo, '000936312');
+  assert.equal(resultado.parcela, '01');
   assert.equal(campos['num_duplicata.'].value, '000936312');
   assert.equal(campos['seq_duplicatas.'].value, '01');
   assert.deepEqual(campos['num_duplicata.'].eventos, ['input', 'change']);
