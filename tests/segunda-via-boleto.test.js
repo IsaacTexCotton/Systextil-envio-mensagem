@@ -181,8 +181,8 @@ test('não envia F7 nem submete o formulário automaticamente', () => {
   const api = carregarApi();
 
   assert.match(source, /pressione F7 manualmente/);
-  assert.doesNotMatch(source, /\\.submit\\s*\\(/);
-  assert.doesNotMatch(source, /new KeyboardEvent\\s*\\(/);
+  assert.equal(source.includes('.submit('), false);
+  assert.equal(source.includes('new KeyboardEvent('), false);
   assert.equal(typeof api.preencherCamposConsulta, 'function');
 });
 
