@@ -500,14 +500,17 @@ Não é necessário emitir um boleto apenas para testar a captura. A primeira va
 - expiração de solicitação antiga;
 - confirmação de que a Fase 3 não seleciona nem baixa registros.
 
-## 9. Próximas pendências após a Fase 3
+## 9. Fase 4 — seleção e download do PDF
 
-1. Confirmar no ERP, com títulos conhecidos, a relação entre o horário capturado no clique e `DATA_EXECUCAO.`.
-2. Validar a leitura da grade `NXJForm` em uma operação real sem emitir boleto extra apenas para teste.
-3. Implementar a seleção da linha identificada somente após validar a API do ERP para `DataView.currentRow` e `recordNumber`.
-4. Validar que os campos da linha selecionada ainda correspondem ao processo identificado antes de qualquer download.
-5. Na Fase 4, implementar obtenção e validação da URL PDF com `getFileUrl()` e download via `GM_download`.
-6. Confirmar a origem da razão social usada no nome do arquivo, distinguindo razão social de nome fantasia.
+A Fase 3 foi validada no ERP em 04/11/2026. A versão 0.4.0 implementa o fluxo inicial de seleção do processo e download protegido, em uma branch separada.
+
+Pendências de validação operacional:
+
+1. Confirmar que o Systextil expõe `DataView.currentRow` como índice zero-based e que a atribuição seleciona a linha visual correspondente.
+2. Confirmar que `getFileUrl()`, após a seleção, retorna o PDF do processo identificado.
+3. Confirmar que o Tampermonkey conclui o download com o nome personalizado na pasta padrão do Chrome.
+4. Confirmar que uma segunda tentativa para a mesma solicitação é bloqueada.
+5. Confirmar a razão social capturada de `nome_cliente.`; solicitações antigas sem esse campo exigem preenchimento/confirmação manual no painel.
 
 ## 10. Validação e desenvolvimento no repositório
 
@@ -528,15 +531,15 @@ Para a nova funcionalidade:
 | Fluxo operacional manual | Mapeado |
 | Campo do número do título | Identificado |
 | Campo da parcela | `seq_duplicatas.` preenchido em modo assistido; confirmação operacional pendente |
-| Campo da razão social | Pendente |
+| Campo da razão social | Campo `nome_cliente.` disponível; capturado na solicitação a partir da v0.4.0; painel permite confirmar/corrigir o nome do arquivo |
 | Identificação dos controles da grade | Mapeada |
 | Mensagem de sucesso | Identificada |
-| Geração da URL PDF pelo ERP | Validada |
-| Download autenticado com `GM_download` | Validado |
-| Nome personalizado e pasta de rede | Validados |
-| Identificação única do processo | v0.3.2 prioriza segundo exato e limita tolerância a ±90s; validação operacional pendente |
-| Seleção automática do processo | Pendente; API de seleção ainda não validada |
-| Userscript da segunda via | v0.3.0 integrada à `main`; v0.3.1 em branch com ajuste do preenchimento via setter nativo e `InputEvent`, aguardando `npm test` e validação no ERP |
+| Geração da URL PDF pelo ERP | Validada manualmente; conferência automática por URL implementada na v0.4.0 |
+| Download autenticado com `GM_download` | Validado manualmente; integração com proteção contra duplicidade implementada na v0.4.0 |
+| Nome personalizado e pasta de rede | Regra de nome e pasta padrão do Chrome validadas manualmente |
+| Identificação única do processo | v0.3.2 integrada à `main` e validada operacionalmente em 04/11/2026 |
+| Seleção automática do processo | Implementada via `DataView.currentRow`, com conferência pré/pós-seleção; validação operacional pendente |
+| Userscript da segunda via | v0.3.2 na `main`; v0.4.0 em branch/PR, aguardando testes no Codespace e validação operacional |
 
 
 ## 12. Correção proposta do preenchimento assistido (v0.3.1 — 04/11/2026)
@@ -614,4 +617,76 @@ A comparação do segundo utiliza o timestamp local em precisão de segundos, po
 - Exclusão de processos muito posteriores à solicitação.
 - Manutenção do bloqueio quando dois processos aproximados estão dentro da tolerância e nenhum coincide exatamente.
 
-**Estado:** implementação v0.3.2 preparada em branch; testes automatizados e validação operacional no Systextil pendentes.
+**Estado:** versão v0.3.2 integrada à `main`. Validação operacional confirmada em 04/11/2026: o painel exibiu “Processo único identificado e concluído com sucesso.”
+
+
+## 14. Fase 4 — seleção segura e download do PDF (v0.4.0 — 04/11/2026)
+
+### Fluxo implementado
+
+1. O operador analisa os Processos agendados.
+2. O botão de download só é habilitado quando a análise retorna exatamente um processo concluído com sucesso.
+3. Antes de baixar, o userscript repete a análise com os dados atuais da grade. Se o resultado mudou desde a análise visual, interrompe e solicita nova análise.
+4. O userscript localiza o controlador da grade `DataView.currentRow` (ou `dataView.currentRow`), exige um único controlador verificável e seleciona o índice zero-based correspondente ao registro da Fase 3.
+5. Os campos do registro são relidos antes e depois da seleção. Se título do processo, data/hora ou mensagem tiverem mudado, a seleção é restaurada quando possível e o download é bloqueado.
+6. Com a linha selecionada, chama `getFileUrl()` do contexto da página do Systextil.
+7. A URL é validada antes do download: mesma origem da tela atual, caminho `/systextil/download/<arquivo>.pdf`, parâmetro `ext=pdf`, relatório `.jrprint` e programa `forms.crec.crec_e259`.
+8. O nome do arquivo usa a razão social, título e parcela. A razão social capturada a partir de `nome_cliente.` fica armazenada na solicitação; solicitações registradas antes da v0.4.0 não têm esse campo e exigem confirmação manual no painel.
+9. O download é iniciado somente pelo clique explícito em **Baixar PDF do processo identificado**, usando `GM_download` com `saveAs: false`. O Chrome utiliza a pasta padrão de downloads já configurada:
+   `V:\Financeiro\Contas à Receber\Administrativo - Atualização\Banco\Boletos (2ª via)`.
+
+### Proteção contra ações incorretas
+
+- A emissão do boleto continua manual. O userscript não clica em **Emite boleto**, não envia F7 e não submete o formulário.
+- O userscript não clica em **Download** do ERP; obtém a URL com `getFileUrl()` e usa a API de download do Tampermonkey.
+- Não aceita URLs externas, caminhos que não sejam o endpoint de PDF do Systextil, formatos diferentes de PDF ou relatórios de outro programa.
+- Não baixa quando a seleção da grade não pode ser comprovada.
+- Mantém um registro na `sessionStorage` para bloquear nova tentativa do mesmo processo quando o download já está pendente ou concluído.
+- Uma tentativa que falha libera a reserva para permitir nova tentativa depois da verificação do navegador.
+- O nome do arquivo não contém o caminho de rede; `GM_download` envia apenas o nome. A pasta é controlada pela configuração padrão do Chrome já validada manualmente.
+
+### Permissões Tampermonkey
+
+A versão 0.4.0 troca `@grant none` por permissões específicas:
+
+- `@grant unsafeWindow`: acessar os objetos e funções que pertencem à página Systextil, em particular `DataView.currentRow` e `getFileUrl()`.
+- `@grant GM_download`: solicitar o download autenticado para a pasta padrão do navegador.
+
+O userscript deve ser atualizado pelo verificador do Tampermonkey. Não recarregar a aba autenticada do Systextil.
+
+### Testes automatizados adicionados
+
+- validação de URL relativa correta e bloqueio de origem externa;
+- bloqueio de caminho, extensão, identificador de relatório ou programa inesperados;
+- seleção zero-based com comprovação dos dados antes/depois;
+- interrupção quando a API da grade não está disponível;
+- restauração da seleção anterior quando a URL retornada é inválida;
+- verificação de que `getFileUrl()` só é chamado depois da seleção;
+- chave de deduplicação por solicitação/processo;
+- bloqueio de download pendente/concluído e liberação após falha;
+- confirmação de que análise de processo não dispara download automaticamente.
+
+### Validação operacional pendente
+
+A implementação está protegida para interromper o fluxo caso a API da grade seja diferente da esperada. No Codespace, executar:
+
+```bash
+git fetch origin
+git switch feat/download-pdf-segunda-via
+git pull --ff-only
+npm test
+```
+
+Depois de os testes passarem, validar no Systextil usando um processo real já concluído (sem emitir boleto adicional somente para testar):
+
+1. Atualizar o userscript para 0.4.0 pelo Tampermonkey.
+2. Na página Processos agendados já aberta, ativar o script pelo popup, sem recarregar.
+3. Conferir a razão social no campo do painel.
+4. Clicar em **Analisar processos** e confirmar o processo único.
+5. Clicar em **Baixar PDF do processo identificado**.
+6. Confirmar se o registro visual selecionado corresponde à análise, se o PDF chega à pasta padrão e se o nome está correto.
+7. Clicar novamente no mesmo botão e confirmar que o bloqueio de duplicidade aparece.
+
+Se a grade não expuser `DataView.currentRow` ou o índice atribuído não refletir a linha selecionada, a função interromperá antes de chamar `getFileUrl()` ou `GM_download`. Nesse caso, não forçar a seleção: coletar o erro exibido e investigar a API real do ERP.
+
+**Estado:** código e testes da v0.4.0 preparados em branch; execução de `npm test` e validação operacional desta fase ainda pendentes.
