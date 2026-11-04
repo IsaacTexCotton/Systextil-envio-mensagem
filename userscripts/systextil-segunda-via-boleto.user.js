@@ -1264,6 +1264,7 @@
     preencherCamposConsulta,
     normalizarTextoProcesso,
     interpretarDataHoraProcesso,
+    nomeCampoProcesso,
     analisarProcessos
   });
 
