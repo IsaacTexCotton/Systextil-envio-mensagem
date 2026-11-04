@@ -1044,3 +1044,10 @@ test('recria o painel correto ao atualizar uma versão antiga na tela de Process
   assert.match(bloco, /alternarPainel\(\);/);
   assert.equal(bloco.includes('montarPainel();'), false);
 });
+
+
+test('mantém os helpers necessários para inicialização dos dois painéis', () => {
+  assert.match(source, /function criarElemento\(tag, texto, classe\)/);
+  assert.match(source, /function ehTelaConsultaTitulo\(\)/);
+  assert.match(source, /function ehTelaSuportada\(\)/);
+});
