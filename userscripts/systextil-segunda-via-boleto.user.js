@@ -1,21 +1,22 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.3.2
+// @version      0.4.0
 // @updateURL     https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @downloadURL   https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
-// @description  Consulta e identifica o processo da segunda via sem recarregar a página.
+// @description  Consulta, identifica e baixa a segunda via de boleto sem recarregar a página.
 // @match        http://systextil.texcotton.com.br/systextil/*
 // @match        https://systextil.texcotton.com.br/systextil/*
 // @run-at       context-menu
 // @noframes
-// @grant        none
+// @grant        unsafeWindow
+// @grant        GM_download
 // ==/UserScript==
 
 (function () {
   "use strict";
 
-  const VERSION = "0.3.2";
+  const VERSION = "0.4.0";
   const PANEL_ID = "st-segunda-via-boleto-panel";
 
   const CAMPOS = Object.freeze({
@@ -33,6 +34,9 @@
   const TOLERANCIA_HORARIO_PROCESSO_MS = 90 * 1000;
   const MAX_IDADE_SOLICITACAO_MS = 30 * 60 * 1000;
   const MAX_REGISTROS_PROCESSO = 200;
+  const TEMPO_RESERVA_DOWNLOAD_MS = 15 * 60 * 1000;
+  const PROGRAMA_RELATORIO_BOLETO = "forms.crec.crec_e259";
+  const CHAVE_DOWNLOAD_PREFIXO = "st-segunda-via-boleto:download:";
 
   if (window.top !== window) {
     return;
@@ -567,6 +571,436 @@
     };
   }
 
+
+  function obterControladorGrade(janelaPagina) {
+    const candidatos = [
+      janelaPagina?.DataView,
+      janelaPagina?.dataView
+    ].filter((candidato, indice, lista) =>
+      candidato &&
+      (typeof candidato === "object" || typeof candidato === "function") &&
+      "currentRow" in Object(candidato) &&
+      lista.indexOf(candidato) === indice
+    );
+
+    if (candidatos.length !== 1) {
+      throw new Error(
+        candidatos.length === 0
+          ? "A API de seleção da grade (DataView.currentRow) não está disponível. Nenhum download foi iniciado."
+          : "Mais de um controlador de grade foi encontrado. Seleção interrompida."
+      );
+    }
+
+    const controlador = candidatos[0];
+    const linhaAtual = controlador.currentRow;
+
+    if (
+      linhaAtual !== null &&
+      linhaAtual !== undefined &&
+      !Number.isInteger(Number(linhaAtual))
+    ) {
+      throw new Error("O índice atual da grade não é verificável. Seleção interrompida.");
+    }
+
+    return controlador;
+  }
+
+  function mesmoRegistroProcesso(atual, esperado) {
+    return Boolean(
+      atual &&
+      esperado &&
+      atual.rowIndex === esperado.rowIndex &&
+      normalizarTextoProcesso(atual.titulo) === normalizarTextoProcesso(esperado.titulo) &&
+      String(atual.dataExecucao ?? "").trim() === String(esperado.dataExecucao ?? "").trim() &&
+      normalizarTextoProcesso(atual.mensagem) === normalizarTextoProcesso(esperado.mensagem)
+    );
+  }
+
+  /**
+   * Seleciona somente a linha já identificada pela Fase 3.
+   * O índice da grade é zero-based; recordNumber/linha visual são one-based.
+   * A seleção é confirmada pela leitura dos campos antes e depois da alteração.
+   */
+  function selecionarRegistroProcesso(registro, janelaPagina, lerRegistrosAtuais) {
+    if (
+      !registro ||
+      !Number.isInteger(registro.rowIndex) ||
+      registro.rowIndex < 0 ||
+      typeof lerRegistrosAtuais !== "function"
+    ) {
+      throw new Error("Registro ou leitor da grade inválido. Seleção interrompida.");
+    }
+
+    const controlador = obterControladorGrade(janelaPagina);
+    const linhaAnterior = controlador.currentRow;
+    const registrosAntes = lerRegistrosAtuais();
+    const registroAntes = registrosAntes.find(item => item.rowIndex === registro.rowIndex);
+
+    if (!mesmoRegistroProcesso(registroAntes, registro)) {
+      throw new Error("A linha identificada mudou desde a análise. Analise os processos novamente.");
+    }
+
+    try {
+      controlador.currentRow = registro.rowIndex;
+
+      if (Number(controlador.currentRow) !== registro.rowIndex) {
+        throw new Error("O Systextil não confirmou a seleção da linha identificada.");
+      }
+
+      const registrosDepois = lerRegistrosAtuais();
+      const registroDepois = registrosDepois.find(item => item.rowIndex === registro.rowIndex);
+
+      if (!mesmoRegistroProcesso(registroDepois, registro)) {
+        throw new Error("Os dados da linha mudaram durante a seleção. Download interrompido.");
+      }
+
+      return {
+        controlador,
+        linhaAnterior,
+        linhaSelecionada: registro.rowIndex
+      };
+    } catch (erro) {
+      if (linhaAnterior !== undefined) {
+        try {
+          controlador.currentRow = linhaAnterior;
+        } catch (_) {
+          // A restauração é best effort; o download permanece bloqueado.
+        }
+      }
+      throw erro;
+    }
+  }
+
+  function restaurarSelecaoProcesso(selecao) {
+    if (!selecao?.controlador || selecao.linhaAnterior === undefined) return;
+
+    try {
+      selecao.controlador.currentRow = selecao.linhaAnterior;
+    } catch (_) {
+      // A operação de download já foi bloqueada; não há ação adicional segura.
+    }
+  }
+
+  /**
+   * Valida a URL produzida pelo getFileUrl do próprio Systextil.
+   * Só permite PDF no endpoint local de download e no programa de emissão de boletos.
+   */
+  function validarUrlPdf(urlInformada, urlBase) {
+    let base;
+    let destino;
+
+    try {
+      base = new URL(String(urlBase));
+      destino = new URL(String(urlInformada ?? "").trim(), base);
+    } catch (_) {
+      throw new Error("O Systextil não forneceu uma URL de PDF válida.");
+    }
+
+    if (destino.origin !== base.origin) {
+      throw new Error("A URL do arquivo aponta para outra origem. Download bloqueado.");
+    }
+
+    if (!/^\/systextil\/download\/[^/]+\.pdf$/i.test(destino.pathname)) {
+      throw new Error("A URL não corresponde ao caminho de PDF esperado do Systextil.");
+    }
+
+    if (String(destino.searchParams.get("ext") ?? "").toLowerCase() !== "pdf") {
+      throw new Error("A URL do relatório não confirmou o formato PDF.");
+    }
+
+    const relatorio = String(destino.searchParams.get("report") ?? "");
+    if (!/^[A-Za-z0-9_-]+\.jrprint$/i.test(relatorio)) {
+      throw new Error("O identificador do relatório PDF está ausente ou inválido.");
+    }
+
+    if (destino.searchParams.get("program") !== PROGRAMA_RELATORIO_BOLETO) {
+      throw new Error("A URL não pertence ao programa de emissão de boletos.");
+    }
+
+    return destino.href;
+  }
+
+  function obterRelatorioSelecionado(documento) {
+    if (!documento || typeof documento.querySelectorAll !== "function") {
+      throw new Error("Não foi possível conferir o relatório selecionado pelo Systextil.");
+    }
+
+    const relatorios = [];
+    Array.from(documento.querySelectorAll("select")).forEach(seletor => {
+      const opcoes = Array.from(seletor.options || []);
+      const opcaoSelecionada =
+        (seletor.selectedOptions && seletor.selectedOptions[0]) ||
+        opcoes.find(opcao => opcao.selected);
+
+      const valor = String(opcaoSelecionada?.value ?? "").trim();
+      if (/^[A-Za-z0-9_-]+\.jrprint$/i.test(valor)) {
+        relatorios.push(valor);
+      }
+    });
+
+    if (relatorios.length !== 1) {
+      throw new Error(
+        relatorios.length === 0
+          ? "O Systextil não apresenta um único relatório .jrprint selecionado."
+          : "Mais de um relatório .jrprint está selecionado. Download interrompido."
+      );
+    }
+
+    return relatorios[0];
+  }
+
+  function obterUrlPdfSelecionado(janelaPagina, urlBase) {
+    if (typeof janelaPagina?.getFileUrl !== "function") {
+      throw new Error("A função getFileUrl do Systextil não está disponível. Nenhum download foi iniciado.");
+    }
+
+    let url;
+    try {
+      url = janelaPagina.getFileUrl.call(janelaPagina);
+    } catch (erro) {
+      throw new Error("O Systextil não conseguiu preparar a URL do relatório: " + erro.message);
+    }
+
+    if (url && typeof url.then === "function") {
+      throw new Error("A função getFileUrl retornou uma operação assíncrona não suportada. Download interrompido.");
+    }
+
+    const urlValidada = validarUrlPdf(url, urlBase);
+    const relatorioDaUrl = new URL(urlValidada).searchParams.get("report");
+    const relatorioSelecionado = obterRelatorioSelecionado(janelaPagina.document);
+
+    if (relatorioDaUrl !== relatorioSelecionado) {
+      throw new Error("A URL do PDF não corresponde ao relatório atualmente selecionado no Systextil.");
+    }
+
+    return urlValidada;
+  }
+
+  function prepararUrlDownloadProcesso(registro, janelaPagina, urlBase, lerRegistrosAtuais) {
+    const selecao = selecionarRegistroProcesso(
+      registro,
+      janelaPagina,
+      lerRegistrosAtuais
+    );
+
+    try {
+      const url = obterUrlPdfSelecionado(janelaPagina, urlBase);
+      return { url, selecao };
+    } catch (erro) {
+      restaurarSelecaoProcesso(selecao);
+      throw erro;
+    }
+  }
+
+  function montarChaveDownload(solicitacao, registro) {
+    const identificador = [
+      solicitacao?.solicitadoEm,
+      solicitacao?.titulo,
+      solicitacao?.parcela,
+      registro?.executadoEm ?? registro?.dataExecucao
+    ].join("|");
+
+    let hash = 2166136261;
+    for (let indice = 0; indice < identificador.length; indice += 1) {
+      hash ^= identificador.charCodeAt(indice);
+      hash = Math.imul(hash, 16777619);
+    }
+
+    return CHAVE_DOWNLOAD_PREFIXO + (hash >>> 0).toString(36);
+  }
+
+  function criarErroDownloadIndeterminado() {
+    const erro = new Error(
+      "O resultado da tentativa anterior é indeterminado. Confira manualmente a pasta de destino antes de liberar outro download."
+    );
+    erro.code = "DOWNLOAD_INDETERMINADO";
+    return erro;
+  }
+
+  function reservarDownload(armazenamento, chave, agora) {
+    if (
+      !armazenamento ||
+      typeof armazenamento.getItem !== "function" ||
+      typeof armazenamento.setItem !== "function"
+    ) {
+      throw new Error("O armazenamento da sessão não está disponível para controlar downloads duplicados.");
+    }
+
+    const instante = Number(agora ?? Date.now());
+    const anterior = armazenamento.getItem(chave);
+
+    if (anterior) {
+      let estadoAnterior = null;
+      try {
+        estadoAnterior = JSON.parse(anterior);
+      } catch (_) {
+        throw new Error("Existe um registro de download inválido. Limpe a solicitação somente após conferir o navegador.");
+      }
+
+      if (estadoAnterior?.status === "concluido") {
+        throw new Error("Este processo já teve o download concluído nesta sessão. Download duplicado bloqueado.");
+      }
+
+      if (estadoAnterior?.status === "indeterminado") {
+        throw criarErroDownloadIndeterminado();
+      }
+
+      if (estadoAnterior?.status === "pendente") {
+        const iniciadoEm = Number(estadoAnterior.iniciadoEm);
+        const idadeReserva = instante - iniciadoEm;
+
+        if (!Number.isFinite(iniciadoEm) || idadeReserva < 0) {
+          throw new Error("O horário da reserva de download não é verificável. A tentativa permanece bloqueada.");
+        }
+
+        if (idadeReserva < TEMPO_RESERVA_DOWNLOAD_MS) {
+          throw new Error("Já existe um download deste processo em andamento nesta sessão.");
+        }
+
+        armazenamento.setItem(chave, JSON.stringify({
+          status: "indeterminado",
+          indeterminadoEm: instante,
+          motivo: "reserva-expirada-sem-confirmacao"
+        }));
+        throw criarErroDownloadIndeterminado();
+      }
+
+      throw new Error("O estado salvo para este download é desconhecido. A tentativa permanece bloqueada.");
+    }
+
+    armazenamento.setItem(chave, JSON.stringify({
+      status: "pendente",
+      iniciadoEm: instante
+    }));
+  }
+
+  function concluirDownload(armazenamento, chave, agora) {
+    const estado = JSON.parse(armazenamento.getItem(chave) || "null");
+    if (estado?.status !== "pendente") {
+      throw new Error("A reserva não está pendente; a conclusão do download não foi registrada.");
+    }
+
+    armazenamento.setItem(chave, JSON.stringify({
+      status: "concluido",
+      concluidoEm: Number(agora ?? Date.now())
+    }));
+  }
+
+  function marcarDownloadIndeterminado(armazenamento, chave, agora) {
+    if (
+      !armazenamento ||
+      typeof armazenamento.getItem !== "function" ||
+      typeof armazenamento.setItem !== "function"
+    ) {
+      throw new Error("Não foi possível acessar o armazenamento para marcar o download como indeterminado.");
+    }
+
+    const estado = JSON.parse(armazenamento.getItem(chave) || "null");
+
+    if (estado?.status === "indeterminado") return false;
+    if (estado?.status !== "pendente") {
+      throw new Error("A reserva não está pendente; não foi possível registrar o resultado indeterminado.");
+    }
+
+    armazenamento.setItem(chave, JSON.stringify({
+      status: "indeterminado",
+      indeterminadoEm: Number(agora ?? Date.now()),
+      motivo: "timeout"
+    }));
+    return true;
+  }
+
+  function liberarDownload(armazenamento, chave) {
+    try {
+      const estado = JSON.parse(armazenamento.getItem(chave) || "null");
+      if (estado?.status !== "pendente") return false;
+      armazenamento.removeItem(chave);
+      return true;
+    } catch (_) {
+      // Em caso de estado ilegível ou falha de armazenamento, mantém o bloqueio.
+      return false;
+    }
+  }
+
+  function liberarDownloadIndeterminado(armazenamento, chave) {
+    if (
+      !armazenamento ||
+      typeof armazenamento.getItem !== "function" ||
+      typeof armazenamento.removeItem !== "function"
+    ) {
+      throw new Error("O armazenamento da sessão não permite conferir e liberar a reserva.");
+    }
+
+    const estado = JSON.parse(armazenamento.getItem(chave) || "null");
+    if (estado?.status !== "indeterminado") {
+      throw new Error("A reserva não está no estado indeterminado. Nenhuma liberação foi realizada.");
+    }
+
+    armazenamento.removeItem(chave);
+    return true;
+  }
+
+  function iniciarDownloadPdf(url, nomeArquivo, callbacks) {
+    if (typeof GM_download !== "function") {
+      throw new Error("GM_download não está disponível. Verifique as permissões do Tampermonkey.");
+    }
+
+    let finalizado = false;
+    const finalizar = (tipo, detalhe) => {
+      if (finalizado) return;
+      finalizado = true;
+
+      if (tipo === "sucesso") {
+        callbacks?.onload?.(detalhe);
+      } else if (tipo === "timeout") {
+        callbacks?.ontimeout?.(detalhe);
+      } else {
+        callbacks?.onerror?.(detalhe);
+      }
+    };
+
+    try {
+      return GM_download({
+        url,
+        name: nomeArquivo,
+        saveAs: false,
+        conflictAction: "uniquify",
+        onload: detalhe => finalizar("sucesso", detalhe),
+        onerror: detalhe => finalizar("falha", detalhe),
+        ontimeout: detalhe => finalizar("timeout", detalhe)
+      });
+    } catch (erro) {
+      finalizar("falha", erro);
+      throw erro;
+    }
+  }
+
+  function localizarJanelaPagina(documentoAlvo) {
+    const raiz = typeof unsafeWindow !== "undefined" && unsafeWindow
+      ? unsafeWindow
+      : window;
+    const visitadas = new Set();
+    const pendentes = [raiz];
+
+    while (pendentes.length > 0) {
+      const atual = pendentes.shift();
+      if (!atual || visitadas.has(atual)) continue;
+      visitadas.add(atual);
+
+      try {
+        if (atual.document === documentoAlvo) return atual;
+
+        for (let indice = 0; indice < atual.frames.length; indice += 1) {
+          pendentes.push(atual.frames[indice]);
+        }
+      } catch (_) {
+        // Frames de outra origem são ignorados.
+      }
+    }
+
+    throw new Error("Não foi possível acessar o contexto da página que contém a grade de processos.");
+  }
+
   function coletarDocumentosMesmoDominio(janelaRaiz) {
     const raiz = janelaRaiz || window;
     const documentos = [];
@@ -704,6 +1138,10 @@
     const formulario = formularios[0];
     const titulo = String(formulario.elements.namedItem(CAMPOS.titulo).value ?? "").trim();
     const parcela = String(formulario.elements.namedItem(CAMPOS.parcela).value ?? "").trim();
+    const campoCliente = formulario.elements.namedItem(CAMPOS.cliente);
+    const cliente = campoCliente && typeof campoCliente.value === "string"
+      ? campoCliente.value.trim()
+      : "";
 
     if (!titulo || !parcela) {
       throw new Error("O título e a parcela precisam estar preenchidos antes da emissão.");
@@ -713,6 +1151,7 @@
       solicitadoEm: Date.now(),
       titulo,
       parcela,
+      cliente,
       versao: VERSION
     };
 
@@ -865,7 +1304,7 @@
 
       const limite = criarElemento(
         "p",
-        "A identificação é somente leitura. Nenhuma linha foi selecionada e nenhum PDF foi baixado."
+        "A emissão continua manual. O PDF só será solicitado após a confirmação e o clique explícito em Baixar PDF identificado."
       );
       limite.style.margin = "9px 0 0";
       limite.style.padding = "8px";
@@ -887,7 +1326,7 @@
       right: "18px",
       bottom: "18px",
       zIndex: "2147483000",
-      width: "360px",
+      width: "390px",
       maxWidth: "calc(100vw - 36px)",
       maxHeight: "80vh",
       overflowY: "auto",
@@ -908,7 +1347,7 @@
 
     const explicacao = criarElemento(
       "p",
-      "Analisa a grade em modo somente leitura e procura uma única emissão solicitada nesta sessão."
+      "Analisa a emissão registrada nesta sessão. O PDF só será baixado depois da identificação única e de um clique explícito."
     );
     explicacao.style.margin = "0 0 10px";
     explicacao.style.color = "#475569";
@@ -927,6 +1366,33 @@
     resumo.style.borderRadius = "5px";
     resumo.style.whiteSpace = "pre-line";
 
+    const grupoCliente = criarElemento("label");
+    Object.assign(grupoCliente.style, {
+      display: "grid",
+      gap: "4px",
+      margin: "0 0 10px",
+      color: "#334155",
+      fontWeight: "600"
+    });
+    const rotuloCliente = criarElemento("span", "Razão social para o nome do PDF");
+    rotuloCliente.style.fontSize = "12px";
+    const entradaCliente = document.createElement("input");
+    entradaCliente.type = "text";
+    entradaCliente.value = String(solicitacao?.cliente ?? "");
+    entradaCliente.autocomplete = "off";
+    entradaCliente.maxLength = 160;
+    Object.assign(entradaCliente.style, {
+      width: "100%",
+      boxSizing: "border-box",
+      border: "1px solid #cbd5e1",
+      borderRadius: "5px",
+      padding: "8px",
+      color: "#172033",
+      background: "#ffffff",
+      font: "13px Arial, sans-serif"
+    });
+    grupoCliente.append(rotuloCliente, entradaCliente);
+
     const botaoAnalisar = criarElemento("button", "Analisar processos");
     botaoAnalisar.type = "button";
     Object.assign(botaoAnalisar.style, {
@@ -943,6 +1409,48 @@
     const resultado = criarElemento("div");
     resultado.style.marginTop = "10px";
     resultado.setAttribute("aria-live", "polite");
+
+    const botaoBaixar = criarElemento("button", "Baixar PDF do processo identificado");
+    botaoBaixar.type = "button";
+    botaoBaixar.disabled = true;
+    Object.assign(botaoBaixar.style, {
+      width: "100%",
+      border: "0",
+      borderRadius: "5px",
+      padding: "9px 12px",
+      marginTop: "10px",
+      background: "#0f766e",
+      color: "#ffffff",
+      fontWeight: "600",
+      cursor: "not-allowed",
+      opacity: "0.55"
+    });
+
+    const statusDownload = criarElemento(
+      "p",
+      "O download ainda não foi solicitado."
+    );
+    statusDownload.style.margin = "8px 0 0";
+    statusDownload.style.color = "#475569";
+    statusDownload.setAttribute("aria-live", "polite");
+
+    const botaoLiberarDownload = criarElemento(
+      "button",
+      "Já conferi a pasta; liberar nova tentativa"
+    );
+    botaoLiberarDownload.type = "button";
+    Object.assign(botaoLiberarDownload.style, {
+      display: "none",
+      width: "100%",
+      marginTop: "8px",
+      border: "1px solid #d97706",
+      borderRadius: "5px",
+      padding: "8px 10px",
+      background: "#fffbeb",
+      color: "#92400e",
+      fontWeight: "600",
+      cursor: "pointer"
+    });
 
     const botaoLimpar = criarElemento("button", "Limpar solicitação registrada");
     botaoLimpar.type = "button";
@@ -968,24 +1476,206 @@
       cursor: "pointer"
     });
 
+    let ultimaAnalise = null;
+    let downloadEmAndamento = false;
+    let downloadIndeterminado = null;
+
+    function atualizarBotaoDownload() {
+      const habilitado =
+        !downloadEmAndamento &&
+        !downloadIndeterminado &&
+        ultimaAnalise?.status === "sucesso" &&
+        Boolean(String(entradaCliente.value ?? "").trim());
+
+      botaoBaixar.disabled = !habilitado;
+      botaoBaixar.style.cursor = habilitado ? "pointer" : "not-allowed";
+      botaoBaixar.style.opacity = habilitado ? "1" : "0.55";
+    }
+
+    entradaCliente.addEventListener("input", atualizarBotaoDownload);
+
+    botaoLiberarDownload.addEventListener("click", function () {
+      if (!downloadIndeterminado?.persistido) return;
+
+      const confirmado = window.confirm(
+        "Você conferiu manualmente a pasta de destino e confirmou que o PDF desta tentativa NÃO foi salvo? " +
+        "Somente confirme se tiver certeza. Uma nova tentativa poderá gerar um arquivo adicional."
+      );
+      if (!confirmado) return;
+
+      try {
+        liberarDownloadIndeterminado(
+          downloadIndeterminado.armazenamento,
+          downloadIndeterminado.chave
+        );
+        downloadIndeterminado = null;
+        botaoLiberarDownload.style.display = "none";
+        ultimaAnalise = null;
+        statusDownload.textContent =
+          "Reserva liberada após sua confirmação. Analise novamente o processo antes de solicitar outro download.";
+        statusDownload.style.color = "#475569";
+        atualizarBotaoDownload();
+      } catch (erro) {
+        statusDownload.textContent = erro.message;
+        statusDownload.style.color = "#b91c1c";
+      }
+    });
+
     botaoAnalisar.addEventListener("click", function () {
       try {
         const pedidoAtual = recuperarSolicitacaoEmissao();
         const registros = lerRegistrosProcessos();
         const analise = analisarProcessos(registros, pedidoAtual, Date.now());
+        ultimaAnalise = analise;
         renderizarResultadoProcessos(resultado, analise);
+        atualizarBotaoDownload();
       } catch (erro) {
+        ultimaAnalise = { status: "nao-verificavel" };
         renderizarResultadoProcessos(resultado, {
           status: "nao-verificavel",
           mensagem: erro.message
         });
+        atualizarBotaoDownload();
+      }
+    });
+
+    botaoBaixar.addEventListener("click", function () {
+      if (downloadEmAndamento) return;
+
+      let armazenamento = null;
+      let chaveDownload = null;
+      let reservaCriada = false;
+
+      try {
+        botaoBaixar.disabled = true;
+        downloadEmAndamento = true;
+        atualizarBotaoDownload();
+        statusDownload.textContent = "Conferindo a emissão, selecionando o registro e preparando o PDF...";
+
+        const pedidoAtual = recuperarSolicitacaoEmissao();
+        const nomeArquivo = montarNomeArquivo({
+          cliente: entradaCliente.value,
+          titulo: pedidoAtual?.titulo,
+          parcela: pedidoAtual?.parcela
+        });
+
+        const registrosAtuais = lerRegistrosProcessos();
+        const analiseAtual = analisarProcessos(registrosAtuais, pedidoAtual, Date.now());
+
+        if (analiseAtual.status !== "sucesso" || !analiseAtual.registro) {
+          throw new Error(
+            analiseAtual.mensagem ||
+            "O processo não está mais confirmado como concluído. Analise novamente."
+          );
+        }
+
+        if (
+          ultimaAnalise?.status !== "sucesso" ||
+          !mesmoRegistroProcesso(analiseAtual.registro, ultimaAnalise.registro)
+        ) {
+          ultimaAnalise = analiseAtual;
+          renderizarResultadoProcessos(resultado, analiseAtual);
+          throw new Error("O resultado mudou desde a última análise. Confira a linha e clique novamente em Baixar PDF.");
+        }
+
+        const localizado = localizarFormularioProcessos();
+        const janelaPagina = localizarJanelaPagina(localizado.documento);
+        const preparado = prepararUrlDownloadProcesso(
+          analiseAtual.registro,
+          janelaPagina,
+          janelaPagina.location.href,
+          lerRegistrosProcessos
+        );
+
+        armazenamento = janelaPagina.sessionStorage;
+        chaveDownload = montarChaveDownload(pedidoAtual, analiseAtual.registro);
+        reservarDownload(armazenamento, chaveDownload, Date.now());
+        reservaCriada = true;
+
+        iniciarDownloadPdf(preparado.url, nomeArquivo, {
+          onload() {
+            let avisoConclusao =
+              "Download concluído: " + nomeArquivo +
+              ". O arquivo foi enviado para a pasta padrão de downloads do Chrome.";
+
+            try {
+              concluirDownload(armazenamento, chaveDownload, Date.now());
+            } catch (_) {
+              avisoConclusao += " Atenção: não foi possível gravar a proteção contra duplicidade; não clique novamente.";
+            }
+
+            downloadEmAndamento = false;
+            statusDownload.textContent = avisoConclusao;
+            statusDownload.style.color = "#166534";
+            atualizarBotaoDownload();
+          },
+          onerror(erro) {
+            liberarDownload(armazenamento, chaveDownload);
+            downloadEmAndamento = false;
+            const detalhe = erro?.error || erro?.details || erro?.message || "erro não detalhado";
+            statusDownload.textContent =
+              "Download não concluído (" + String(detalhe) +
+              "). A falha foi reportada pelo navegador; confira a pasta antes de uma nova tentativa.";
+            statusDownload.style.color = "#b91c1c";
+            atualizarBotaoDownload();
+          },
+          ontimeout(erro) {
+            downloadEmAndamento = false;
+            try {
+              marcarDownloadIndeterminado(armazenamento, chaveDownload, Date.now());
+              downloadIndeterminado = {
+                armazenamento,
+                chave: chaveDownload,
+                persistido: true
+              };
+              botaoLiberarDownload.style.display = "block";
+              statusDownload.textContent =
+                "Resultado indeterminado: o navegador excedeu o tempo de espera e não confirmou se o PDF foi salvo. " +
+                "A proteção contra duplicidade foi mantida. Confira a pasta de destino antes de liberar uma nova tentativa.";
+            } catch (falhaEstado) {
+              downloadIndeterminado = {
+                armazenamento,
+                chave: chaveDownload,
+                persistido: false
+              };
+              statusDownload.textContent =
+                "O download excedeu o tempo de espera. Não foi possível atualizar o estado da reserva (" +
+                falhaEstado.message +
+                "). A tentativa permanece bloqueada nesta tela; não solicite outro download.";
+            }
+            statusDownload.style.color = "#92400e";
+            atualizarBotaoDownload();
+          }
+        });
+      } catch (erro) {
+        downloadEmAndamento = false;
+
+        if (erro?.code === "DOWNLOAD_INDETERMINADO" && armazenamento && chaveDownload) {
+          downloadIndeterminado = {
+            armazenamento,
+            chave: chaveDownload,
+            persistido: true
+          };
+          botaoLiberarDownload.style.display = "block";
+          statusDownload.style.color = "#92400e";
+        } else {
+          if (reservaCriada) liberarDownload(armazenamento, chaveDownload);
+          statusDownload.style.color = "#b91c1c";
+        }
+
+        statusDownload.textContent = erro.message;
+        atualizarBotaoDownload();
       }
     });
 
     botaoLimpar.addEventListener("click", function () {
       limparSolicitacaoEmissao();
       resumo.textContent = "Solicitação local removida. Para uma nova análise, registre outra emissão na tela Consulta de títulos.";
+      entradaCliente.value = "";
+      ultimaAnalise = null;
       resultado.replaceChildren();
+      statusDownload.textContent = "Solicitação removida.";
+      atualizarBotaoDownload();
     });
 
     fechar.addEventListener("click", function () {
@@ -997,8 +1687,12 @@
       titulo,
       explicacao,
       resumo,
+      grupoCliente,
       botaoAnalisar,
       resultado,
+      botaoBaixar,
+      statusDownload,
+      botaoLiberarDownload,
       botaoLimpar,
       fechar
     );
@@ -1305,7 +1999,7 @@
     document.body.append(painel);
   }
 
-  // API local de diagnóstico: não consulta nem altera o ERP.
+  // API local de diagnóstico: funções de leitura e validação; ações de seleção/download exigem clique explícito.
   window.__systextilSegundaViaBoletoDebug = Object.freeze({
     version: VERSION,
     fieldNames: CAMPOS,
@@ -1320,7 +2014,21 @@
     normalizarTextoProcesso,
     interpretarDataHoraProcesso,
     nomeCampoProcesso,
-    analisarProcessos
+    analisarProcessos,
+    validarUrlPdf,
+    obterControladorGrade,
+    mesmoRegistroProcesso,
+    selecionarRegistroProcesso,
+    obterUrlPdfSelecionado,
+    obterRelatorioSelecionado,
+    prepararUrlDownloadProcesso,
+    montarChaveDownload,
+    reservarDownload,
+    concluirDownload,
+    marcarDownloadIndeterminado,
+    liberarDownload,
+    liberarDownloadIndeterminado,
+    iniciarDownloadPdf
   });
 
   function ehTelaSuportada() {
@@ -1398,9 +2106,9 @@
   if (painelAtual && painelAtual.dataset.scriptVersion !== VERSION) {
     painelAtual.remove();
     window.__systextilSegundaViaBoletoLoaded = false;
-    window.__systextilSegundaViaBoletoLoaded = true;
-    montarPainel();
-  } else {
-    alternarPainel();
   }
+
+  // Reavalia a tela atual para montar o painel correto, inclusive em
+  // Processos agendados após atualizar uma versão antiga já aberta.
+  alternarPainel();
 })();
