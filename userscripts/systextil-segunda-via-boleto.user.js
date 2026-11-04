@@ -1434,6 +1434,24 @@
     statusDownload.style.color = "#475569";
     statusDownload.setAttribute("aria-live", "polite");
 
+    const botaoLiberarDownload = criarElemento(
+      "button",
+      "Já conferi a pasta; liberar nova tentativa"
+    );
+    botaoLiberarDownload.type = "button";
+    Object.assign(botaoLiberarDownload.style, {
+      display: "none",
+      width: "100%",
+      marginTop: "8px",
+      border: "1px solid #d97706",
+      borderRadius: "5px",
+      padding: "8px 10px",
+      background: "#fffbeb",
+      color: "#92400e",
+      fontWeight: "600",
+      cursor: "pointer"
+    });
+
     const botaoLimpar = criarElemento("button", "Limpar solicitação registrada");
     botaoLimpar.type = "button";
     Object.assign(botaoLimpar.style, {
@@ -1460,10 +1478,12 @@
 
     let ultimaAnalise = null;
     let downloadEmAndamento = false;
+    let downloadIndeterminado = null;
 
     function atualizarBotaoDownload() {
       const habilitado =
         !downloadEmAndamento &&
+        !downloadIndeterminado &&
         ultimaAnalise?.status === "sucesso" &&
         Boolean(String(entradaCliente.value ?? "").trim());
 
@@ -1473,6 +1493,33 @@
     }
 
     entradaCliente.addEventListener("input", atualizarBotaoDownload);
+
+    botaoLiberarDownload.addEventListener("click", function () {
+      if (!downloadIndeterminado?.persistido) return;
+
+      const confirmado = window.confirm(
+        "Você conferiu manualmente a pasta de destino e confirmou que o PDF desta tentativa NÃO foi salvo? " +
+        "Somente confirme se tiver certeza. Uma nova tentativa poderá gerar um arquivo adicional."
+      );
+      if (!confirmado) return;
+
+      try {
+        liberarDownloadIndeterminado(
+          downloadIndeterminado.armazenamento,
+          downloadIndeterminado.chave
+        );
+        downloadIndeterminado = null;
+        botaoLiberarDownload.style.display = "none";
+        ultimaAnalise = null;
+        statusDownload.textContent =
+          "Reserva liberada após sua confirmação. Analise novamente o processo antes de solicitar outro download.";
+        statusDownload.style.color = "#475569";
+        atualizarBotaoDownload();
+      } catch (erro) {
+        statusDownload.textContent = erro.message;
+        statusDownload.style.color = "#b91c1c";
+      }
+    });
 
     botaoAnalisar.addEventListener("click", function () {
       try {
@@ -1568,16 +1615,55 @@
             const detalhe = erro?.error || erro?.details || erro?.message || "erro não detalhado";
             statusDownload.textContent =
               "Download não concluído (" + String(detalhe) +
-              "). Nenhuma confirmação foi registrada; confira o navegador antes de tentar novamente.";
+              "). A falha foi reportada pelo navegador; confira a pasta antes de uma nova tentativa.";
             statusDownload.style.color = "#b91c1c";
+            atualizarBotaoDownload();
+          },
+          ontimeout(erro) {
+            downloadEmAndamento = false;
+            try {
+              marcarDownloadIndeterminado(armazenamento, chaveDownload, Date.now());
+              downloadIndeterminado = {
+                armazenamento,
+                chave: chaveDownload,
+                persistido: true
+              };
+              botaoLiberarDownload.style.display = "block";
+              statusDownload.textContent =
+                "Resultado indeterminado: o navegador excedeu o tempo de espera e não confirmou se o PDF foi salvo. " +
+                "A proteção contra duplicidade foi mantida. Confira a pasta de destino antes de liberar uma nova tentativa.";
+            } catch (falhaEstado) {
+              downloadIndeterminado = {
+                armazenamento,
+                chave: chaveDownload,
+                persistido: false
+              };
+              statusDownload.textContent =
+                "O download excedeu o tempo de espera. Não foi possível atualizar o estado da reserva (" +
+                falhaEstado.message +
+                "). A tentativa permanece bloqueada nesta tela; não solicite outro download.";
+            }
+            statusDownload.style.color = "#92400e";
             atualizarBotaoDownload();
           }
         });
       } catch (erro) {
-        if (reservaCriada) liberarDownload(armazenamento, chaveDownload);
         downloadEmAndamento = false;
+
+        if (erro?.code === "DOWNLOAD_INDETERMINADO" && armazenamento && chaveDownload) {
+          downloadIndeterminado = {
+            armazenamento,
+            chave: chaveDownload,
+            persistido: true
+          };
+          botaoLiberarDownload.style.display = "block";
+          statusDownload.style.color = "#92400e";
+        } else {
+          if (reservaCriada) liberarDownload(armazenamento, chaveDownload);
+          statusDownload.style.color = "#b91c1c";
+        }
+
         statusDownload.textContent = erro.message;
-        statusDownload.style.color = "#b91c1c";
         atualizarBotaoDownload();
       }
     });
@@ -1606,6 +1692,7 @@
       resultado,
       botaoBaixar,
       statusDownload,
+      botaoLiberarDownload,
       botaoLimpar,
       fechar
     );
@@ -1938,7 +2025,9 @@
     montarChaveDownload,
     reservarDownload,
     concluirDownload,
+    marcarDownloadIndeterminado,
     liberarDownload,
+    liberarDownloadIndeterminado,
     iniciarDownloadPdf
   });
 
