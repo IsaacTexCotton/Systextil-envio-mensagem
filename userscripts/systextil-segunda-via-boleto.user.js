@@ -1914,9 +1914,9 @@
   if (painelAtual && painelAtual.dataset.scriptVersion !== VERSION) {
     painelAtual.remove();
     window.__systextilSegundaViaBoletoLoaded = false;
-    window.__systextilSegundaViaBoletoLoaded = true;
-    montarPainel();
-  } else {
-    alternarPainel();
   }
+
+  // Reavalia a tela atual para montar o painel correto, inclusive em
+  // Processos agendados após atualizar uma versão antiga já aberta.
+  alternarPainel();
 })();
