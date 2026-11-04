@@ -1,21 +1,22 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.3.2
+// @version      0.4.0
 // @updateURL     https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @downloadURL   https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
-// @description  Consulta e identifica o processo da segunda via sem recarregar a página.
+// @description  Consulta, identifica e baixa a segunda via de boleto sem recarregar a página.
 // @match        http://systextil.texcotton.com.br/systextil/*
 // @match        https://systextil.texcotton.com.br/systextil/*
 // @run-at       context-menu
 // @noframes
-// @grant        none
+// @grant        unsafeWindow
+// @grant        GM_download
 // ==/UserScript==
 
 (function () {
   "use strict";
 
-  const VERSION = "0.3.2";
+  const VERSION = "0.4.0";
   const PANEL_ID = "st-segunda-via-boleto-panel";
 
   const CAMPOS = Object.freeze({
@@ -33,6 +34,9 @@
   const TOLERANCIA_HORARIO_PROCESSO_MS = 90 * 1000;
   const MAX_IDADE_SOLICITACAO_MS = 30 * 60 * 1000;
   const MAX_REGISTROS_PROCESSO = 200;
+  const TEMPO_RESERVA_DOWNLOAD_MS = 15 * 60 * 1000;
+  const PROGRAMA_RELATORIO_BOLETO = "forms.crec.crec_e259";
+  const CHAVE_DOWNLOAD_PREFIXO = "st-segunda-via-boleto:download:";
 
   if (window.top !== window) {
     return;
@@ -567,6 +571,319 @@
     };
   }
 
+
+  function obterControladorGrade(janelaPagina) {
+    const candidatos = [
+      janelaPagina?.DataView,
+      janelaPagina?.dataView
+    ].filter((candidato, indice, lista) =>
+      candidato &&
+      (typeof candidato === "object" || typeof candidato === "function") &&
+      "currentRow" in Object(candidato) &&
+      lista.indexOf(candidato) === indice
+    );
+
+    if (candidatos.length !== 1) {
+      throw new Error(
+        candidatos.length === 0
+          ? "A API de seleção da grade (DataView.currentRow) não está disponível. Nenhum download foi iniciado."
+          : "Mais de um controlador de grade foi encontrado. Seleção interrompida."
+      );
+    }
+
+    const controlador = candidatos[0];
+    const linhaAtual = controlador.currentRow;
+
+    if (
+      linhaAtual !== null &&
+      linhaAtual !== undefined &&
+      !Number.isInteger(Number(linhaAtual))
+    ) {
+      throw new Error("O índice atual da grade não é verificável. Seleção interrompida.");
+    }
+
+    return controlador;
+  }
+
+  function mesmoRegistroProcesso(atual, esperado) {
+    return Boolean(
+      atual &&
+      esperado &&
+      atual.rowIndex === esperado.rowIndex &&
+      normalizarTextoProcesso(atual.titulo) === normalizarTextoProcesso(esperado.titulo) &&
+      String(atual.dataExecucao ?? "").trim() === String(esperado.dataExecucao ?? "").trim() &&
+      normalizarTextoProcesso(atual.mensagem) === normalizarTextoProcesso(esperado.mensagem)
+    );
+  }
+
+  /**
+   * Seleciona somente a linha já identificada pela Fase 3.
+   * O índice da grade é zero-based; recordNumber/linha visual são one-based.
+   * A seleção é confirmada pela leitura dos campos antes e depois da alteração.
+   */
+  function selecionarRegistroProcesso(registro, janelaPagina, lerRegistrosAtuais) {
+    if (
+      !registro ||
+      !Number.isInteger(registro.rowIndex) ||
+      registro.rowIndex < 0 ||
+      typeof lerRegistrosAtuais !== "function"
+    ) {
+      throw new Error("Registro ou leitor da grade inválido. Seleção interrompida.");
+    }
+
+    const controlador = obterControladorGrade(janelaPagina);
+    const linhaAnterior = controlador.currentRow;
+    const registrosAntes = lerRegistrosAtuais();
+    const registroAntes = registrosAntes.find(item => item.rowIndex === registro.rowIndex);
+
+    if (!mesmoRegistroProcesso(registroAntes, registro)) {
+      throw new Error("A linha identificada mudou desde a análise. Analise os processos novamente.");
+    }
+
+    try {
+      controlador.currentRow = registro.rowIndex;
+
+      if (Number(controlador.currentRow) !== registro.rowIndex) {
+        throw new Error("O Systextil não confirmou a seleção da linha identificada.");
+      }
+
+      const registrosDepois = lerRegistrosAtuais();
+      const registroDepois = registrosDepois.find(item => item.rowIndex === registro.rowIndex);
+
+      if (!mesmoRegistroProcesso(registroDepois, registro)) {
+        throw new Error("Os dados da linha mudaram durante a seleção. Download interrompido.");
+      }
+
+      return {
+        controlador,
+        linhaAnterior,
+        linhaSelecionada: registro.rowIndex
+      };
+    } catch (erro) {
+      if (linhaAnterior !== undefined) {
+        try {
+          controlador.currentRow = linhaAnterior;
+        } catch (_) {
+          // A restauração é best effort; o download permanece bloqueado.
+        }
+      }
+      throw erro;
+    }
+  }
+
+  function restaurarSelecaoProcesso(selecao) {
+    if (!selecao?.controlador || selecao.linhaAnterior === undefined) return;
+
+    try {
+      selecao.controlador.currentRow = selecao.linhaAnterior;
+    } catch (_) {
+      // A operação de download já foi bloqueada; não há ação adicional segura.
+    }
+  }
+
+  /**
+   * Valida a URL produzida pelo getFileUrl do próprio Systextil.
+   * Só permite PDF no endpoint local de download e no programa de emissão de boletos.
+   */
+  function validarUrlPdf(urlInformada, urlBase) {
+    let base;
+    let destino;
+
+    try {
+      base = new URL(String(urlBase));
+      destino = new URL(String(urlInformada ?? "").trim(), base);
+    } catch (_) {
+      throw new Error("O Systextil não forneceu uma URL de PDF válida.");
+    }
+
+    if (destino.origin !== base.origin) {
+      throw new Error("A URL do arquivo aponta para outra origem. Download bloqueado.");
+    }
+
+    if (!/^\/systextil\/download\/[^/]+\.pdf$/i.test(destino.pathname)) {
+      throw new Error("A URL não corresponde ao caminho de PDF esperado do Systextil.");
+    }
+
+    if (String(destino.searchParams.get("ext") ?? "").toLowerCase() !== "pdf") {
+      throw new Error("A URL do relatório não confirmou o formato PDF.");
+    }
+
+    const relatorio = String(destino.searchParams.get("report") ?? "");
+    if (!/^[A-Za-z0-9_-]+\.jrprint$/i.test(relatorio)) {
+      throw new Error("O identificador do relatório PDF está ausente ou inválido.");
+    }
+
+    if (destino.searchParams.get("program") !== PROGRAMA_RELATORIO_BOLETO) {
+      throw new Error("A URL não pertence ao programa de emissão de boletos.");
+    }
+
+    return destino.href;
+  }
+
+  function obterUrlPdfSelecionado(janelaPagina, urlBase) {
+    if (typeof janelaPagina?.getFileUrl !== "function") {
+      throw new Error("A função getFileUrl do Systextil não está disponível. Nenhum download foi iniciado.");
+    }
+
+    let url;
+    try {
+      url = janelaPagina.getFileUrl.call(janelaPagina);
+    } catch (erro) {
+      throw new Error("O Systextil não conseguiu preparar a URL do relatório: " + erro.message);
+    }
+
+    if (url && typeof url.then === "function") {
+      throw new Error("A função getFileUrl retornou uma operação assíncrona não suportada. Download interrompido.");
+    }
+
+    return validarUrlPdf(url, urlBase);
+  }
+
+  function prepararUrlDownloadProcesso(registro, janelaPagina, urlBase, lerRegistrosAtuais) {
+    const selecao = selecionarRegistroProcesso(
+      registro,
+      janelaPagina,
+      lerRegistrosAtuais
+    );
+
+    try {
+      const url = obterUrlPdfSelecionado(janelaPagina, urlBase);
+      return { url, selecao };
+    } catch (erro) {
+      restaurarSelecaoProcesso(selecao);
+      throw erro;
+    }
+  }
+
+  function montarChaveDownload(solicitacao, registro) {
+    const identificador = [
+      solicitacao?.solicitadoEm,
+      solicitacao?.titulo,
+      solicitacao?.parcela,
+      registro?.executadoEm ?? registro?.dataExecucao
+    ].join("|");
+
+    let hash = 2166136261;
+    for (let indice = 0; indice < identificador.length; indice += 1) {
+      hash ^= identificador.charCodeAt(indice);
+      hash = Math.imul(hash, 16777619);
+    }
+
+    return CHAVE_DOWNLOAD_PREFIXO + (hash >>> 0).toString(36);
+  }
+
+  function reservarDownload(armazenamento, chave, agora) {
+    if (
+      !armazenamento ||
+      typeof armazenamento.getItem !== "function" ||
+      typeof armazenamento.setItem !== "function"
+    ) {
+      throw new Error("O armazenamento da sessão não está disponível para controlar downloads duplicados.");
+    }
+
+    const instante = Number(agora ?? Date.now());
+    const anterior = armazenamento.getItem(chave);
+
+    if (anterior) {
+      let estadoAnterior = null;
+      try {
+        estadoAnterior = JSON.parse(anterior);
+      } catch (_) {
+        throw new Error("Existe um registro de download inválido. Limpe a solicitação antes de continuar.");
+      }
+
+      if (estadoAnterior?.status === "concluido") {
+        throw new Error("Este processo já teve o download concluído nesta sessão. Download duplicado bloqueado.");
+      }
+
+      if (
+        estadoAnterior?.status === "pendente" &&
+        instante - Number(estadoAnterior.iniciadoEm) < TEMPO_RESERVA_DOWNLOAD_MS
+      ) {
+        throw new Error("Já existe um download deste processo em andamento nesta sessão.");
+      }
+    }
+
+    armazenamento.setItem(chave, JSON.stringify({
+      status: "pendente",
+      iniciadoEm: instante
+    }));
+  }
+
+  function concluirDownload(armazenamento, chave, agora) {
+    armazenamento.setItem(chave, JSON.stringify({
+      status: "concluido",
+      concluidoEm: Number(agora ?? Date.now())
+    }));
+  }
+
+  function liberarDownload(armazenamento, chave) {
+    try {
+      armazenamento.removeItem(chave);
+    } catch (_) {
+      // Sem confirmação de conclusão, a próxima tentativa poderá ser bloqueada.
+    }
+  }
+
+  function iniciarDownloadPdf(url, nomeArquivo, callbacks) {
+    if (typeof GM_download !== "function") {
+      throw new Error("GM_download não está disponível. Verifique as permissões do Tampermonkey.");
+    }
+
+    let finalizado = false;
+    const finalizar = (tipo, detalhe) => {
+      if (finalizado) return;
+      finalizado = true;
+
+      if (tipo === "sucesso") {
+        callbacks?.onload?.(detalhe);
+      } else {
+        callbacks?.onerror?.(detalhe);
+      }
+    };
+
+    try {
+      return GM_download({
+        url,
+        name: nomeArquivo,
+        saveAs: false,
+        conflictAction: "uniquify",
+        onload: detalhe => finalizar("sucesso", detalhe),
+        onerror: detalhe => finalizar("falha", detalhe),
+        ontimeout: detalhe => finalizar("falha", detalhe)
+      });
+    } catch (erro) {
+      finalizar("falha", erro);
+      throw erro;
+    }
+  }
+
+  function localizarJanelaPagina(documentoAlvo) {
+    const raiz = typeof unsafeWindow !== "undefined" && unsafeWindow
+      ? unsafeWindow
+      : window;
+    const visitadas = new Set();
+    const pendentes = [raiz];
+
+    while (pendentes.length > 0) {
+      const atual = pendentes.shift();
+      if (!atual || visitadas.has(atual)) continue;
+      visitadas.add(atual);
+
+      try {
+        if (atual.document === documentoAlvo) return atual;
+
+        for (let indice = 0; indice < atual.frames.length; indice += 1) {
+          pendentes.push(atual.frames[indice]);
+        }
+      } catch (_) {
+        // Frames de outra origem são ignorados.
+      }
+    }
+
+    throw new Error("Não foi possível acessar o contexto da página que contém a grade de processos.");
+  }
+
   function coletarDocumentosMesmoDominio(janelaRaiz) {
     const raiz = janelaRaiz || window;
     const documentos = [];
@@ -704,6 +1021,10 @@
     const formulario = formularios[0];
     const titulo = String(formulario.elements.namedItem(CAMPOS.titulo).value ?? "").trim();
     const parcela = String(formulario.elements.namedItem(CAMPOS.parcela).value ?? "").trim();
+    const campoCliente = formulario.elements.namedItem(CAMPOS.cliente);
+    const cliente = campoCliente && typeof campoCliente.value === "string"
+      ? campoCliente.value.trim()
+      : "";
 
     if (!titulo || !parcela) {
       throw new Error("O título e a parcela precisam estar preenchidos antes da emissão.");
@@ -713,6 +1034,7 @@
       solicitadoEm: Date.now(),
       titulo,
       parcela,
+      cliente,
       versao: VERSION
     };
 
@@ -865,7 +1187,7 @@
 
       const limite = criarElemento(
         "p",
-        "A identificação é somente leitura. Nenhuma linha foi selecionada e nenhum PDF foi baixado."
+        "A emissão continua manual. O PDF só será solicitado após a confirmação e o clique explícito em Baixar PDF identificado."
       );
       limite.style.margin = "9px 0 0";
       limite.style.padding = "8px";
@@ -887,7 +1209,7 @@
       right: "18px",
       bottom: "18px",
       zIndex: "2147483000",
-      width: "360px",
+      width: "390px",
       maxWidth: "calc(100vw - 36px)",
       maxHeight: "80vh",
       overflowY: "auto",
@@ -908,7 +1230,7 @@
 
     const explicacao = criarElemento(
       "p",
-      "Analisa a grade em modo somente leitura e procura uma única emissão solicitada nesta sessão."
+      "Analisa a emissão registrada nesta sessão. O PDF só será baixado depois da identificação única e de um clique explícito."
     );
     explicacao.style.margin = "0 0 10px";
     explicacao.style.color = "#475569";
@@ -927,6 +1249,33 @@
     resumo.style.borderRadius = "5px";
     resumo.style.whiteSpace = "pre-line";
 
+    const grupoCliente = criarElemento("label");
+    Object.assign(grupoCliente.style, {
+      display: "grid",
+      gap: "4px",
+      margin: "0 0 10px",
+      color: "#334155",
+      fontWeight: "600"
+    });
+    const rotuloCliente = criarElemento("span", "Razão social para o nome do PDF");
+    rotuloCliente.style.fontSize = "12px";
+    const entradaCliente = document.createElement("input");
+    entradaCliente.type = "text";
+    entradaCliente.value = String(solicitacao?.cliente ?? "");
+    entradaCliente.autocomplete = "off";
+    entradaCliente.maxLength = 160;
+    Object.assign(entradaCliente.style, {
+      width: "100%",
+      boxSizing: "border-box",
+      border: "1px solid #cbd5e1",
+      borderRadius: "5px",
+      padding: "8px",
+      color: "#172033",
+      background: "#ffffff",
+      font: "13px Arial, sans-serif"
+    });
+    grupoCliente.append(rotuloCliente, entradaCliente);
+
     const botaoAnalisar = criarElemento("button", "Analisar processos");
     botaoAnalisar.type = "button";
     Object.assign(botaoAnalisar.style, {
@@ -943,6 +1292,30 @@
     const resultado = criarElemento("div");
     resultado.style.marginTop = "10px";
     resultado.setAttribute("aria-live", "polite");
+
+    const botaoBaixar = criarElemento("button", "Baixar PDF do processo identificado");
+    botaoBaixar.type = "button";
+    botaoBaixar.disabled = true;
+    Object.assign(botaoBaixar.style, {
+      width: "100%",
+      border: "0",
+      borderRadius: "5px",
+      padding: "9px 12px",
+      marginTop: "10px",
+      background: "#0f766e",
+      color: "#ffffff",
+      fontWeight: "600",
+      cursor: "not-allowed",
+      opacity: "0.55"
+    });
+
+    const statusDownload = criarElemento(
+      "p",
+      "O download ainda não foi solicitado."
+    );
+    statusDownload.style.margin = "8px 0 0";
+    statusDownload.style.color = "#475569";
+    statusDownload.setAttribute("aria-live", "polite");
 
     const botaoLimpar = criarElemento("button", "Limpar solicitação registrada");
     botaoLimpar.type = "button";
@@ -968,24 +1341,131 @@
       cursor: "pointer"
     });
 
+    let ultimaAnalise = null;
+    let downloadEmAndamento = false;
+
+    function atualizarBotaoDownload() {
+      const habilitado =
+        !downloadEmAndamento &&
+        ultimaAnalise?.status === "sucesso" &&
+        Boolean(String(entradaCliente.value ?? "").trim());
+
+      botaoBaixar.disabled = !habilitado;
+      botaoBaixar.style.cursor = habilitado ? "pointer" : "not-allowed";
+      botaoBaixar.style.opacity = habilitado ? "1" : "0.55";
+    }
+
+    entradaCliente.addEventListener("input", atualizarBotaoDownload);
+
     botaoAnalisar.addEventListener("click", function () {
       try {
         const pedidoAtual = recuperarSolicitacaoEmissao();
         const registros = lerRegistrosProcessos();
         const analise = analisarProcessos(registros, pedidoAtual, Date.now());
+        ultimaAnalise = analise;
         renderizarResultadoProcessos(resultado, analise);
+        atualizarBotaoDownload();
       } catch (erro) {
+        ultimaAnalise = { status: "nao-verificavel" };
         renderizarResultadoProcessos(resultado, {
           status: "nao-verificavel",
           mensagem: erro.message
         });
+        atualizarBotaoDownload();
+      }
+    });
+
+    botaoBaixar.addEventListener("click", function () {
+      if (downloadEmAndamento) return;
+
+      let armazenamento = null;
+      let chaveDownload = null;
+      let reservaCriada = false;
+
+      try {
+        botaoBaixar.disabled = true;
+        downloadEmAndamento = true;
+        atualizarBotaoDownload();
+        statusDownload.textContent = "Conferindo a emissão, selecionando o registro e preparando o PDF...";
+
+        const pedidoAtual = recuperarSolicitacaoEmissao();
+        const nomeArquivo = montarNomeArquivo({
+          cliente: entradaCliente.value,
+          titulo: pedidoAtual?.titulo,
+          parcela: pedidoAtual?.parcela
+        });
+
+        const registrosAtuais = lerRegistrosProcessos();
+        const analiseAtual = analisarProcessos(registrosAtuais, pedidoAtual, Date.now());
+
+        if (analiseAtual.status !== "sucesso" || !analiseAtual.registro) {
+          throw new Error(
+            analiseAtual.mensagem ||
+            "O processo não está mais confirmado como concluído. Analise novamente."
+          );
+        }
+
+        if (
+          ultimaAnalise?.status !== "sucesso" ||
+          !mesmoRegistroProcesso(analiseAtual.registro, ultimaAnalise.registro)
+        ) {
+          ultimaAnalise = analiseAtual;
+          renderizarResultadoProcessos(resultado, analiseAtual);
+          throw new Error("O resultado mudou desde a última análise. Confira a linha e clique novamente em Baixar PDF.");
+        }
+
+        const localizado = localizarFormularioProcessos();
+        const janelaPagina = localizarJanelaPagina(localizado.documento);
+        const preparado = prepararUrlDownloadProcesso(
+          analiseAtual.registro,
+          janelaPagina,
+          janelaPagina.location.href,
+          lerRegistrosProcessos
+        );
+
+        armazenamento = janelaPagina.sessionStorage;
+        chaveDownload = montarChaveDownload(pedidoAtual, analiseAtual.registro);
+        reservarDownload(armazenamento, chaveDownload, Date.now());
+        reservaCriada = true;
+
+        iniciarDownloadPdf(preparado.url, nomeArquivo, {
+          onload() {
+            concluirDownload(armazenamento, chaveDownload, Date.now());
+            downloadEmAndamento = false;
+            statusDownload.textContent =
+              "Download concluído: " + nomeArquivo +
+              ". O arquivo foi enviado para a pasta padrão de downloads do Chrome.";
+            statusDownload.style.color = "#166534";
+            atualizarBotaoDownload();
+          },
+          onerror(erro) {
+            liberarDownload(armazenamento, chaveDownload);
+            downloadEmAndamento = false;
+            const detalhe = erro?.error || erro?.details || erro?.message || "erro não detalhado";
+            statusDownload.textContent =
+              "Download não concluído (" + String(detalhe) +
+              "). Nenhuma confirmação foi registrada; confira o navegador antes de tentar novamente.";
+            statusDownload.style.color = "#b91c1c";
+            atualizarBotaoDownload();
+          }
+        });
+      } catch (erro) {
+        if (reservaCriada) liberarDownload(armazenamento, chaveDownload);
+        downloadEmAndamento = false;
+        statusDownload.textContent = erro.message;
+        statusDownload.style.color = "#b91c1c";
+        atualizarBotaoDownload();
       }
     });
 
     botaoLimpar.addEventListener("click", function () {
       limparSolicitacaoEmissao();
       resumo.textContent = "Solicitação local removida. Para uma nova análise, registre outra emissão na tela Consulta de títulos.";
+      entradaCliente.value = "";
+      ultimaAnalise = null;
       resultado.replaceChildren();
+      statusDownload.textContent = "Solicitação removida.";
+      atualizarBotaoDownload();
     });
 
     fechar.addEventListener("click", function () {
@@ -997,35 +1477,15 @@
       titulo,
       explicacao,
       resumo,
+      grupoCliente,
       botaoAnalisar,
       resultado,
+      botaoBaixar,
+      statusDownload,
       botaoLimpar,
       fechar
     );
     document.body.append(painel);
-  }
-
-  function criarElemento(tag, texto, classe) {
-    const elemento = document.createElement(tag);
-
-    if (texto !== undefined) {
-      elemento.textContent = texto;
-    }
-
-    if (classe) {
-      elemento.className = classe;
-    }
-
-    return elemento;
-  }
-
-  function ehTelaConsultaTitulo() {
-    return Array.from(document.forms).some(form =>
-      Object.values(CAMPOS).every(nome => {
-        const campo = form.elements.namedItem(nome);
-        return campo && typeof campo.value === "string";
-      })
-    );
   }
 
   function montarPainel() {
@@ -1305,7 +1765,7 @@
     document.body.append(painel);
   }
 
-  // API local de diagnóstico: não consulta nem altera o ERP.
+  // API local de diagnóstico: funções de leitura e validação; ações de seleção/download exigem clique explícito.
   window.__systextilSegundaViaBoletoDebug = Object.freeze({
     version: VERSION,
     fieldNames: CAMPOS,
@@ -1320,7 +1780,17 @@
     normalizarTextoProcesso,
     interpretarDataHoraProcesso,
     nomeCampoProcesso,
-    analisarProcessos
+    analisarProcessos,
+    validarUrlPdf,
+    obterControladorGrade,
+    mesmoRegistroProcesso,
+    selecionarRegistroProcesso,
+    obterUrlPdfSelecionado,
+    prepararUrlDownloadProcesso,
+    montarChaveDownload,
+    reservarDownload,
+    concluirDownload,
+    liberarDownload
   });
 
   function ehTelaSuportada() {
