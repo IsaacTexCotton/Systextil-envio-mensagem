@@ -81,23 +81,31 @@ Não marque uma tarefa como concluída apenas porque o código foi escrito ou co
 
 ## 8. Testes e verificação
 
-Comandos atualmente disponíveis na raiz:
+Comandos disponíveis na raiz:
+
+```bash
+npm run verify
+```
+
+Esse é o comando padrão antes de enviar uma alteração. O verificador (`scripts/verificar.js`) usa somente APIs nativas do Node.js, exige Node.js >=18, descobre recursivamente os arquivos `*.user.js` em `userscripts/`, executa `node --check` em cada um e, se a sintaxe estiver correta, executa a suíte completa com `node --test`. Qualquer etapa com falha retorna código diferente de zero.
+
+Para executar somente a suíte de testes:
 
 ```bash
 npm test
 ```
 
-O comando executa `node --test`. O projeto exige Node.js >=18 e não possui scripts de lint ou build configurados.
-
-Também é possível verificar a sintaxe de um userscript alterado com:
+Para verificar manualmente um único userscript:
 
 ```bash
 node --check userscripts/<arquivo>.user.js
 ```
 
+O projeto não possui scripts de lint, build ou CI/CD. Não confunda a verificação local com validação operacional no ERP.
+
 Regras:
 
-- Execute `npm test` após qualquer alteração em JavaScript e antes de declarar a alteração validada.
+- Execute `npm run verify` após alterações em JavaScript e antes de declarar a alteração validada.
 - Se houver mais de uma suíte, execute a suíte completa, não apenas o teste novo.
 - Não declare que executou um comando, teste ou validação se não o executou. Informe o ambiente e o resultado real.
 - Não apague testes, não reduza assertions e não transforme testes de integração em mocks mais fracos sem justificativa explícita e revisão humana.

@@ -15,7 +15,7 @@
 
 ## Testes e validação
 
-- [ ] `npm test` executado nesta branch.
+- [ ] `npm run verify` executado nesta branch (sintaxe de todos os userscripts + suíte completa).
 - [ ] Resultado informado com contagem e ambiente.
 - [ ] Testes novos cobrem sucesso, falhas e regressões relevantes.
 - [ ] Nenhum teste foi removido ou enfraquecido sem justificativa aprovada.

@@ -29,7 +29,7 @@
 
 ### Testes
 
-- [ ] `npm test` foi executado na versão exata da branch e passou.
+- [ ] `npm run verify` foi executado na versão exata da branch e passou (sintaxe de todos os userscripts + suíte completa).
 - [ ] Os novos testes verificam o requisito real, e não apenas a implementação escolhida pela IA.
 - [ ] Nenhum teste existente foi removido ou enfraquecido sem justificativa aprovada.
 - [ ] Há cenários negativos, de ambiguidade e de regressão relevantes.
@@ -95,6 +95,9 @@ Esta observação não altera o código da PR #14; é um ponto de revisão regis
 ## 6. Evidências de validação
 
 Toda PR deve registrar, no mínimo:
+
+O comando padrão de verificação local é `npm run verify`. Ele verifica a sintaxe dos userscripts e executa a suíte completa de testes, sem dependências externas ou CI/CD.
+
 
 - comando executado e resultado real;
 - branch/commit testado;
