@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-**Status:** Fase 3 integrada à `main`; correção do preenchimento assistido v0.3.1 em branch, pendente de testes e validação operacional no Systextil  
+**Status:** `main` contém a versão 0.3.2 (Fase 3 validada operacionalmente). A Fase 4 (v0.4.0) está na PR #14, branch `feat/download-pdf-segunda-via`. O operador informou 74/74 testes aprovados no Codespace em 04/11/2026; a validação operacional da Fase 4 no Systextil continua pendente.  
 **Última atualização:** 2026-11-04  
 **Escopo:** obter o PDF de um boleto já existente no Systextil e salvá-lo com nome padronizado em uma pasta de rede.
 
@@ -536,7 +536,7 @@ Para a nova funcionalidade:
 | Nome personalizado e pasta de rede | Validados |
 | Identificação única do processo | v0.3.2 prioriza segundo exato e limita tolerância a ±90s; validação operacional pendente |
 | Seleção automática do processo | Pendente; API de seleção ainda não validada |
-| Userscript da segunda via | v0.3.0 integrada à `main`; v0.3.1 em branch com ajuste do preenchimento via setter nativo e `InputEvent`, aguardando `npm test` e validação no ERP |
+| Userscript da segunda via | v0.3.2 integrada à `main` e validada na Fase 3; Fase 4 v0.4.0 na PR #14, com 74/74 testes informados como aprovados e validação operacional pendente |
 
 
 ## 12. Correção proposta do preenchimento assistido (v0.3.1 — 04/11/2026)
@@ -580,7 +580,7 @@ O uso do setter nativo busca evitar que mecanismos de rastreamento de alteraçõ
 
 Se a consulta ainda retornar o cliente incorreto, interromper o uso do preenchimento assistido e manter a digitação manual. A próxima investigação deverá identificar o mecanismo específico do formulário Systextil (por exemplo, o estado mantido pelo gerenciador de campos), em vez de acrescentar eventos sintéticos sem evidência.
 
-**Estado:** correção v0.3.1 preparada em branch; testes automatizados e validação operacional ainda pendentes.
+**Estado:** correção v0.3.1 integrada à `main`. O operador informou 55 testes aprovados na suíte após a correção. A validação operacional específica do preenchimento por setter nativo não foi registrada separadamente; posteriormente, a Fase 3 foi validada com a versão 0.3.2.
 
 
 ## 13. Correção da correspondência de horário dos Processos agendados (v0.3.2 — 04/11/2026)
@@ -614,4 +614,25 @@ A comparação do segundo utiliza o timestamp local em precisão de segundos, po
 - Exclusão de processos muito posteriores à solicitação.
 - Manutenção do bloqueio quando dois processos aproximados estão dentro da tolerância e nenhum coincide exatamente.
 
-**Estado:** implementação v0.3.2 preparada em branch; testes automatizados e validação operacional no Systextil pendentes.
+**Estado:** v0.3.2 integrada à `main`; o operador confirmou operacionalmente no Systextil que a análise identificou um processo único e concluído com sucesso em 04/11/2026.
+
+
+## 14. Fase 4 — seleção e download do PDF (v0.4.0 — PR #14)
+
+A Fase 4 está em desenvolvimento na branch `feat/download-pdf-segunda-via`, na [PR #14](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/14). Ela implementa a seleção da linha identificada, a conferência da URL gerada pelo Systextil e o download explícito via `GM_download`.
+
+### Testes automatizados
+
+Em 04/11/2026, o operador informou a execução de `npm test` no Codespace com **74 testes aprovados e 0 falhas**. Esse resultado cobre as suítes locais; não substitui a validação operacional da integração no ERP.
+
+### Validação operacional pendente
+
+Antes da integração da PR #14, ainda é necessário confirmar no Systextil real:
+
+1. Se `DataView.currentRow` seleciona a linha visual correspondente ao processo identificado.
+2. Se `getFileUrl()` retorna a URL do mesmo relatório `.jrprint` que ficou selecionado.
+3. Se o PDF é salvo na pasta padrão do Chrome com nome e conteúdo corretos.
+4. Se uma segunda tentativa para o mesmo processo é bloqueada.
+5. Se o comportamento de timeout do download não libera uma nova tentativa quando o resultado anterior é indeterminado.
+
+Não emitir um boleto adicional apenas para testar. Priorizar um processo concluído que já exista. A PR permanece em rascunho até concluir a verificação operacional e a revisão de segurança.
