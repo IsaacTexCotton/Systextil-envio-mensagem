@@ -44,13 +44,13 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
   assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.3.1');
+  assert.equal(api.version, '0.3.2');
 });
 
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
   const url = 'https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js';
 
-  assert.match(source, /^\/\/ @version\s+0\.3\.1$/m);
+  assert.match(source, /^\/\/ @version\s+0\.3\.2$/m);
   assert.ok(source.includes('// @updateURL     ' + url));
   assert.ok(source.includes('// @downloadURL   ' + url));
 });
@@ -380,7 +380,7 @@ test('ignora processos anteriores ao horário registrado da solicitação', () =
 
 test('interrompe quando mais de um processo corresponde ao horário da solicitação', () => {
   const api = carregarApi();
-  const solicitadoEm = new Date(2026, 10, 4, 11, 30, 0).getTime();
+  const solicitadoEm = new Date(2026, 10, 4, 11, 30, 30).getTime();
   const agora = new Date(2026, 10, 4, 11, 35, 0).getTime();
 
   const resultado = api.analisarProcessos([
@@ -404,6 +404,71 @@ test('interrompe quando mais de um processo corresponde ao horário da solicita�
 
   assert.equal(resultado.status, 'ambiguo');
   assert.equal(resultado.candidatos, 2);
+});
+
+test('prioriza o processo com segundo exato da solicitação sobre outro processo próximo', () => {
+  const api = carregarApi();
+  const solicitadoEm = new Date(2026, 10, 4, 12, 12, 38, 725).getTime();
+  const agora = new Date(2026, 10, 4, 12, 15, 0).getTime();
+
+  const resultado = api.analisarProcessos([
+    {
+      rowIndex: 0,
+      titulo: 'Emissão de boletos com registro',
+      dataExecucao: '04/11/2026 12:12:38',
+      mensagem: 'Processo concluído com sucesso.'
+    },
+    {
+      rowIndex: 1,
+      titulo: 'Emissão de boletos com registro',
+      dataExecucao: '04/11/2026 12:11:59',
+      mensagem: 'Processo concluído com sucesso.'
+    },
+    {
+      rowIndex: 2,
+      titulo: 'Emissão de boletos com registro',
+      dataExecucao: '04/11/2026 11:57:45',
+      mensagem: 'Processo concluído com sucesso.'
+    }
+  ], {
+    solicitadoEm,
+    titulo: '000944246',
+    parcela: '01'
+  }, agora);
+
+  assert.equal(resultado.status, 'sucesso');
+  assert.equal(resultado.candidatos, 1);
+  assert.equal(resultado.registro.visualIndex, 1);
+  assert.equal(resultado.registro.dataExecucao, '04/11/2026 12:12:38');
+});
+
+test('não associa processo que ocorreu muito depois da solicitação', () => {
+  const api = carregarApi();
+  const solicitadoEm = new Date(2026, 10, 4, 11, 30, 0).getTime();
+  const agora = new Date(2026, 10, 4, 11, 50, 0).getTime();
+
+  const resultado = api.analisarProcessos([
+    {
+      rowIndex: 0,
+      titulo: 'Emissão de boletos com registro',
+      dataExecucao: '04/11/2026 11:30:00',
+      mensagem: 'Processo concluído com sucesso.'
+    },
+    {
+      rowIndex: 1,
+      titulo: 'Emissão de boletos com registro',
+      dataExecucao: '04/11/2026 11:42:00',
+      mensagem: 'Processo concluído com sucesso.'
+    }
+  ], {
+    solicitadoEm,
+    titulo: '00936520',
+    parcela: '01'
+  }, agora);
+
+  assert.equal(resultado.status, 'sucesso');
+  assert.equal(resultado.candidatos, 1);
+  assert.equal(resultado.registro.visualIndex, 1);
 });
 
 test('classifica processo ainda sem mensagem final como em andamento', () => {
