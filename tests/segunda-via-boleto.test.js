@@ -35,6 +35,13 @@ function carregarApi() {
   return window.__systextilSegundaViaBoletoDebug;
 }
 
+test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
+  assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
+
+  const api = carregarApi();
+  assert.equal(api.version, '0.1.1');
+});
+
 test('identifica os nomes de campos mapeados', () => {
   const api = carregarApi();
 
