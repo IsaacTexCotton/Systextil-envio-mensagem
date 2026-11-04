@@ -46,8 +46,8 @@ test('registra o atalho Ctrl+Alt+B para alternar a conferência', () => {
   assert.match(source, /event\.ctrlKey/);
   assert.match(source, /event\.altKey/);
   assert.match(source, /Ctrl \+ Alt \+ B/);
-  assert.match(source, /window\\.addEventListener\\("keydown"/);
-  assert.match(source, /event\\.stopImmediatePropagation\\(\\)/);
+  assert.ok(source.includes('window.addEventListener("keydown"'));
+  assert.ok(source.includes("event.stopImmediatePropagation()"));
 });
 
 test('identifica os nomes de campos mapeados', () => {
