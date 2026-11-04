@@ -800,7 +800,7 @@ test('timeout transforma a reserva pendente em estado indeterminado e exige libe
   assert.equal(JSON.parse(storage.getItem(chave)).status, 'indeterminado');
 
   assert.equal(api.liberarDownloadIndeterminado(storage, chave), true);
-  assert.equal(storage.getItem(chave), undefined);
+  assert.equal(storage.getItem(chave), null);
   assert.doesNotThrow(() => api.reservarDownload(storage, chave, 4000));
 });
 
