@@ -14,7 +14,7 @@ const scriptPath = path.join(
 );
 const source = fs.readFileSync(scriptPath, 'utf8');
 
-function carregarApi(forms = []) {
+function carregarApi(forms = [], propriedadesJanela = {}) {
   const document = {
     body: null,
     forms,
@@ -27,7 +27,7 @@ function carregarApi(forms = []) {
     error() {},
     log() {}
   };
-  const window = { document, console: consoleTeste };
+  const window = { document, console: consoleTeste, ...propriedadesJanela };
   window.top = window;
 
   vm.runInNewContext(
@@ -44,13 +44,13 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
   assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.3.0');
+  assert.equal(api.version, '0.3.1');
 });
 
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
   const url = 'https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js';
 
-  assert.match(source, /^\/\/ @version\s+0\.3\.0$/m);
+  assert.match(source, /^\/\/ @version\s+0\.3\.1$/m);
   assert.ok(source.includes('// @updateURL     ' + url));
   assert.ok(source.includes('// @downloadURL   ' + url));
 });
@@ -150,6 +150,94 @@ test('preenche número e parcela, dispara eventos de atualização e mantém foc
   assert.deepEqual(campos['num_duplicata.'].eventos, ['input', 'change']);
   assert.deepEqual(campos['seq_duplicatas.'].eventos, ['input', 'change']);
   assert.equal(campos['num_duplicata.'].focado, true);
+});
+
+test('usa o setter nativo do input e InputEvent ao preencher os campos do Systextil', () => {
+  let chamadasSetterNativo = 0;
+  let chamadasSetterDireto = 0;
+
+  function HTMLInputElement() {}
+  Object.defineProperty(HTMLInputElement.prototype, 'value', {
+    configurable: true,
+    get() {
+      return this.__valorReal || '';
+    },
+    set(valor) {
+      chamadasSetterNativo += 1;
+      this.__valorReal = String(valor);
+    }
+  });
+
+  class InputEventTeste extends Event {
+    constructor(tipo, opcoes = {}) {
+      super(tipo, opcoes);
+      this.inputType = opcoes.inputType;
+      this.data = opcoes.data;
+    }
+  }
+
+  const eventos = [];
+  function criarCampo() {
+    const campo = Object.create(HTMLInputElement.prototype);
+    Object.defineProperties(campo, {
+      value: {
+        configurable: true,
+        get() {
+          return this.__valorReal || '';
+        },
+        set(valor) {
+          chamadasSetterDireto += 1;
+          this.__valorReal = String(valor);
+        }
+      },
+      disabled: { value: false },
+      readOnly: { value: false }
+    });
+    campo.dispatchEvent = evento => {
+      eventos.push({
+        tipo: evento.type,
+        inputType: evento.inputType,
+        data: evento.data
+      });
+      return true;
+    };
+    campo.focus = () => {};
+    return campo;
+  }
+
+  const campos = {
+    'num_duplicata.': criarCampo(),
+    'seq_duplicatas.': criarCampo()
+  };
+  const formulario = {
+    elements: {
+      namedItem(nome) {
+        return campos[nome] || null;
+      }
+    }
+  };
+  const api = carregarApi([formulario], {
+    HTMLInputElement,
+    InputEvent: InputEventTeste,
+    Event
+  });
+
+  const resultado = api.preencherCamposConsulta({
+    titulo: '936520',
+    parcela: '1'
+  });
+
+  assert.equal(resultado.titulo, '00936520');
+  assert.equal(resultado.parcela, '01');
+  assert.equal(chamadasSetterNativo, 2);
+  assert.equal(chamadasSetterDireto, 0);
+  assert.equal(campos['num_duplicata.'].value, '00936520');
+  assert.equal(campos['seq_duplicatas.'].value, '01');
+  assert.equal(eventos.filter(evento => evento.tipo === 'input').length, 2);
+  assert.equal(eventos.filter(evento => evento.tipo === 'change').length, 2);
+  assert.ok(eventos.filter(evento => evento.tipo === 'input').every(evento =>
+    evento.inputType === 'insertReplacementText'
+  ));
 });
 
 test('não preenche quando há mais de um formulário compatível', () => {
