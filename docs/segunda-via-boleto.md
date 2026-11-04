@@ -427,14 +427,87 @@ O painel exibe os valores normalizados após o preenchimento para facilitar a co
 - prioridade ao \`maxlength\` configurado no campo do ERP;
 - rejeição de valores maiores que o campo, sem truncamento.
 
-## 9. Próximas pendências após a Fase 2
+## 8.10. Fase 3 — identificação de Processos agendados (04/11/2026)
 
-1. Confirmar no ERP, com um título conhecido, que `seq_duplicatas.` corresponde à parcela.
-2. Confirmar a origem da razão social usada no nome do arquivo, distinguindo razão social de nome fantasia.
-3. Confirmar a relação entre o momento em que se aciona **Emite boleto** e a data/hora que aparece na grade de processos.
-4. Implementar uma rotina de seleção única e validar a correspondência entre os campos da grade e `DataView.currentRow`.
-5. Criar testes locais para normalização de nome, caracteres inválidos, correspondência de processo, ambiguidade, estados de sucesso/falha e construção/validação da URL.
-6. Fazer primeiro um teste com processo já concluído, sem emitir outro boleto; depois, com autorização do operador, validar o ciclo completo com um único título controlado.
+A versão \`0.3.0\` adiciona a captura local da solicitação de emissão e um painel de análise da grade de Processos agendados.
+
+### Captura da solicitação
+
+- Ao ativar o userscript na tela Consulta de títulos, instala um listener de captura de clique para \`id="BTNEmetirBoletos."\` e \`name="CMDEmetirBoletos"\`.
+- O listener registra o instante do clique e os valores atuais de título/parcela antes de o evento seguir para o Systextil.
+- O listener não cancela, não simula e não repete o clique; a emissão continua sendo uma ação manual do operador.
+- O registro é salvo em \`sessionStorage\` da origem do ERP, para ser lido na tela de Processos agendados na mesma sessão ou em janela aberta a partir dela.
+- A solicitação expira após **30 minutos**, evitando reaproveitar um horário antigo para uma emissão posterior.
+- O registro local contém somente horário, número do título, parcela e versão do userscript. Nenhum dado é transmitido para fora do navegador.
+
+### Leitura da grade
+
+A versão procura um único formulário com os campos repetidos documentados:
+
+- \`titulo.\`: nome do processo;
+- \`DATA_EXECUCAO.\`: data/hora de execução;
+- \`MSG_EXCEPTION.\`: mensagem/resultado.
+
+As linhas seguintes são mapeadas como \`titulo.0\`, \`titulo.1\` e assim por diante, acompanhando os campos de data/hora e mensagem. O mapeamento visual conhecido permanece: primeiro registro = linha 1 / \`currentRow=0\` / \`recordNumber=1\`; segundo registro = linha 2 / \`currentRow=1\` / \`recordNumber=2\`.
+
+### Critérios de identificação
+
+Um registro só é considerado candidato se:
+
+1. O título do processo for exatamente \`Emissão de boletos com registro\` após normalização de acentos e espaços.
+2. A data/hora puder ser interpretada em formato brasileiro \`DD/MM/AAAA HH:mm[:ss]\` ou ISO local \`AAAA-MM-DD HH:mm[:ss]\`.
+3. A data/hora estiver dentro da janela a partir do instante capturado, admitindo tolerância de 90 segundos para diferença de precisão entre o clique e o valor exibido na grade.
+4. Houver exatamente um candidato verificável.
+
+O resultado é classificado como:
+
+- **Sucesso:** \`MSG_EXCEPTION.\` contém \`Processo concluído com sucesso.\`.
+- **Em andamento:** mensagem ainda vazia.
+- **Falha:** existe mensagem diferente da confirmação de sucesso.
+- **Não encontrado:** nenhum registro corresponde ao nome/horário.
+- **Ambíguo / não verificável:** mais de um candidato, data/hora em formato desconhecido ou estrutura incompleta.
+
+### Limite intencional desta fase
+
+A grade documentada identifica o processo de emissão, mas não contém um campo confirmado com o número do título ou a parcela. Por isso, a associação ao título depende do clique capturado e da correspondência única de horário. Se houver outra emissão do mesmo tipo na janela, a rotina interrompe por ambiguidade.
+
+Mesmo quando o processo é identificado com sucesso, a versão 0.3.0 **não seleciona a linha**, não altera \`DataView.currentRow\`, não chama \`doCommand\` e não baixa PDF. O painel mostra linha visual, número do registro e data/hora para conferência. A seleção automatizada depende de validação adicional da API do ERP e ficará para a etapa de download.
+
+### Como validar em operação
+
+1. Atualizar para a 0.3.0 somente depois que a versão for integrada à \`main\`.
+2. Na tela Consulta de títulos, executar o userscript pelo popup do Tampermonkey antes de clicar em **Emite boleto**.
+3. Fazer a emissão somente como parte de uma operação real autorizada; o listener apenas registra o clique e não executa a emissão.
+4. Confirmar que o painel registrou o horário.
+5. Abrir Processos agendados pelo fluxo normal do ERP.
+6. Executar o userscript pelo popup também na tela de Processos agendados.
+7. Clicar em **Analisar processos** e comparar a linha, horário e estado exibidos com a grade do Systextil.
+
+Não é necessário emitir um boleto apenas para testar a captura. A primeira validação deve aproveitar uma emissão real que já precisaria ser feita. Não recarregar a página autenticada para instalar ou ativar o userscript.
+
+### Testes automatizados adicionados
+
+- normalização de nome do processo;
+- interpretação de data/hora brasileira e ISO;
+- rejeição de data/hora inválida ou sem hora;
+- correspondência única concluída com sucesso;
+- exclusão de processos anteriores ao clique;
+- bloqueio de correspondências múltiplas;
+- classificação de processo em andamento e de falha;
+- bloqueio quando o horário não pode ser interpretado;
+- exigência de solicitação registrada;
+- mapeamento de sufixos das linhas;
+- expiração de solicitação antiga;
+- confirmação de que a Fase 3 não seleciona nem baixa registros.
+
+## 9. Próximas pendências após a Fase 3
+
+1. Confirmar no ERP, com títulos conhecidos, a relação entre o horário capturado no clique e `DATA_EXECUCAO.`.
+2. Validar a leitura da grade `NXJForm` em uma operação real sem emitir boleto extra apenas para teste.
+3. Implementar a seleção da linha identificada somente após validar a API do ERP para `DataView.currentRow` e `recordNumber`.
+4. Validar que os campos da linha selecionada ainda correspondem ao processo identificado antes de qualquer download.
+5. Na Fase 4, implementar obtenção e validação da URL PDF com `getFileUrl()` e download via `GM_download`.
+6. Confirmar a origem da razão social usada no nome do arquivo, distinguindo razão social de nome fantasia.
 
 ## 10. Validação e desenvolvimento no repositório
 
@@ -461,5 +534,6 @@ Para a nova funcionalidade:
 | Geração da URL PDF pelo ERP | Validada |
 | Download autenticado com `GM_download` | Validado |
 | Nome personalizado e pasta de rede | Validados |
-| Seleção automática do processo | Pendente |
-| Userscript da segunda via | v0.2.1: painel sob demanda, prefixo abreviado, atualização automática e preenchimento assistido de título/parcela; F7 permanece manual |
+| Identificação única do processo | v0.3.0 implementada; validação operacional pendente |
+| Seleção automática do processo | Pendente; API de seleção ainda não validada |
+| Userscript da segunda via | v0.3.0: preenchimento assistido, captura local do clique em Emite boleto e análise somente leitura da grade de Processos agendados; sem seleção ou download |
