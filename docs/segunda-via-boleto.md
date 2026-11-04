@@ -319,6 +319,18 @@ A prévia do painel também mostra somente o início da razão social, e não o 
 
 O limite de 35 caracteres é uma configuração interna (`MAX_INICIO_RAZAO_SOCIAL`) e poderá ser ajustado depois de validar alguns nomes reais no uso operacional. Os testes verificam o limite, o corte em limite de palavra, as reticências e a preservação do identificador do título/parcela.
 
+## 8.6. Atualização da versão ativa sem recarga (04/11/2026)
+
+A versão `0.1.3` também trata atualização do userscript na aba atual. Ao executar a versão nova pelo popup do Tampermonkey:
+
+- Se existir painel criado por versão anterior, ele é substituído imediatamente pelo painel da versão atual.
+- O painel registra sua versão em `data-script-version`.
+- O atalho `Ctrl + Alt + B` é registrado no objeto `window`, na fase de captura.
+- O handler chama `stopImmediatePropagation()` ao reconhecer o atalho, evitando que listeners antigos registrados no `document` por versões anteriores também executem e alternem o painel duas vezes.
+- A versão do handler é registrada em `window.__systextilSegundaViaBoletoShortcutVersion`, impedindo duplicação ao executar o script novamente.
+
+Isso permite instalar/atualizar o userscript e ativar sua versão nova na aba já aberta, sem recarregar ou encerrar a sessão do Systextil.
+
 ## 9. Pendências antes da implementação funcional
 
 1. Confirmar o rótulo e o significado do campo `seq_duplicatas.`.
