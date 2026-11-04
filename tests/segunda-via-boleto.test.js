@@ -955,7 +955,7 @@ test('confirma que o relatório .jrprint selecionado corresponde à URL preparad
         }];
       }
     },
-    DataView: { currentRow: 2 },
+    DataView: { currentRow: 0 },
     getFileUrl() {
       return 'download/blt365332.pdf?report=blt365332.jrprint&ext=pdf&program=forms.crec.crec_e259';
     }
