@@ -39,7 +39,7 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
   assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.1.2');
+  assert.equal(api.version, '0.1.3');
 });
 
 test('registra o atalho Ctrl+Alt+B para alternar a conferência', () => {
@@ -66,6 +66,25 @@ test('monta o nome no padrão Cliente - Título.Parcela.pdf', () => {
       parcela: '01'
     }),
     'Joaozin da silva - 936312.01.pdf'
+  );
+});
+
+test('limita o início da razão social a palavras inteiras e indica o corte', () => {
+  const api = carregarApi();
+  const razaoSocial = 'Confecções Industriais e Comércio de Tecidos Ltda.';
+
+  assert.equal(
+    api.limitarInicioRazaoSocial(razaoSocial),
+    'Confecções Industriais e Comércio…'
+  );
+
+  assert.equal(
+    api.montarNomeArquivo({
+      cliente: razaoSocial,
+      titulo: '936312',
+      parcela: '01'
+    }),
+    'Confecções Industriais e Comércio… - 936312.01.pdf'
   );
 });
 
