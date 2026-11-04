@@ -2,6 +2,17 @@
 
 Userscripts pequenos e explícitos para reduzir trabalho repetitivo no Systextil. O código não deve executar consultas, enviar mensagens nem gravar dados sem ação explícita do operador.
 
+## Desenvolvimento: segunda via de boleto
+
+Levantamento técnico, evidências, decisões, riscos e pendências estão em [docs/segunda-via-boleto.md](docs/segunda-via-boleto.md).
+
+Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/systextil-segunda-via-boleto.user.js).
+
+Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
+
+**Status atual:** versão 0.1.4 limita o início da razão social a 35 caracteres, priorizando palavras inteiras e acrescentando reticências; mantém título e parcela completos; e declara `@updateURL`/`@downloadURL` para permitir atualizações pelo Tampermonkey após a integração à `main`. A versão 0.1.3 exige uma última atualização manual para habilitar esse mecanismo. A ativação continua sob demanda pelo menu do Tampermonkey e pelo atalho `Ctrl + Alt + B`, sem recarregar o Systextil. Não consulta, emite nem baixa boletos. Permanecem pendentes a confirmação operacional de sequência/parcela e a seleção inequívoca do processo, além da integração do download ao fluxo completo.
+
+
 ## Script: Parâmetros da Régua de Cobrança
 
 Arquivo: [userscripts/systextil-parametros-regua.user.js](userscripts/systextil-parametros-regua.user.js)
