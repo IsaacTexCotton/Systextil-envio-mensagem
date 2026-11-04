@@ -147,9 +147,15 @@ O código calcula feriados nacionais fixos e datas móveis: Carnaval, Sexta-feir
 
 O cálculo está separado da interação com o formulário e é exposto numa API de diagnóstico somente leitura, chamada window.__systextilParametrosReguaDebug. Essa API não preenche campos nem executa consultas.
 
-Os testes usam o runner nativo do Node.js e não dependem de bibliotecas externas. Incluem a validação das 55 linhas da matriz de feriados, o cenário de referência 03/11/2026 após o feriado de 02/11, o bloqueio de preenchimento em dias SEM EXPED., a união de janelas sobrepostas no Carnaval e regressões das regras padrão. Com Node.js 18 ou superior instalado, execute **npm test** na raiz do repositório.
+Os testes usam o runner nativo do Node.js e não dependem de bibliotecas externas. Incluem a validação das 55 linhas da matriz de feriados, o cenário de referência 03/11/2026 após o feriado de 02/11, o bloqueio de preenchimento em dias SEM EXPED., a união de janelas sobrepostas no Carnaval e regressões das regras padrão. Com Node.js 18 ou superior instalado, execute o comando padrão abaixo na raiz do repositório:
 
-**Não há CI/CD nem workflows automatizados neste repositório.** Os testes devem ser executados localmente antes de enviar uma alteração.
+```bash
+npm run verify
+```
+
+Ele verifica a sintaxe de todos os arquivos `*.user.js` em `userscripts/` e, se todos compilarem, executa a suíte completa com `node --test`. Usa apenas Node.js nativo, não instala dependências e retorna erro quando alguma etapa falha. Para executar somente os testes, continue usando `npm test`.
+
+**Não há CI/CD nem workflows automatizados neste repositório.** A verificação deve ser executada localmente antes de enviar uma alteração.
 
 ## Governança de desenvolvimento com IA
 
