@@ -750,7 +750,7 @@ test('gera a mesma chave de deduplicação para a mesma solicitação e processo
   );
 });
 
-test('bloqueia downloads pendentes ou concluídos e libera uma tentativa que falhou', () => {
+test('bloqueia downloads pendentes ou concluídos e libera somente uma falha confirmada', () => {
   const api = carregarApi();
   const valores = new Map();
   const storage = {
@@ -766,7 +766,7 @@ test('bloqueia downloads pendentes ou concluídos e libera uma tentativa que fal
     /em andamento/
   );
 
-  api.liberarDownload(storage, chave);
+  assert.equal(api.liberarDownload(storage, chave), true);
   api.reservarDownload(storage, chave, 3000);
   api.concluirDownload(storage, chave, 4000);
   assert.throws(
@@ -774,21 +774,79 @@ test('bloqueia downloads pendentes ou concluídos e libera uma tentativa que fal
     /já teve o download concluído/
   );
 
-  api.liberarDownload(storage, chave);
-  api.reservarDownload(storage, chave, 6000);
+  assert.equal(api.liberarDownload(storage, chave), false);
+  assert.equal(JSON.parse(storage.getItem(chave)).status, 'concluido');
 });
 
-test('permite repetir uma tentativa pendente somente depois do prazo de segurança', () => {
+test('timeout transforma a reserva pendente em estado indeterminado e exige liberação explícita', () => {
   const api = carregarApi();
   const valores = new Map();
   const storage = {
     getItem(chave) { return valores.get(chave) ?? null; },
-    setItem(chave, valor) { valores.set(chave, valor); }
+    setItem(chave, valor) { valores.set(chave, valor); },
+    removeItem(chave) { valores.delete(chave); }
+  };
+  const chave = 'st-segunda-via-boleto:download:timeout';
+
+  api.reservarDownload(storage, chave, 1000);
+  assert.equal(api.marcarDownloadIndeterminado(storage, chave, 2000), true);
+  assert.equal(JSON.parse(storage.getItem(chave)).status, 'indeterminado');
+
+  assert.throws(
+    () => api.reservarDownload(storage, chave, 3000),
+    erro => erro.code === 'DOWNLOAD_INDETERMINADO'
+  );
+  assert.equal(api.liberarDownload(storage, chave), false);
+  assert.equal(JSON.parse(storage.getItem(chave)).status, 'indeterminado');
+
+  assert.equal(api.liberarDownloadIndeterminado(storage, chave), true);
+  assert.equal(storage.getItem(chave), undefined);
+  assert.doesNotThrow(() => api.reservarDownload(storage, chave, 4000));
+});
+
+test('reserva pendente expirada vira indeterminada, em vez de permitir novo download', () => {
+  const api = carregarApi();
+  const valores = new Map();
+  const storage = {
+    getItem(chave) { return valores.get(chave) ?? null; },
+    setItem(chave, valor) { valores.set(chave, valor); },
+    removeItem(chave) { valores.delete(chave); }
   };
   const chave = 'st-segunda-via-boleto:download:expirado';
 
   api.reservarDownload(storage, chave, 1000);
-  assert.doesNotThrow(() => api.reservarDownload(storage, chave, 1000 + 16 * 60 * 1000));
+  assert.throws(
+    () => api.reservarDownload(storage, chave, 1000 + 16 * 60 * 1000),
+    erro => erro.code === 'DOWNLOAD_INDETERMINADO'
+  );
+  assert.equal(JSON.parse(storage.getItem(chave)).status, 'indeterminado');
+});
+
+test('encaminha timeout para callback próprio, sem tratá-lo como falha comprovada', () => {
+  let opcoesDownload;
+  const api = carregarApi([], {}, {
+    GM_download(opcoes) {
+      opcoesDownload = opcoes;
+      return 'download-id';
+    }
+  });
+
+  let erros = 0;
+  let timeouts = 0;
+  let sucessos = 0;
+  api.iniciarDownloadPdf('https://exemplo.test/arquivo.pdf', 'arquivo.pdf', {
+    onload() { sucessos += 1; },
+    onerror() { erros += 1; },
+    ontimeout() { timeouts += 1; }
+  });
+
+  opcoesDownload.ontimeout({ error: 'timeout' });
+  opcoesDownload.onload({});
+  opcoesDownload.onerror({ error: 'late-error' });
+
+  assert.equal(timeouts, 1);
+  assert.equal(erros, 0);
+  assert.equal(sucessos, 0);
 });
 
 test('a análise da Fase 3 não seleciona nem inicia download automaticamente', () => {
