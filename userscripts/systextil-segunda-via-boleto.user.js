@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.2.0
+// @version      0.2.1
 // @updateURL     https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @downloadURL   https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @description  Prepara a consulta assistida da segunda via sem recarregar a página.
@@ -15,7 +15,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.2.0";
+  const VERSION = "0.2.1";
   const PANEL_ID = "st-segunda-via-boleto-panel";
 
   const CAMPOS = Object.freeze({
@@ -26,6 +26,7 @@
 
   const MAX_NOME_ARQUIVO = 180;
   const MAX_INICIO_RAZAO_SOCIAL = 35;
+  const LARGURAS_PADRAO_CONSULTA = Object.freeze({ titulo: 8, parcela: 2 });
 
   if (window.top !== window) {
     return;
@@ -168,21 +169,37 @@
 
 
   /**
-   * Valida identificadores antes de preencher os campos do ERP.
-   * Mantém zeros à esquerda e não tenta converter os valores em números.
+   * Normaliza códigos numéricos com zeros à esquerda.
+   * A largura é derivada do maxlength do campo do ERP quando disponível;
+   * caso contrário, usa os tamanhos padrão conhecidos: título 8 e parcela 2.
    */
-  function validarCodigoConsulta(valor, rotulo) {
-    const codigo = String(valor ?? "").trim();
+  function normalizarCodigoConsulta(valor, rotulo, largura) {
+    const codigo = validarCodigoConsulta(valor, rotulo);
 
-    if (!codigo) {
-      throw new Error(rotulo + " não informado.");
+    if (!Number.isInteger(largura) || largura < 1) {
+      throw new Error("Não foi possível determinar o tamanho do campo " + rotulo.toLowerCase() + ".");
     }
 
-    if (!/^[A-Za-z0-9_-]+$/.test(codigo)) {
-      throw new Error(rotulo + " contém caracteres não permitidos.");
+    if (codigo.length > largura) {
+      throw new Error(
+        rotulo + " possui " + codigo.length +
+        " caracteres, mas o campo aceita " + largura + ". Nenhum dígito foi removido."
+      );
     }
 
-    return codigo;
+    return /^[0-9]+$/.test(codigo)
+      ? codigo.padStart(largura, "0")
+      : codigo;
+  }
+
+  function obterLarguraCampo(campo, larguraPadrao) {
+    const larguraDeclarada = Number(campo.maxLength);
+
+    return Number.isInteger(larguraDeclarada) &&
+      larguraDeclarada > 0 &&
+      larguraDeclarada <= 20
+      ? larguraDeclarada
+      : larguraPadrao;
   }
 
   function localizarFormularioConsulta() {
@@ -211,9 +228,6 @@
   }
 
   function preencherCamposConsulta(dados) {
-    const titulo = validarCodigoConsulta(dados?.titulo, "Número do título");
-    const parcela = validarCodigoConsulta(dados?.parcela, "Parcela");
-
     const formulario = localizarFormularioConsulta();
     const campoTitulo = formulario.elements.namedItem(CAMPOS.titulo);
     const campoParcela = formulario.elements.namedItem(CAMPOS.parcela);
@@ -226,6 +240,17 @@
     ) {
       throw new Error("Um dos campos do ERP está bloqueado para edição.");
     }
+
+    const titulo = normalizarCodigoConsulta(
+      dados?.titulo,
+      "Número do título",
+      obterLarguraCampo(campoTitulo, LARGURAS_PADRAO_CONSULTA.titulo)
+    );
+    const parcela = normalizarCodigoConsulta(
+      dados?.parcela,
+      "Parcela",
+      obterLarguraCampo(campoParcela, LARGURAS_PADRAO_CONSULTA.parcela)
+    );
 
     const valoresAnteriores = {
       titulo: campoTitulo.value,
@@ -571,6 +596,8 @@
     limitarInicioRazaoSocial,
     lerDadosTitulo,
     validarCodigoConsulta,
+    normalizarCodigoConsulta,
+    obterLarguraCampo,
     preencherCamposConsulta
   });
 
