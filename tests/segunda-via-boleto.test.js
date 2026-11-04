@@ -432,6 +432,21 @@ test('a Fase 3 identifica a linha sem selecionar ou baixar o processo', () => {
   assert.equal(source.includes('GM_download('), false);
 });
 
+
+test('captura clique em Emite boleto sem cancelar nem repetir a ação do ERP', () => {
+  const inicio = source.indexOf('const handler = function (evento)');
+  const fim = source.indexOf('documento.addEventListener("click", handler, true)', inicio);
+  const handler = source.slice(inicio, fim);
+
+  assert.ok(inicio >= 0);
+  assert.ok(fim > inicio);
+  assert.ok(handler.includes('elemento.id === "BTNEmetirBoletos."'));
+  assert.ok(handler.includes('elemento.name === "CMDEmetirBoletos"'));
+  assert.equal(handler.includes('preventDefault'), false);
+  assert.equal(handler.includes('stopPropagation'), false);
+  assert.ok(handler.includes('armazenamento.setItem(CHAVE_SOLICITACAO_EMISSAO'));
+});
+
 test('registra o atalho Ctrl+Alt+B para alternar a conferência', () => {
   assert.match(source, /event\.ctrlKey/);
   assert.match(source, /event\.altKey/);
