@@ -219,6 +219,50 @@ O formulário apresenta os rótulos em `DIVs` independentes. O diagnóstico ante
 
 **Próxima inspeção:** obter o índice de `campo.parentElement` dentro de `campo.form.children` e exibir somente os poucos irmãos anteriores/posteriores, sem valores de inputs. Isso deve permitir relacionar `Nr título:` com `num_duplicata.`, conferir a sequência e localizar o campo de cliente.
 
+## 8.3. Primeira implementação: leitura e prévia do nome (04/11/2026)
+
+Foi adicionada a versão inicial:
+
+`userscripts/systextil-segunda-via-boleto.user.js`
+
+Versão: `0.1.0`.
+
+### Mapeamento DOM observado
+
+| Campo | Evidência estrutural | Interpretação e limite |
+|---|---|---|
+| `num_duplicata.` | Filho do formulário, logo após o `DIV` com rótulo `Nr título:` | Número do título confirmado |
+| `seq_duplicatas.` | `DIV` imediatamente após o campo do número, mesma linha, largura aproximada de 20 px | Sequência/parcela provável; validar o valor em um título conhecido |
+| `nome_cliente.` | Campo de texto logo após três campos identificados como componentes do CNPJ, na seção `Cliente:` | Nome/descrição do cliente; confirmar se o conteúdo é razão social |
+| `nome_empresa.` | Campo após `codigo_empresa.`, na seção `Empresa:` | Empresa emissora do ERP; não é usado para nomear o boleto |
+
+O diagnóstico é estrutural e não expôs valores preenchidos. Não foi identificado rótulo explícito chamado “Parcela” nem “Razão social”.
+
+### Comportamento da versão 0.1.0
+
+- Injeta um painel discreto na tela principal do Systextil.
+- Lê `num_duplicata.`, `seq_duplicatas.` e `nome_cliente.` somente quando o operador clica em **Ler dados do título**.
+- Exibe os dados lidos e uma prévia do nome: `Cliente - TITULO.PARCELA.pdf`.
+- Sanitiza caracteres inválidos para nome de arquivo no Windows e limita o nome completo a 180 caracteres.
+- Falha de forma explícita se formulário, campos ou valores obrigatórios estiverem ausentes ou ambíguos.
+- Não executa F7, não clica em **Emite boleto**, não navega para Processos agendados e não baixa arquivo.
+- Não salva dados em armazenamento persistente nem envia dados para fora do ERP.
+- Usa uma API local de diagnóstico em `window.__systextilSegundaViaBoletoDebug` para testes das funções puras.
+
+### Testes adicionados
+
+Arquivo: `tests/segunda-via-boleto.test.js`.
+
+Coberturas:
+- nomes dos campos mapeados;
+- padrão do nome do arquivo;
+- remoção de caracteres inválidos do Windows;
+- preservação de acentos;
+- rejeição de campos obrigatórios ausentes ou com formato inesperado;
+- limite de comprimento.
+
+Os testes foram adicionados, mas ainda **não foram executados** nesta sessão: a tentativa de clonar o repositório no ambiente de execução falhou por indisponibilidade de resolução de `github.com`. Não declarar os testes como aprovados até executar `npm test` localmente (Node.js 18 ou superior).
+
 ## 9. Pendências antes da implementação funcional
 
 1. Confirmar o rótulo e o significado do campo `seq_duplicatas.`.
