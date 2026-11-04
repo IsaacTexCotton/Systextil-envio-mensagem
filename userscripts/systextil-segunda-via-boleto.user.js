@@ -145,8 +145,21 @@
     return elemento;
   }
 
+  function ehTelaConsultaTitulo() {
+    return Array.from(document.forms).some(form =>
+      Object.values(CAMPOS).every(nome => {
+        const campo = form.elements.namedItem(nome);
+        return campo && typeof campo.value === "string";
+      })
+    );
+  }
+
   function montarPainel() {
-    if (!document.body || document.getElementById(PANEL_ID)) {
+    if (
+      !document.body ||
+      document.getElementById(PANEL_ID) ||
+      !ehTelaConsultaTitulo()
+    ) {
       return;
     }
 
@@ -280,7 +293,6 @@
 
     fechar.addEventListener("click", function () {
       painel.remove();
-      window.__systextilSegundaViaBoletoLoaded = false;
     });
 
     painel.append(titulo, explicacao, alerta, botao, resultado, fechar);
