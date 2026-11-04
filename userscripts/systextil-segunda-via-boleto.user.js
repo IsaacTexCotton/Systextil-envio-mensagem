@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.1.0
-// @description  Confere os dados do título e monta o nome do PDF da segunda via.
+// @version      0.1.1
+// @description  Abre a conferência da segunda via sob demanda, sem recarregar a página.
 // @match        http://systextil.texcotton.com.br/systextil/*
 // @match        https://systextil.texcotton.com.br/systextil/*
-// @run-at       document-idle
+// @run-at       context-menu
 // @noframes
 // @grant        none
 // ==/UserScript==
@@ -13,7 +13,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.1.0";
+  const VERSION = "0.1.1";
   const PANEL_ID = "st-segunda-via-boleto-panel";
 
   const CAMPOS = Object.freeze({
@@ -24,11 +24,9 @@
 
   const MAX_NOME_ARQUIVO = 180;
 
-  if (window.top !== window || window.__systextilSegundaViaBoletoLoaded) {
+  if (window.top !== window) {
     return;
   }
-
-  window.__systextilSegundaViaBoletoLoaded = true;
 
   /**
    * Remove caracteres inválidos para nomes de arquivo do Windows.
@@ -293,6 +291,7 @@
 
     fechar.addEventListener("click", function () {
       painel.remove();
+      window.__systextilSegundaViaBoletoLoaded = false;
     });
 
     painel.append(titulo, explicacao, alerta, botao, resultado, fechar);
@@ -308,9 +307,27 @@
     lerDadosTitulo
   });
 
-  if (document.body) {
-    montarPainel();
-  } else {
-    document.addEventListener("DOMContentLoaded", montarPainel, { once: true });
+  // Este userscript é iniciado pelo menu do Tampermonkey, na aba atual.
+  // Assim, ele pode ser acionado sem recarregar a sessão do Systextil.
+  if (!ehTelaConsultaTitulo()) {
+    console.warn(
+      "[Systextil Segunda Via] Abra a tela Consulta de títulos antes de executar este atalho."
+    );
+    return;
   }
+
+  const painelExistente = document.getElementById(PANEL_ID);
+
+  if (painelExistente) {
+    painelExistente.remove();
+    window.__systextilSegundaViaBoletoLoaded = false;
+    return;
+  }
+
+  if (window.__systextilSegundaViaBoletoLoaded) {
+    return;
+  }
+
+  window.__systextilSegundaViaBoletoLoaded = true;
+  montarPainel();
 })();
