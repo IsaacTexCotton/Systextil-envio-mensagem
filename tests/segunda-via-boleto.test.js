@@ -32,7 +32,7 @@ function carregarApi(forms = [], propriedadesJanela = {}) {
 
   vm.runInNewContext(
     source,
-    { window, document, console: consoleTeste, Object, Array, String, Event },
+    { window, document, console: consoleTeste, Object, Array, String, Event, URL },
     { filename: scriptPath }
   );
 
@@ -44,13 +44,13 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
   assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.3.2');
+  assert.equal(api.version, '0.4.0');
 });
 
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
   const url = 'https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js';
 
-  assert.match(source, /^\/\/ @version\s+0\.3\.2$/m);
+  assert.match(source, /^\/\/ @version\s+0\.4\.0$/m);
   assert.ok(source.includes('// @updateURL     ' + url));
   assert.ok(source.includes('// @downloadURL   ' + url));
 });
@@ -576,13 +576,222 @@ test('expira solicitação antiga para não associar uma emissão posterior por 
   assert.equal(resultado.status, 'solicitacao-expirada');
 });
 
-test('a Fase 3 identifica a linha sem selecionar ou baixar o processo', () => {
+test('a Fase 4 declara somente as permissões Tampermonkey necessárias', () => {
+  assert.match(source, /^\/\/ @grant\s+unsafeWindow$/m);
+  assert.match(source, /^\/\/ @grant\s+GM_download$/m);
+  assert.equal(source.includes('// @grant        none'), false);
+});
+
+test('valida a URL PDF gerada pelo Systextil e aceita somente o endpoint de boletos', () => {
+  const api = carregarApi();
+  const base = 'http://systextil.texcotton.com.br/systextil/forms.systextil.senha.nxj';
+  const relativa = 'download/blt365332.pdf?report=blt365332.jrprint&ext=pdf&program=forms.crec.crec_e259&size=A4';
+
+  assert.equal(
+    api.validarUrlPdf(relativa, base),
+    'http://systextil.texcotton.com.br/systextil/download/blt365332.pdf?report=blt365332.jrprint&ext=pdf&program=forms.crec.crec_e259&size=A4'
+  );
+});
+
+test('bloqueia URL PDF de outra origem ou com caminho, extensão, relatório ou programa inesperados', () => {
+  const api = carregarApi();
+  const base = 'http://systextil.texcotton.com.br/systextil/forms.systextil.senha.nxj';
+
+  assert.throws(
+    () => api.validarUrlPdf('https://outro.exemplo/download/blt.pdf?report=blt.jrprint&ext=pdf&program=forms.crec.crec_e259', base),
+    /outra origem/
+  );
+  assert.throws(
+    () => api.validarUrlPdf('/systextil/arquivo/blt.pdf?report=blt.jrprint&ext=pdf&program=forms.crec.crec_e259', base),
+    /caminho de PDF/
+  );
+  assert.throws(
+    () => api.validarUrlPdf('download/blt.pdf?report=blt.jrprint&ext=html&program=forms.crec.crec_e259', base),
+    /formato PDF/
+  );
+  assert.throws(
+    () => api.validarUrlPdf('download/blt.pdf?report=blt.pdf&ext=pdf&program=forms.crec.crec_e259', base),
+    /identificador do relatório/
+  );
+  assert.throws(
+    () => api.validarUrlPdf('download/blt.pdf?report=blt.jrprint&ext=pdf&program=forms.crec.crec_e258', base),
+    /programa de emissão/
+  );
+});
+
+test('seleciona a linha zero-based somente quando os dados da grade continuam iguais', () => {
+  const api = carregarApi();
+  const registro = {
+    rowIndex: 0,
+    titulo: 'Emissão de boletos com registro',
+    dataExecucao: '04/11/2026 12:12:38',
+    mensagem: 'Processo concluído com sucesso.',
+    visualIndex: 1,
+    recordNumber: 1
+  };
+  const page = { DataView: { currentRow: 4 } };
+
+  const selecao = api.selecionarRegistroProcesso(registro, page, () => [registro]);
+
+  assert.equal(page.DataView.currentRow, 0);
+  assert.equal(selecao.linhaAnterior, 4);
+  assert.equal(selecao.linhaSelecionada, 0);
+});
+
+test('interrompe seleção quando a linha foi alterada desde a análise', () => {
+  const api = carregarApi();
+  const registro = {
+    rowIndex: 1,
+    titulo: 'Emissão de boletos com registro',
+    dataExecucao: '04/11/2026 12:12:38',
+    mensagem: 'Processo concluído com sucesso.'
+  };
+  const page = { DataView: { currentRow: 3 } };
+
+  assert.throws(
+    () => api.selecionarRegistroProcesso(registro, page, () => [{
+      ...registro,
+      dataExecucao: '04/11/2026 12:13:00'
+    }]),
+    /mudou desde a análise/
+  );
+  assert.equal(page.DataView.currentRow, 3);
+});
+
+test('não tenta selecionar quando a API DataView.currentRow não está disponível', () => {
+  const api = carregarApi();
+  const registro = {
+    rowIndex: 0,
+    titulo: 'Emissão de boletos com registro',
+    dataExecucao: '04/11/2026 12:12:38',
+    mensagem: 'Processo concluído com sucesso.'
+  };
+
+  assert.throws(
+    () => api.selecionarRegistroProcesso(registro, {}, () => [registro]),
+    /API de seleção da grade/
+  );
+});
+
+test('obtém getFileUrl somente depois de selecionar e confirmar a linha correspondente', () => {
+  const api = carregarApi();
+  const registro = {
+    rowIndex: 2,
+    titulo: 'Emissão de boletos com registro',
+    dataExecucao: '04/11/2026 12:12:38',
+    mensagem: 'Processo concluído com sucesso.'
+  };
+  const page = {
+    DataView: { currentRow: 0 },
+    getFileUrl() {
+      assert.equal(this.DataView.currentRow, 2);
+      return 'download/blt365332.pdf?report=blt365332.jrprint&ext=pdf&program=forms.crec.crec_e259';
+    }
+  };
+
+  const preparado = api.prepararUrlDownloadProcesso(
+    registro,
+    page,
+    'http://systextil.texcotton.com.br/systextil/forms.systextil.senha.nxj',
+    () => [registro]
+  );
+
+  assert.match(preparado.url, /blt365332\.pdf/);
+  assert.equal(page.DataView.currentRow, 2);
+});
+
+test('restaura a seleção anterior se getFileUrl retornar URL inválida', () => {
+  const api = carregarApi();
+  const registro = {
+    rowIndex: 1,
+    titulo: 'Emissão de boletos com registro',
+    dataExecucao: '04/11/2026 12:12:38',
+    mensagem: 'Processo concluído com sucesso.'
+  };
+  const page = {
+    DataView: { currentRow: 5 },
+    getFileUrl() {
+      return 'https://externo.exemplo/arquivo.pdf';
+    }
+  };
+
+  assert.throws(
+    () => api.prepararUrlDownloadProcesso(
+      registro,
+      page,
+      'http://systextil.texcotton.com.br/systextil/forms.systextil.senha.nxj',
+      () => [registro]
+    ),
+    /outra origem/
+  );
+  assert.equal(page.DataView.currentRow, 5);
+});
+
+test('gera a mesma chave de deduplicação para a mesma solicitação e processo', () => {
+  const api = carregarApi();
+  const solicitacao = { solicitadoEm: 1793809958725, titulo: '000944246', parcela: '01' };
+  const registro = { executadoEm: 1793809958000 };
+
+  assert.equal(
+    api.montarChaveDownload(solicitacao, registro),
+    api.montarChaveDownload(solicitacao, registro)
+  );
+  assert.notEqual(
+    api.montarChaveDownload(solicitacao, registro),
+    api.montarChaveDownload({ ...solicitacao, solicitadoEm: 1793809959000 }, registro)
+  );
+});
+
+test('bloqueia downloads pendentes ou concluídos e libera uma tentativa que falhou', () => {
+  const api = carregarApi();
+  const valores = new Map();
+  const storage = {
+    getItem(chave) { return valores.get(chave) ?? null; },
+    setItem(chave, valor) { valores.set(chave, valor); },
+    removeItem(chave) { valores.delete(chave); }
+  };
+  const chave = 'st-segunda-via-boleto:download:teste';
+
+  api.reservarDownload(storage, chave, 1000);
+  assert.throws(
+    () => api.reservarDownload(storage, chave, 2000),
+    /em andamento/
+  );
+
+  api.liberarDownload(storage, chave);
+  api.reservarDownload(storage, chave, 3000);
+  api.concluirDownload(storage, chave, 4000);
+  assert.throws(
+    () => api.reservarDownload(storage, chave, 5000),
+    /já teve o download concluído/
+  );
+
+  api.liberarDownload(storage, chave);
+  api.reservarDownload(storage, chave, 6000);
+});
+
+test('permite repetir uma tentativa pendente somente depois do prazo de segurança', () => {
+  const api = carregarApi();
+  const valores = new Map();
+  const storage = {
+    getItem(chave) { return valores.get(chave) ?? null; },
+    setItem(chave, valor) { valores.set(chave, valor); }
+  };
+  const chave = 'st-segunda-via-boleto:download:expirado';
+
+  api.reservarDownload(storage, chave, 1000);
+  assert.doesNotThrow(() => api.reservarDownload(storage, chave, 1000 + 16 * 60 * 1000));
+});
+
+test('a análise da Fase 3 não seleciona nem inicia download automaticamente', () => {
   const api = carregarApi();
 
   assert.equal(typeof api.analisarProcessos, 'function');
-  assert.ok(source.includes('Nenhuma linha foi selecionada e nenhum PDF foi baixado.'));
+  assert.ok(source.includes('Baixar PDF do processo identificado'));
+  assert.ok(source.includes('botaoBaixar.addEventListener("click"'));
+  assert.ok(source.includes('saveAs: false'));
   assert.equal(source.includes('doCommand('), false);
-  assert.equal(source.includes('GM_download('), false);
+  assert.equal(source.includes('.submit('), false);
 });
 
 
