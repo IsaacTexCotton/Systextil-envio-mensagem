@@ -39,7 +39,13 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
   assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.1.1');
+  assert.equal(api.version, '0.1.2');
+});
+
+test('registra o atalho Ctrl+Alt+B para alternar a conferência', () => {
+  assert.match(source, /event\.ctrlKey/);
+  assert.match(source, /event\.altKey/);
+  assert.match(source, /Ctrl \+ Alt \+ B/);
 });
 
 test('identifica os nomes de campos mapeados', () => {
