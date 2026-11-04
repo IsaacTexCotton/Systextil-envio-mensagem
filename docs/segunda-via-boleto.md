@@ -583,7 +583,7 @@ O uso do setter nativo busca evitar que mecanismos de rastreamento de alteraçõ
 
 Se a consulta ainda retornar o cliente incorreto, interromper o uso do preenchimento assistido e manter a digitação manual. A próxima investigação deverá identificar o mecanismo específico do formulário Systextil (por exemplo, o estado mantido pelo gerenciador de campos), em vez de acrescentar eventos sintéticos sem evidência.
 
-**Estado:** correção v0.3.1 preparada em branch; testes automatizados e validação operacional ainda pendentes.
+**Estado:** v0.3.1 integrada à `main`. O usuário informou 55 testes aprovados no Codespace antes da integração. A confirmação operacional específica do preenchimento F7 não foi registrada neste histórico; a Fase 3 foi posteriormente validada com a v0.3.2.
 
 
 ## 13. Correção da correspondência de horário dos Processos agendados (v0.3.2 — 04/11/2026)
@@ -630,9 +630,10 @@ A comparação do segundo utiliza o timestamp local em precisão de segundos, po
 4. O userscript localiza o controlador da grade `DataView.currentRow` (ou `dataView.currentRow`), exige um único controlador verificável e seleciona o índice zero-based correspondente ao registro da Fase 3.
 5. Os campos do registro são relidos antes e depois da seleção. Se título do processo, data/hora ou mensagem tiverem mudado, a seleção é restaurada quando possível e o download é bloqueado.
 6. Com a linha selecionada, chama `getFileUrl()` do contexto da página do Systextil.
-7. A URL é validada antes do download: mesma origem da tela atual, caminho `/systextil/download/<arquivo>.pdf`, parâmetro `ext=pdf`, relatório `.jrprint` e programa `forms.crec.crec_e259`.
-8. O nome do arquivo usa a razão social, título e parcela. A razão social capturada a partir de `nome_cliente.` fica armazenada na solicitação; solicitações registradas antes da v0.4.0 não têm esse campo e exigem confirmação manual no painel.
-9. O download é iniciado somente pelo clique explícito em **Baixar PDF do processo identificado**, usando `GM_download` com `saveAs: false`. O Chrome utiliza a pasta padrão de downloads já configurada:
+7. Confere se o único `.jrprint` selecionado na lista de resultados corresponde ao parâmetro `report` da URL gerada.
+8. A URL é validada antes do download: mesma origem da tela atual, caminho `/systextil/download/<arquivo>.pdf`, parâmetro `ext=pdf`, relatório `.jrprint` e programa `forms.crec.crec_e259`.
+9. O nome do arquivo usa a razão social, título e parcela. A razão social capturada a partir de `nome_cliente.` fica armazenada na solicitação; solicitações registradas antes da v0.4.0 não têm esse campo e exigem confirmação manual no painel.
+10. O download é iniciado somente pelo clique explícito em **Baixar PDF do processo identificado**, usando `GM_download` com `saveAs: false`. O Chrome utiliza a pasta padrão de downloads já configurada:
    `V:\Financeiro\Contas à Receber\Administrativo - Atualização\Banco\Boletos (2ª via)`.
 
 ### Proteção contra ações incorretas
