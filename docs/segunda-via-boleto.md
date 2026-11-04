@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-**Status:** Fase 3 integrada à `main`; correção do preenchimento assistido v0.3.1 em branch, pendente de testes e validação operacional no Systextil  
+**Status:** Fase 4 v0.4.0 implementada; `npm run verify` aprovado no Codespace em 04/11/2026 (2 userscripts e 76/76 testes); validação operacional da seleção e do download no Systextil ainda pendente  
 **Última atualização:** 2026-11-04  
 **Escopo:** obter o PDF de um boleto já existente no Systextil e salvá-lo com nome padronizado em uma pasta de rede.
 
@@ -676,16 +676,9 @@ O userscript deve ser atualizado pelo verificador do Tampermonkey. Não recarreg
 
 ### Validação operacional pendente
 
-A implementação está protegida para interromper o fluxo caso a API da grade seja diferente da esperada. No Codespace, executar:
+Verificação automatizada executada pelo operador no Codespace em 04/11/2026, com Node.js 24.22.2: `npm run verify` aprovou a sintaxe dos 2 userscripts e a suíte completa, com 76/76 testes e nenhuma falha. Essa execução valida a lógica coberta pelos testes, mas não substitui a conferência das APIs e do comportamento real do ERP.
 
-```bash
-git fetch origin
-git switch feat/download-pdf-segunda-via
-git pull --ff-only
-npm test
-```
-
-Depois de os testes passarem, validar no Systextil usando um processo real já concluído (sem emitir boleto adicional somente para testar):
+A implementação está protegida para interromper o fluxo caso a API da grade seja diferente da esperada. Ainda é necessário validar no Systextil usando um processo real já concluído (sem emitir boleto adicional somente para testar):
 
 1. Atualizar o userscript para 0.4.0 pelo Tampermonkey.
 2. Na página Processos agendados já aberta, ativar o script pelo popup, sem recarregar.
@@ -698,4 +691,4 @@ Depois de os testes passarem, validar no Systextil usando um processo real já c
 
 Se a grade não expuser `DataView.currentRow` ou o índice atribuído não refletir a linha selecionada, a função interromperá antes de chamar `getFileUrl()` ou `GM_download`. Nesse caso, não forçar a seleção: coletar o erro exibido e investigar a API real do ERP.
 
-**Estado:** código e testes da v0.4.0 preparados em branch; execução de `npm test` e validação operacional desta fase ainda pendentes.
+**Estado:** verificação local da v0.4.0 aprovada pelo operador no Codespace (76/76 testes). A validação operacional da seleção de linha, correspondência do PDF, nome/pasta de destino e bloqueio de duplicidade permanece pendente.
