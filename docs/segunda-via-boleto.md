@@ -396,6 +396,37 @@ A aprovação desta fase depende desse teste manual. A identificação do campo 
 
 Os testes foram adicionados ao arquivo \`tests/segunda-via-boleto.test.js\`. Ainda precisam ser executados com \`npm test\` em Node.js 18+.
 
+## 8.9. Preenchimento automático de zeros à esquerda (04/11/2026)
+
+A versão \`0.2.1\` normaliza os identificadores numéricos antes de preencher a consulta:
+
+- Título: largura padrão de **8 dígitos**.
+- Parcela/sequência: largura padrão de **2 dígitos**.
+- Se o campo do Systextil declara \`maxlength\` válido (entre 1 e 20), o script respeita essa largura declarada em vez do padrão.
+- Códigos apenas numéricos recebem zeros à esquerda com \`padStart\`.
+- Valores que já estão completos permanecem inalterados.
+- Identificadores alfanuméricos são mantidos, sem completar zeros.
+- Se o valor tiver mais caracteres do que a largura do campo, o preenchimento é interrompido. Nenhum dígito é truncado.
+
+Exemplos com os tamanhos padrão:
+
+| Entrada | Valor preenchido |
+|---|---|
+| Título \`936520\` | \`00936520\` |
+| Parcela \`1\` | \`01\` |
+| Título \`00936520\` | \`00936520\` |
+| Parcela \`01\` | \`01\` |
+
+O painel exibe os valores normalizados após o preenchimento para facilitar a conferência. A consulta continua manual: o script não envia F7.
+
+### Testes adicionados
+
+- preenchimento de título de seis dígitos com zeros à esquerda;
+- preenchimento de parcela de um dígito;
+- preservação dos valores que já estão completos;
+- prioridade ao \`maxlength\` configurado no campo do ERP;
+- rejeição de valores maiores que o campo, sem truncamento.
+
 ## 9. Próximas pendências após a Fase 2
 
 1. Confirmar no ERP, com um título conhecido, que `seq_duplicatas.` corresponde à parcela.
@@ -431,4 +462,4 @@ Para a nova funcionalidade:
 | Download autenticado com `GM_download` | Validado |
 | Nome personalizado e pasta de rede | Validados |
 | Seleção automática do processo | Pendente |
-| Userscript da segunda via | v0.2.0: painel sob demanda, prefixo abreviado, atualização automática e preenchimento assistido de título/parcela; F7 permanece manual |
+| Userscript da segunda via | v0.2.1: painel sob demanda, prefixo abreviado, atualização automática e preenchimento assistido de título/parcela; F7 permanece manual |
