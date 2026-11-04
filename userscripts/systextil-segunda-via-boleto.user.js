@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.1.2
+// @version      0.1.3
 // @description  Abre a conferência da segunda via sob demanda, sem recarregar a página.
 // @match        http://systextil.texcotton.com.br/systextil/*
 // @match        https://systextil.texcotton.com.br/systextil/*
@@ -13,7 +13,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.1.2";
+  const VERSION = "0.1.3";
   const PANEL_ID = "st-segunda-via-boleto-panel";
 
   const CAMPOS = Object.freeze({
@@ -23,6 +23,7 @@
   });
 
   const MAX_NOME_ARQUIVO = 180;
+  const MAX_INICIO_RAZAO_SOCIAL = 35;
 
   if (window.top !== window) {
     return;
@@ -43,6 +44,38 @@
 
   function truncarUnicode(valor, limite) {
     return Array.from(valor).slice(0, limite).join("");
+  }
+
+  /**
+   * Mantém apenas o começo do nome/razão social.
+   * Prioriza palavras inteiras até o limite; usa reticências para indicar corte.
+   */
+  function limitarInicioRazaoSocial(valor) {
+    const nome = sanitizarParteNome(valor);
+
+    if (Array.from(nome).length <= MAX_INICIO_RAZAO_SOCIAL) {
+      return nome;
+    }
+
+    const palavras = nome.split(/\\s+/).filter(Boolean);
+    let inicio = "";
+
+    for (const palavra of palavras) {
+      const candidato = inicio ? inicio + " " + palavra : palavra;
+
+      if (Array.from(candidato).length > MAX_INICIO_RAZAO_SOCIAL) {
+        break;
+      }
+
+      inicio = candidato;
+    }
+
+    // Se a primeira palavra sozinha ultrapassar o limite, limita por caracteres.
+    if (!inicio) {
+      inicio = truncarUnicode(nome, MAX_INICIO_RAZAO_SOCIAL);
+    }
+
+    return inicio.replace(/[. ]+$/g, "") + "…";
   }
 
   /**
@@ -73,8 +106,10 @@
       throw new Error("Número do título/parcela excede o limite de nome.");
     }
 
-    const clienteFinal = truncarUnicode(cliente, limiteCliente)
-      .replace(/[. ]+$/g, "");
+    const clienteFinal = truncarUnicode(
+      limitarInicioRazaoSocial(cliente),
+      limiteCliente
+    ).replace(/[. ]+$/g, "");
 
     if (!clienteFinal) {
       throw new Error("Nome do cliente inválido após sanitização.");
@@ -247,7 +282,7 @@
         const linhas = [
           ["Número do título", dados.titulo],
           ["Sequência/parcela", dados.parcela],
-          ["Cliente (nome_cliente.)", dados.cliente],
+          ["Início da razão social", limitarInicioRazaoSocial(dados.cliente)],
           ["Nome previsto do PDF", leitura.nomeArquivo]
         ];
 
@@ -320,6 +355,7 @@
     fieldNames: CAMPOS,
     sanitizarParteNome,
     montarNomeArquivo,
+    limitarInicioRazaoSocial,
     lerDadosTitulo
   });
 
