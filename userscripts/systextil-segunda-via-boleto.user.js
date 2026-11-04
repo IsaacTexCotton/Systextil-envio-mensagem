@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.1.4
+// @version      0.2.0
 // @updateURL     https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @downloadURL   https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
-// @description  Abre a conferência da segunda via sob demanda, sem recarregar a página.
+// @description  Prepara a consulta assistida da segunda via sem recarregar a página.
 // @match        http://systextil.texcotton.com.br/systextil/*
 // @match        https://systextil.texcotton.com.br/systextil/*
 // @run-at       context-menu
@@ -15,7 +15,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.1.4";
+  const VERSION = "0.2.0";
   const PANEL_ID = "st-segunda-via-boleto-panel";
 
   const CAMPOS = Object.freeze({
@@ -166,6 +166,114 @@
     };
   }
 
+
+  /**
+   * Valida identificadores antes de preencher os campos do ERP.
+   * Mantém zeros à esquerda e não tenta converter os valores em números.
+   */
+  function validarCodigoConsulta(valor, rotulo) {
+    const codigo = String(valor ?? "").trim();
+
+    if (!codigo) {
+      throw new Error(rotulo + " não informado.");
+    }
+
+    if (!/^[A-Za-z0-9_-]+$/.test(codigo)) {
+      throw new Error(rotulo + " contém caracteres não permitidos.");
+    }
+
+    return codigo;
+  }
+
+  function localizarFormularioConsulta() {
+    const nomesObrigatorios = [CAMPOS.titulo, CAMPOS.parcela];
+    const formularios = Array.from(document.forms).filter(form =>
+      nomesObrigatorios.every(nome => {
+        const campo = form.elements.namedItem(nome);
+        return campo && typeof campo.value === "string";
+      })
+    );
+
+    if (formularios.length !== 1) {
+      throw new Error(
+        formularios.length === 0
+          ? "Campos de número do título e parcela não encontrados."
+          : "Mais de um formulário de consulta compatível; preenchimento interrompido."
+      );
+    }
+
+    return formularios[0];
+  }
+
+  function emitirEventosCampo(campo) {
+    campo.dispatchEvent(new Event("input", { bubbles: true }));
+    campo.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function preencherCamposConsulta(dados) {
+    const titulo = validarCodigoConsulta(dados?.titulo, "Número do título");
+    const parcela = validarCodigoConsulta(dados?.parcela, "Parcela");
+
+    const formulario = localizarFormularioConsulta();
+    const campoTitulo = formulario.elements.namedItem(CAMPOS.titulo);
+    const campoParcela = formulario.elements.namedItem(CAMPOS.parcela);
+
+    if (
+      campoTitulo.disabled ||
+      campoTitulo.readOnly ||
+      campoParcela.disabled ||
+      campoParcela.readOnly
+    ) {
+      throw new Error("Um dos campos do ERP está bloqueado para edição.");
+    }
+
+    const valoresAnteriores = {
+      titulo: campoTitulo.value,
+      parcela: campoParcela.value
+    };
+
+    try {
+      campoTitulo.value = titulo;
+      emitirEventosCampo(campoTitulo);
+
+      campoParcela.value = parcela;
+      emitirEventosCampo(campoParcela);
+
+      if (
+        campoTitulo.value.trim() !== titulo ||
+        campoParcela.value.trim() !== parcela
+      ) {
+        throw new Error("O Systextil não manteve os valores preenchidos.");
+      }
+    } catch (erro) {
+      // Evita deixar a tela parcialmente preenchida se um dos campos falhar.
+      try {
+        campoTitulo.value = valoresAnteriores.titulo;
+        emitirEventosCampo(campoTitulo);
+      } catch (_) {
+        campoTitulo.value = valoresAnteriores.titulo;
+      }
+
+      try {
+        campoParcela.value = valoresAnteriores.parcela;
+        emitirEventosCampo(campoParcela);
+      } catch (_) {
+        campoParcela.value = valoresAnteriores.parcela;
+      }
+
+      throw new Error(
+        "Não foi possível preencher os dois campos; os valores anteriores foram restaurados. " +
+        erro.message
+      );
+    }
+
+    if (typeof campoTitulo.focus === "function") {
+      campoTitulo.focus();
+    }
+
+    return { titulo, parcela };
+  }
+
   function criarElemento(tag, texto, classe) {
     const elemento = document.createElement(tag);
 
@@ -226,14 +334,14 @@
 
     const explicacao = criarElemento(
       "p",
-      "Leia os dados do título exibido. Esta etapa não consulta, emite nem baixa boletos."
+      "Informe o número do título e a parcela para preparar os campos da consulta."
     );
     explicacao.style.margin = "0 0 10px";
     explicacao.style.color = "#475569";
 
     const alerta = criarElemento(
       "p",
-      "Confirme visualmente se Cliente corresponde à razão social e se a sequência corresponde à parcela."
+      "A sequência ainda precisa ser confirmada como parcela. Confira os valores no ERP antes de pressionar F7."
     );
     alerta.style.margin = "0 0 8px";
     alerta.style.padding = "8px";
@@ -248,7 +356,75 @@
     dicaAtalho.style.color = "#475569";
     dicaAtalho.style.fontSize = "11px";
 
-    const botao = criarElemento("button", "Ler dados do título");
+    const grupoEntradas = criarElemento("div");
+    Object.assign(grupoEntradas.style, {
+      display: "grid",
+      gap: "8px",
+      margin: "0 0 10px"
+    });
+
+    function criarCampoConsulta(rotulo, id, placeholder) {
+      const grupo = criarElemento("label");
+      Object.assign(grupo.style, {
+        display: "grid",
+        gap: "4px",
+        color: "#334155",
+        fontWeight: "600"
+      });
+
+      const legenda = criarElemento("span", rotulo);
+      legenda.style.fontSize = "12px";
+
+      const campo = document.createElement("input");
+      campo.type = "text";
+      campo.id = id;
+      campo.placeholder = placeholder;
+      campo.autocomplete = "off";
+      campo.spellcheck = false;
+      campo.inputMode = "numeric";
+      Object.assign(campo.style, {
+        width: "100%",
+        boxSizing: "border-box",
+        border: "1px solid #cbd5e1",
+        borderRadius: "5px",
+        padding: "8px",
+        color: "#172033",
+        background: "#ffffff",
+        font: "13px Arial, sans-serif"
+      });
+
+      grupo.append(legenda, campo);
+      grupoEntradas.append(grupo);
+      return campo;
+    }
+
+    const entradaTitulo = criarCampoConsulta(
+      "Número do título",
+      "st-segunda-via-numero-titulo",
+      "Informe o número do título"
+    );
+    const entradaParcela = criarCampoConsulta(
+      "Parcela / sequência",
+      "st-segunda-via-parcela",
+      "Informe a parcela"
+    );
+
+    const botaoPreencher = criarElemento("button", "Preencher campos no Systextil");
+    botaoPreencher.type = "button";
+    Object.assign(botaoPreencher.style, {
+      width: "100%",
+      border: "0",
+      borderRadius: "5px",
+      padding: "9px 12px",
+      background: "#0f766e",
+      color: "#ffffff",
+      fontWeight: "600",
+      cursor: "pointer",
+      marginBottom: "8px"
+    });
+
+    const botao = criarElemento("button", "Ler dados do título (após F7)");
+    botao.type = "button";
     Object.assign(botao.style, {
       width: "100%",
       border: "0",
@@ -273,6 +449,38 @@
       background: "#ffffff",
       color: "#334155",
       cursor: "pointer"
+    });
+
+    botaoPreencher.addEventListener("click", function () {
+      resultado.replaceChildren();
+
+      try {
+        const preenchidos = preencherCamposConsulta({
+          titulo: entradaTitulo.value,
+          parcela: entradaParcela.value
+        });
+
+        const status = criarElemento(
+          "p",
+          "Campos preenchidos e conferidos no formulário. Confira o número e a parcela no ERP; depois, pressione F7 manualmente. Nenhuma consulta foi enviada."
+        );
+        status.style.color = "#166534";
+        status.style.margin = "0";
+        resultado.append(status);
+
+        const detalhe = criarElemento(
+          "p",
+          "Título: " + preenchidos.titulo + " · Parcela/sequência: " + preenchidos.parcela
+        );
+        detalhe.style.margin = "7px 0 0";
+        detalhe.style.overflowWrap = "anywhere";
+        resultado.append(detalhe);
+      } catch (erro) {
+        const status = criarElemento("p", erro.message);
+        status.style.color = "#b91c1c";
+        status.style.margin = "0";
+        resultado.append(status);
+      }
     });
 
     botao.addEventListener("click", function () {
@@ -322,7 +530,7 @@
 
         const status = criarElemento(
           "p",
-          "Leitura concluída. Nenhuma ação foi executada no ERP."
+          "Leitura concluída. Nenhuma nova ação foi executada no ERP."
         );
         status.style.color = "#166534";
         status.style.margin = "9px 0 0";
@@ -345,6 +553,8 @@
       explicacao,
       alerta,
       dicaAtalho,
+      grupoEntradas,
+      botaoPreencher,
       botao,
       resultado,
       fechar
@@ -359,7 +569,9 @@
     sanitizarParteNome,
     montarNomeArquivo,
     limitarInicioRazaoSocial,
-    lerDadosTitulo
+    lerDadosTitulo,
+    validarCodigoConsulta,
+    preencherCamposConsulta
   });
 
   function alternarPainel() {
