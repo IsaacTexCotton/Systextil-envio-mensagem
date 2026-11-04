@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.3.0
+// @version      0.3.1
 // @updateURL     https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @downloadURL   https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @description  Consulta e identifica o processo da segunda via sem recarregar a página.
@@ -15,7 +15,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.3.0";
+  const VERSION = "0.3.1";
   const PANEL_ID = "st-segunda-via-boleto-panel";
 
   const CAMPOS = Object.freeze({
@@ -246,9 +246,46 @@
     return formularios[0];
   }
 
-  function emitirEventosCampo(campo) {
-    campo.dispatchEvent(new Event("input", { bubbles: true }));
-    campo.dispatchEvent(new Event("change", { bubbles: true }));
+  /**
+   * Atualiza o valor pelo setter nativo do input.
+   *
+   * Alguns formulários mantêm um estado interno/controle de alterações separado
+   * do valor visual. Atribuir diretamente em campo.value pode atualizar somente
+   * a propriedade observável pelo DOM e não notificar corretamente o formulário.
+   */
+  function atribuirValorCampo(campo, valor) {
+    const janela = campo.ownerDocument?.defaultView || window;
+    const prototipoInput = janela.HTMLInputElement?.prototype;
+    const setterNativo = prototipoInput
+      ? Object.getOwnPropertyDescriptor(prototipoInput, "value")?.set
+      : null;
+
+    if (typeof setterNativo === "function") {
+      setterNativo.call(campo, valor);
+    } else {
+      // Fallback para ambientes de teste e controles que não sejam HTMLInputElement.
+      campo.value = valor;
+    }
+
+    const ConstrutorInputEvent = janela.InputEvent;
+    let eventoInput;
+
+    if (typeof ConstrutorInputEvent === "function") {
+      try {
+        eventoInput = new ConstrutorInputEvent("input", {
+          bubbles: true,
+          inputType: "insertReplacementText",
+          data: String(valor)
+        });
+      } catch (_) {
+        eventoInput = new (janela.Event || Event)("input", { bubbles: true });
+      }
+    } else {
+      eventoInput = new (janela.Event || Event)("input", { bubbles: true });
+    }
+
+    campo.dispatchEvent(eventoInput);
+    campo.dispatchEvent(new (janela.Event || Event)("change", { bubbles: true }));
   }
 
   function preencherCamposConsulta(dados) {
@@ -282,11 +319,11 @@
     };
 
     try {
-      campoTitulo.value = titulo;
-      emitirEventosCampo(campoTitulo);
+      if (typeof campoTitulo.focus === "function") campoTitulo.focus();
+      atribuirValorCampo(campoTitulo, titulo);
 
-      campoParcela.value = parcela;
-      emitirEventosCampo(campoParcela);
+      if (typeof campoParcela.focus === "function") campoParcela.focus();
+      atribuirValorCampo(campoParcela, parcela);
 
       if (
         campoTitulo.value.trim() !== titulo ||
@@ -297,15 +334,13 @@
     } catch (erro) {
       // Evita deixar a tela parcialmente preenchida se um dos campos falhar.
       try {
-        campoTitulo.value = valoresAnteriores.titulo;
-        emitirEventosCampo(campoTitulo);
+        atribuirValorCampo(campoTitulo, valoresAnteriores.titulo);
       } catch (_) {
         campoTitulo.value = valoresAnteriores.titulo;
       }
 
       try {
-        campoParcela.value = valoresAnteriores.parcela;
-        emitirEventosCampo(campoParcela);
+        atribuirValorCampo(campoParcela, valoresAnteriores.parcela);
       } catch (_) {
         campoParcela.value = valoresAnteriores.parcela;
       }
