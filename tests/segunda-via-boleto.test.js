@@ -399,6 +399,39 @@ test('exige solicitação registrada para analisar processos', () => {
   assert.equal(resultado.status, 'sem-solicitacao');
 });
 
+
+test('mapeia os nomes de campos repetidos para a linha visual correta', () => {
+  const api = carregarApi();
+
+  assert.equal(api.nomeCampoProcesso('titulo.', 0), 'titulo.');
+  assert.equal(api.nomeCampoProcesso('titulo.', 1), 'titulo.0');
+  assert.equal(api.nomeCampoProcesso('titulo.', 2), 'titulo.1');
+  assert.equal(api.nomeCampoProcesso('MSG_EXCEPTION.', 3), 'MSG_EXCEPTION.2');
+});
+
+test('expira solicitação antiga para não associar uma emissão posterior por engano', () => {
+  const api = carregarApi();
+  const solicitadoEm = new Date(2026, 10, 4, 10, 0, 0).getTime();
+  const agora = new Date(2026, 10, 4, 11, 0, 1).getTime();
+
+  const resultado = api.analisarProcessos([], {
+    solicitadoEm,
+    titulo: '00936520',
+    parcela: '01'
+  }, agora);
+
+  assert.equal(resultado.status, 'solicitacao-expirada');
+});
+
+test('a Fase 3 identifica a linha sem selecionar ou baixar o processo', () => {
+  const api = carregarApi();
+
+  assert.equal(typeof api.analisarProcessos, 'function');
+  assert.ok(source.includes('Nenhuma linha foi selecionada e nenhum PDF foi baixado.'));
+  assert.equal(source.includes('doCommand('), false);
+  assert.equal(source.includes('GM_download('), false);
+});
+
 test('registra o atalho Ctrl+Alt+B para alternar a conferência', () => {
   assert.match(source, /event\.ctrlKey/);
   assert.match(source, /event\.altKey/);
