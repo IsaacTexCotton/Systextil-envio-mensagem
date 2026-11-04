@@ -534,7 +534,7 @@ Para a nova funcionalidade:
 | Geração da URL PDF pelo ERP | Validada |
 | Download autenticado com `GM_download` | Validado |
 | Nome personalizado e pasta de rede | Validados |
-| Identificação única do processo | v0.3.2 prioriza segundo exato e limita tolerância a ±90s; validação operacional pendente |
+| Identificação única do processo | v0.3.2 prioriza segundo exato, limita tolerância a ±90s e foi validada operacionalmente em 04/11/2026 |
 | Seleção automática do processo | Pendente; API de seleção ainda não validada |
 | Userscript da segunda via | v0.3.2 integrada à `main` e validada na Fase 3; Fase 4 v0.4.0 na PR #14, com 74/74 testes informados como aprovados e validação operacional pendente |
 
