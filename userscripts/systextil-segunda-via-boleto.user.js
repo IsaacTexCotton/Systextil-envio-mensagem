@@ -57,7 +57,7 @@
       return nome;
     }
 
-    const palavras = nome.split(/\\s+/).filter(Boolean);
+    const palavras = nome.split(/\s+/).filter(Boolean);
     let inicio = "";
 
     for (const palavra of palavras) {
