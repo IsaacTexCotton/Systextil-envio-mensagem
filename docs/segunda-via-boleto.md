@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-**Status:** levantamento técnico concluído parcialmente; userscript inicial em validação assistida  
+**Status:** Fase 2 implementada em branch de desenvolvimento; preenchimento assistido aguardando validação no Systextil  
 **Última atualização:** 2026-11-04  
 **Escopo:** obter o PDF de um boleto já existente no Systextil e salvá-lo com nome padronizado em uma pasta de rede.
 
@@ -350,10 +350,56 @@ Após instalar a 0.1.4, as próximas versões poderão ser encontradas pelo coma
 
 **Importante:** enquanto esta alteração estiver apenas na branch do PR, o endereço configurado para `main` ainda não conterá a versão 0.1.4. Não orientar a atualização manual antes do merge. A instalação atual pode continuar usando a versão 0.1.3.
 
-## 9. Pendências antes da implementação funcional
+## 8.8. Fase 2 — preenchimento assistido da consulta (04/11/2026)
 
-1. Confirmar o rótulo e o significado do campo `seq_duplicatas.`.
-2. Localizar o campo que contém a razão social (e confirmar se o conteúdo é razão social, não apenas nome fantasia).
+A versão \`0.2.0\` adiciona ao painel campos próprios para informar o número do título e a parcela/sequência.
+
+### Comportamento
+
+1. O operador informa o número do título e a parcela no painel.
+2. O script valida os dois valores como identificadores não vazios com caracteres alfanuméricos, hífen ou sublinhado. Os valores permanecem como texto para preservar zeros à esquerda.
+3. O script localiza um único formulário que contenha os campos \`num_duplicata.\` e \`seq_duplicatas.\`.
+4. Antes de preencher, confirma que os campos não estão desabilitados ou somente para leitura.
+5. Preenche os dois campos, dispara eventos DOM \`input\` e \`change\` e confere se o ERP manteve os valores.
+6. Se ocorrer falha, tenta restaurar os dois valores anteriores e informa o erro.
+7. Após o preenchimento, o foco retorna ao campo de número do título para facilitar a operação manual.
+
+### Limites de segurança
+
+- O script **não envia F7**, não submete o formulário e não executa a consulta.
+- O operador deve conferir os valores na tela do Systextil e pressionar F7 manualmente.
+- O painel mantém o aviso de que \`seq_duplicatas.\` ainda precisa de confirmação operacional como parcela.
+- O script não altera o campo do cliente, não emite boleto, não abre Processos agendados e não baixa arquivos.
+- A leitura dos dados retornados pelo ERP continua disponível pelo botão **Ler dados do título (após F7)**.
+
+### Critérios de validação no ERP
+
+1. Abrir Consulta de títulos sem recarregar a sessão.
+2. Ativar o painel pelo popup do Tampermonkey.
+3. Informar um título conhecido e uma parcela conhecida.
+4. Clicar em **Preencher campos no Systextil**.
+5. Conferir se o número e a sequência foram colocados nos campos corretos, inclusive preservando zeros à esquerda.
+6. Confirmar visualmente que o foco está no número do título e pressionar F7 manualmente.
+7. Após o retorno do ERP, clicar em **Ler dados do título (após F7)** e conferir se título, sequência e cliente correspondem ao registro consultado.
+
+A aprovação desta fase depende desse teste manual. A identificação do campo de parcela permanece provisória até a confirmação do operador no ERP.
+
+### Testes automatizados adicionados
+
+- preservação de zeros à esquerda;
+- rejeição de identificadores vazios ou com caracteres não permitidos;
+- preenchimento dos dois campos e disparo de eventos \`input\`/\`change\`;
+- foco no campo do título;
+- interrupção quando mais de um formulário é compatível;
+- restauração dos valores anteriores em caso de falha parcial;
+- ausência de submissão ou envio sintético de F7.
+
+Os testes foram adicionados ao arquivo \`tests/segunda-via-boleto.test.js\`. Ainda precisam ser executados com \`npm test\` em Node.js 18+.
+
+## 9. Próximas pendências após a Fase 2
+
+1. Confirmar no ERP, com um título conhecido, que `seq_duplicatas.` corresponde à parcela.
+2. Confirmar a origem da razão social usada no nome do arquivo, distinguindo razão social de nome fantasia.
 3. Confirmar a relação entre o momento em que se aciona **Emite boleto** e a data/hora que aparece na grade de processos.
 4. Implementar uma rotina de seleção única e validar a correspondência entre os campos da grade e `DataView.currentRow`.
 5. Criar testes locais para normalização de nome, caracteres inválidos, correspondência de processo, ambiguidade, estados de sucesso/falha e construção/validação da URL.
@@ -377,7 +423,7 @@ Para a nova funcionalidade:
 |---|---|
 | Fluxo operacional manual | Mapeado |
 | Campo do número do título | Identificado |
-| Campo da parcela | Candidato; rótulo pendente |
+| Campo da parcela | `seq_duplicatas.` preenchido em modo assistido; confirmação operacional pendente |
 | Campo da razão social | Pendente |
 | Identificação dos controles da grade | Mapeada |
 | Mensagem de sucesso | Identificada |
@@ -385,4 +431,4 @@ Para a nova funcionalidade:
 | Download autenticado com `GM_download` | Validado |
 | Nome personalizado e pasta de rede | Validados |
 | Seleção automática do processo | Pendente |
-| Userscript da segunda via | v0.1.4: painel sob demanda, atalho, prefixo abreviado e metadados de atualização automática; sem emissão ou download integrado |
+| Userscript da segunda via | v0.2.0: painel sob demanda, prefixo abreviado, atualização automática e preenchimento assistido de título/parcela; F7 permanece manual |
