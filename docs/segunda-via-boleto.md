@@ -331,6 +331,25 @@ A versão `0.1.3` também trata atualização do userscript na aba atual. Ao exe
 
 Isso permite instalar/atualizar o userscript e ativar sua versão nova na aba já aberta, sem recarregar ou encerrar a sessão do Systextil.
 
+## 8.7. Atualização automática pelo Tampermonkey (04/11/2026)
+
+A versão `0.1.4` adiciona ao cabeçalho do userscript:
+
+- `@version 0.1.4`;
+- `@updateURL`, apontando para o arquivo oficial na branch `main`;
+- `@downloadURL`, apontando para o mesmo arquivo oficial para obter a versão nova.
+
+O Tampermonkey usa `@version` para identificar se há atualização. A documentação oficial descreve `@updateURL` como endereço consultado na verificação e `@downloadURL` como endereço de onde o script atualizado é baixado:
+https://www.tampermonkey.net/documentation.php?locale=pt_BR
+
+### Migração da versão 0.1.3
+
+A versão 0.1.3 não possui `@updateURL` nem `@downloadURL`. Por isso, uma instalação já existente não conhece o endereço estável para buscar as próximas versões. É necessária uma atualização manual única para a versão 0.1.4, depois que esta alteração estiver integrada à branch `main`.
+
+Após instalar a 0.1.4, as próximas versões poderão ser encontradas pelo comando de verificação de atualizações do Tampermonkey. Não será necessário copiar e reinstalar o código a cada versão. A atualização continua sujeita à disponibilidade do GitHub e à confirmação de atualização exibida pelo Tampermonkey.
+
+**Importante:** enquanto esta alteração estiver apenas na branch do PR, o endereço configurado para `main` ainda não conterá a versão 0.1.4. Não orientar a atualização manual antes do merge. A instalação atual pode continuar usando a versão 0.1.3.
+
 ## 9. Pendências antes da implementação funcional
 
 1. Confirmar o rótulo e o significado do campo `seq_duplicatas.`.
@@ -366,4 +385,4 @@ Para a nova funcionalidade:
 | Download autenticado com `GM_download` | Validado |
 | Nome personalizado e pasta de rede | Validados |
 | Seleção automática do processo | Pendente |
-| Userscript da segunda via | v0.1.3: painel sob demanda, atalho de teclado e prefixo de razão social limitado; sem emissão ou download integrado |
+| Userscript da segunda via | v0.1.4: painel sob demanda, atalho, prefixo abreviado e metadados de atualização automática; sem emissão ou download integrado |
