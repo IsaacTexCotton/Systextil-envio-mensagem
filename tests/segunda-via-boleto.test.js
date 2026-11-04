@@ -1031,3 +1031,16 @@ test('GM_download falha de forma explícita quando a permissão não está dispo
     /GM_download não está disponível/
   );
 });
+
+
+
+test('recria o painel correto ao atualizar uma versão antiga na tela de Processos agendados', () => {
+  const inicio = source.lastIndexOf('const painelAtual = document.getElementById(PANEL_ID);');
+  const bloco = source.slice(inicio);
+
+  assert.ok(inicio >= 0);
+  assert.match(bloco, /if \(painelAtual && painelAtual\.dataset\.scriptVersion !== VERSION\)/);
+  assert.match(bloco, /painelAtual\.remove\(\);/);
+  assert.match(bloco, /alternarPainel\(\);/);
+  assert.equal(bloco.includes('montarPainel();'), false);
+});
