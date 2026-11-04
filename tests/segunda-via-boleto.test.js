@@ -444,7 +444,15 @@ test('captura clique em Emite boleto sem cancelar nem repetir a ação do ERP', 
   assert.ok(handler.includes('elemento.name === "CMDEmetirBoletos"'));
   assert.equal(handler.includes('preventDefault'), false);
   assert.equal(handler.includes('stopPropagation'), false);
-  assert.ok(handler.includes('armazenamento.setItem(CHAVE_SOLICITACAO_EMISSAO'));
+  assert.ok(handler.includes('salvarSolicitacaoEmissao(documento)'));
+
+  const inicioSalvar = source.indexOf('function salvarSolicitacaoEmissao(documento)');
+  const fimSalvar = source.indexOf('function recuperarSolicitacaoEmissao()', inicioSalvar);
+  const funcaoSalvar = source.slice(inicioSalvar, fimSalvar);
+
+  assert.ok(inicioSalvar >= 0);
+  assert.ok(fimSalvar > inicioSalvar);
+  assert.ok(funcaoSalvar.includes('armazenamento.setItem(CHAVE_SOLICITACAO_EMISSAO'));
 });
 
 test('registra o atalho Ctrl+Alt+B para alternar a conferência', () => {
