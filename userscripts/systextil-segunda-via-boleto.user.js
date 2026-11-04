@@ -198,6 +198,7 @@
 
     const painel = criarElemento("section");
     painel.id = PANEL_ID;
+    painel.dataset.scriptVersion = VERSION;
 
     Object.assign(painel.style, {
       position: "fixed",
@@ -388,8 +389,10 @@
     return;
   }
 
-  if (!window.__systextilSegundaViaBoletoShortcutAttached) {
-    document.addEventListener("keydown", function (event) {
+  // Listener no window permite substituir em memória listeners antigos
+  // que versões anteriores registraram diretamente no document.
+  if (window.__systextilSegundaViaBoletoShortcutVersion !== VERSION) {
+    window.addEventListener("keydown", function (event) {
       const atalho =
         event.ctrlKey &&
         event.altKey &&
@@ -400,11 +403,23 @@
 
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
       alternarPainel();
     }, true);
 
-    window.__systextilSegundaViaBoletoShortcutAttached = true;
+    window.__systextilSegundaViaBoletoShortcutVersion = VERSION;
   }
 
-  alternarPainel();
+  // Ao executar uma versão nova pelo popup, substitui o painel antigo
+  // na própria aba sem exigir recarga da página.
+  const painelAtual = document.getElementById(PANEL_ID);
+
+  if (painelAtual && painelAtual.dataset.scriptVersion !== VERSION) {
+    painelAtual.remove();
+    window.__systextilSegundaViaBoletoLoaded = false;
+    window.__systextilSegundaViaBoletoLoaded = true;
+    montarPainel();
+  } else {
+    alternarPainel();
+  }
 })();
