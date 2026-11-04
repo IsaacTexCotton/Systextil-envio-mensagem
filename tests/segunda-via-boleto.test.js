@@ -14,7 +14,7 @@ const scriptPath = path.join(
 );
 const source = fs.readFileSync(scriptPath, 'utf8');
 
-function carregarApi(forms = [], propriedadesJanela = {}) {
+function carregarApi(forms = [], propriedadesJanela = {}, propriedadesGlobais = {}) {
   const document = {
     body: null,
     forms,
@@ -32,7 +32,7 @@ function carregarApi(forms = [], propriedadesJanela = {}) {
 
   vm.runInNewContext(
     source,
-    { window, document, console: consoleTeste, Object, Array, String, Event, URL },
+    { window, document, console: consoleTeste, Object, Array, String, Event, URL, ...propriedadesGlobais },
     { filename: scriptPath }
   );
 
@@ -682,6 +682,14 @@ test('obtém getFileUrl somente depois de selecionar e confirmar a linha corresp
     mensagem: 'Processo concluído com sucesso.'
   };
   const page = {
+    document: {
+      querySelectorAll() {
+        return [{
+          options: [],
+          selectedOptions: [{ value: 'blt365332.jrprint' }]
+        }];
+      }
+    },
     DataView: { currentRow: 0 },
     getFileUrl() {
       assert.equal(this.DataView.currentRow, 2);
@@ -933,4 +941,93 @@ test('limita o comprimento do nome de arquivo', () => {
 
   assert.ok(Array.from(nome).length <= 180);
   assert.ok(nome.endsWith(' - 936312.01.pdf'));
+});
+
+
+test('confirma que o relatório .jrprint selecionado corresponde à URL preparada', () => {
+  const api = carregarApi();
+  const page = {
+    document: {
+      querySelectorAll() {
+        return [{
+          options: [],
+          selectedOptions: [{ value: 'blt999999.jrprint' }]
+        }];
+      }
+    },
+    DataView: { currentRow: 2 },
+    getFileUrl() {
+      return 'download/blt365332.pdf?report=blt365332.jrprint&ext=pdf&program=forms.crec.crec_e259';
+    }
+  };
+  const registro = {
+    rowIndex: 2,
+    titulo: 'Emissão de boletos com registro',
+    dataExecucao: '04/11/2026 12:12:38',
+    mensagem: 'Processo concluído com sucesso.'
+  };
+
+  assert.throws(
+    () => api.prepararUrlDownloadProcesso(
+      registro,
+      page,
+      'http://systextil.texcotton.com.br/systextil/forms.systextil.senha.nxj',
+      () => [registro]
+    ),
+    /não corresponde ao relatório atualmente selecionado/
+  );
+  assert.equal(page.DataView.currentRow, 0);
+});
+
+test('não aceita mais de um relatório .jrprint selecionado na página', () => {
+  const api = carregarApi();
+  const documento = {
+    querySelectorAll() {
+      return [
+        { options: [], selectedOptions: [{ value: 'blt1.jrprint' }] },
+        { options: [], selectedOptions: [{ value: 'blt2.jrprint' }] }
+      ];
+    }
+  };
+
+  assert.throws(
+    () => api.obterRelatorioSelecionado(documento),
+    /Mais de um relatório/
+  );
+});
+
+test('GM_download usa o nome PDF e a pasta padrão sem abrir diálogo de destino', () => {
+  let opcoes = null;
+  let sucesso = 0;
+  const api = carregarApi([], {}, {
+    GM_download(detalhes) {
+      opcoes = detalhes;
+      return { abort() {} };
+    }
+  });
+
+  api.iniciarDownloadPdf(
+    'http://systextil.texcotton.com.br/systextil/download/blt365332.pdf?report=blt365332.jrprint&ext=pdf&program=forms.crec.crec_e259',
+    'Confecções Industriais… - 000944246.01.pdf',
+    { onload() { sucesso += 1; } }
+  );
+
+  assert.equal(opcoes.name, 'Confecções Industriais… - 000944246.01.pdf');
+  assert.equal(opcoes.saveAs, false);
+  assert.equal(typeof opcoes.onload, 'function');
+  assert.equal(typeof opcoes.onerror, 'function');
+  assert.equal(typeof opcoes.ontimeout, 'function');
+
+  opcoes.onload({ state: 'complete' });
+  opcoes.onerror({ error: 'late-error' });
+  assert.equal(sucesso, 1);
+});
+
+test('GM_download falha de forma explícita quando a permissão não está disponível', () => {
+  const api = carregarApi();
+
+  assert.throws(
+    () => api.iniciarDownloadPdf('https://systextil.exemplo/arquivo.pdf', 'arquivo.pdf', {}),
+    /GM_download não está disponível/
+  );
 });
