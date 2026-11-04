@@ -2,6 +2,13 @@
 
 Userscripts pequenos e explícitos para reduzir trabalho repetitivo no Systextil. O código não deve executar consultas, enviar mensagens nem gravar dados sem ação explícita do operador.
 
+## Desenvolvimento: segunda via de boleto
+
+Levantamento técnico, evidências confirmadas, decisões, riscos e pendências da automação de segunda via estão documentados em [docs/segunda-via-boleto.md](docs/segunda-via-boleto.md).
+
+**Status atual:** URL PDF e download autenticado com nome personalizado foram validados manualmente. O userscript funcional ainda não foi implementado; a identificação da parcela, razão social e seleção automática inequívoca do processo permanecem pendentes. A implementação será isolada do script de parâmetros da régua e manterá confirmação explícita do operador para ações de negócio.
+
+
 ## Script: Parâmetros da Régua de Cobrança
 
 Arquivo: [userscripts/systextil-parametros-regua.user.js](userscripts/systextil-parametros-regua.user.js)
