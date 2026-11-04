@@ -10,7 +10,7 @@ Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/syste
 
 Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
 
-**Status atual:** versão 0.3.0 em desenvolvimento na branch `feat/processos-agendados-segunda-via`. Mantém o preenchimento assistido do título/parcela com zeros à esquerda e acrescenta captura local do horário do clique em `Emite boleto` e análise somente leitura da grade de Processos agendados. Identifica processo único, em andamento ou com falha; não seleciona a linha nem baixa PDF. A emissão continua manual e a atualização automática segue configurada.
+**Status atual:** a `main` contém a versão **0.3.2** da segunda via (Fase 3, com identificação de processo validada operacionalmente). A Fase 4 (**0.4.0**) está em desenvolvimento na [PR #14](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/14), branch `feat/download-pdf-segunda-via`. O operador informou **74/74 testes aprovados** no Codespace em 04/11/2026. A validação operacional da Fase 4 no Systextil — seleção real da linha, associação do `.jrprint`, download e bloqueio de duplicidade — ainda está pendente. A PR permanece em rascunho e não foi integrada à `main`.
 
 
 ## Script: Parâmetros da Régua de Cobrança
@@ -150,6 +150,10 @@ O cálculo está separado da interação com o formulário e é exposto numa API
 Os testes usam o runner nativo do Node.js e não dependem de bibliotecas externas. Incluem a validação das 55 linhas da matriz de feriados, o cenário de referência 03/11/2026 após o feriado de 02/11, o bloqueio de preenchimento em dias SEM EXPED., a união de janelas sobrepostas no Carnaval e regressões das regras padrão. Com Node.js 18 ou superior instalado, execute **npm test** na raiz do repositório.
 
 **Não há CI/CD nem workflows automatizados neste repositório.** Os testes devem ser executados localmente antes de enviar uma alteração.
+
+## Governança de desenvolvimento com IA
+
+As instruções permanentes para agentes estão em [AGENTS.md](AGENTS.md). O GitHub Copilot também recebe [instruções específicas do repositório](.github/copilot-instructions.md). O checklist de revisão, segurança, privacidade e exposição de informações internas está em [docs/revisao-e-seguranca.md](docs/revisao-e-seguranca.md), e as PRs usam [.github/pull_request_template.md](.github/pull_request_template.md).
 
 ## Princípios de contribuição
 
