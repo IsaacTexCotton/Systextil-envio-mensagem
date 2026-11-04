@@ -267,11 +267,17 @@ Os testes foram adicionados, mas ainda **não foram executados** nesta sessão: 
 
 Após o teste da versão 0.1.0, foi identificado que a ativação automática em `document-idle` exigia que a página fosse recarregada depois da instalação/atualização do userscript. Isso não é aceitável no Systextil porque recarregar a tela pode encerrar a sessão autenticada.
 
-A versão `0.1.1` altera o cabeçalho para:
+A versão `0.1.1` alterou o cabeçalho para:
 
 `// @run-at context-menu`
 
 O script passa a ser iniciado sob demanda pelo popup/menu do Tampermonkey na aba ativa. Conforme o changelog oficial do Tampermonkey, scripts com `@run-at context-menu` podem ser iniciados pelo popup a partir da versão 5.6.6239 (25/06/2026). A versão 5.6.6242 (03/09/2026) contém correções posteriores do menu de contexto.
+
+### Atalho de teclado
+
+A versão `0.1.2` mantém essa execução sob demanda e registra um atalho de teclado após a primeira ativação:
+
+`Ctrl + Alt + B`
 
 ### Instruções de uso
 
@@ -282,9 +288,11 @@ O script passa a ser iniciado sob demanda pelo popup/menu do Tampermonkey na aba
 5. Selecionar **Systextil - Segunda Via de Boleto (conferência)** no popup.
 6. O painel de conferência será inserido na página atual. Selecionar o item novamente alterna/fecha o painel se ele já estiver aberto.
 
+Após a primeira ativação pelo popup, o atalho `Ctrl + Alt + B` abre ou fecha o painel enquanto a mesma aba/documento permanecer aberto. Para voltar a ativar depois de navegar para outro documento, execute novamente o script pelo popup do Tampermonkey.
+
 Se o item não aparecer no popup, confirmar que o Tampermonkey está atualizado para 5.6.6239 ou superior e que o userscript está habilitado.
 
-A alteração não muda a política de segurança da automação: a versão 0.1.1 continua sem enviar consulta, emitir boleto, abrir Processos agendados ou baixar arquivos.
+A alteração não muda a política de segurança da automação: a versão 0.1.2 continua sem enviar consulta, emitir boleto, abrir Processos agendados ou baixar arquivos.
 
 ## 9. Pendências antes da implementação funcional
 
