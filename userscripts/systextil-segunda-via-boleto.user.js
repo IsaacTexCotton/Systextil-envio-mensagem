@@ -31,6 +31,7 @@
   const TITULO_PROCESSO_BOLETO = "Emissão de boletos com registro";
   const MENSAGEM_SUCESSO_PROCESSO = "Processo concluído com sucesso.";
   const TOLERANCIA_HORARIO_PROCESSO_MS = 90 * 1000;
+  const MAX_IDADE_SOLICITACAO_MS = 30 * 60 * 1000;
   const MAX_REGISTROS_PROCESSO = 200;
 
   if (window.top !== window) {
@@ -417,6 +418,13 @@
       };
     }
 
+    if (atual - instanteSolicitacao > MAX_IDADE_SOLICITACAO_MS) {
+      return {
+        status: "solicitacao-expirada",
+        mensagem: "A solicitação registrada tem mais de 30 minutos. Faça uma nova emissão para evitar associar um processo antigo."
+      };
+    }
+
     const candidatos = [];
     let horariosNaoInterpretados = 0;
 
@@ -625,12 +633,14 @@
   }
 
   function salvarSolicitacaoEmissao(documento) {
-    const formularios = Array.from(documento.forms || []).filter(formulario => {
-      return [CAMPOS.titulo, CAMPOS.parcela].every(nome => {
-        const campo = formulario.elements.namedItem(nome);
-        return campo && typeof campo.value === "string";
-      });
-    });
+    const formularios = coletarDocumentosMesmoDominio(window).flatMap(documentoAtual =>
+      Array.from(documentoAtual.forms || []).filter(formulario => {
+        return [CAMPOS.titulo, CAMPOS.parcela].every(nome => {
+          const campo = formulario.elements.namedItem(nome);
+          return campo && typeof campo.value === "string";
+        });
+      })
+    );
 
     if (formularios.length !== 1) {
       throw new Error("Não foi possível associar o clique de emissão a um único título.");
@@ -774,7 +784,8 @@
       ambiguo: "#b91c1c",
       "nao-verificavel": "#b91c1c",
       "nao-encontrado": "#475569",
-      "sem-solicitacao": "#b91c1c"
+      "sem-solicitacao": "#b91c1c",
+      "solicitacao-expirada": "#b91c1c"
     };
 
     const status = criarElemento("p", resultado.mensagem);
