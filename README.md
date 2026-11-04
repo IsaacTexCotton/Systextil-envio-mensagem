@@ -10,7 +10,7 @@ Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/syste
 
 Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
 
-**Status atual:** versão 0.2.1 em desenvolvimento na branch `feat/consulta-assistida-segunda-via`. Adiciona campos para informar título/parcela, completa zeros à esquerda (título padrão de 8 dígitos e parcela de 2, respeitando `maxlength` do ERP) e valida os valores antes de preencher o formulário. O operador ainda precisa conferir a sequência como parcela e pressionar F7 manualmente. Não emite nem baixa boletos. A atualização automática segue configurada pelos metadados `@updateURL`/`@downloadURL`.
+**Status atual:** versão 0.3.0 em desenvolvimento na branch `feat/processos-agendados-segunda-via`. Mantém o preenchimento assistido do título/parcela com zeros à esquerda e acrescenta captura local do horário do clique em `Emite boleto` e análise somente leitura da grade de Processos agendados. Identifica processo único, em andamento ou com falha; não seleciona a linha nem baixa PDF. A emissão continua manual e a atualização automática segue configurada.
 
 
 ## Script: Parâmetros da Régua de Cobrança

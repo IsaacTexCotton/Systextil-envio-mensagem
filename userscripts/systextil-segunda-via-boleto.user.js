@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.2.1
+// @version      0.3.0
 // @updateURL     https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @downloadURL   https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
-// @description  Prepara a consulta assistida da segunda via sem recarregar a página.
+// @description  Consulta e identifica o processo da segunda via sem recarregar a página.
 // @match        http://systextil.texcotton.com.br/systextil/*
 // @match        https://systextil.texcotton.com.br/systextil/*
 // @run-at       context-menu
@@ -15,7 +15,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.2.1";
+  const VERSION = "0.3.0";
   const PANEL_ID = "st-segunda-via-boleto-panel";
 
   const CAMPOS = Object.freeze({
@@ -27,6 +27,12 @@
   const MAX_NOME_ARQUIVO = 180;
   const MAX_INICIO_RAZAO_SOCIAL = 35;
   const LARGURAS_PADRAO_CONSULTA = Object.freeze({ titulo: 8, parcela: 2 });
+  const CHAVE_SOLICITACAO_EMISSAO = "st-segunda-via-boleto:solicitacao";
+  const TITULO_PROCESSO_BOLETO = "Emissão de boletos com registro";
+  const MENSAGEM_SUCESSO_PROCESSO = "Processo concluído com sucesso.";
+  const TOLERANCIA_HORARIO_PROCESSO_MS = 90 * 1000;
+  const MAX_IDADE_SOLICITACAO_MS = 30 * 60 * 1000;
+  const MAX_REGISTROS_PROCESSO = 200;
 
   if (window.top !== window) {
     return;
@@ -317,6 +323,633 @@
     return { titulo, parcela };
   }
 
+
+  function normalizarTextoProcesso(valor) {
+    return String(valor ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  }
+
+  /**
+   * Interpreta somente formatos explícitos com data e hora.
+   * Retorna timestamp local ou null se o formato/data não for verificável.
+   */
+  function interpretarDataHoraProcesso(valor) {
+    const texto = String(valor ?? "").trim();
+    let partes;
+
+    let match = texto.match(
+      /^(\d{2})\/(\d{2})\/(\d{4})[ T]+(\d{2}):(\d{2})(?::(\d{2}))?$/
+    );
+
+    if (match) {
+      partes = {
+        ano: Number(match[3]),
+        mes: Number(match[2]),
+        dia: Number(match[1]),
+        hora: Number(match[4]),
+        minuto: Number(match[5]),
+        segundo: Number(match[6] || 0)
+      };
+    } else {
+      match = texto.match(
+        /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/
+      );
+
+      if (!match) return null;
+
+      partes = {
+        ano: Number(match[1]),
+        mes: Number(match[2]),
+        dia: Number(match[3]),
+        hora: Number(match[4]),
+        minuto: Number(match[5]),
+        segundo: Number(match[6] || 0)
+      };
+    }
+
+    const data = new Date(
+      partes.ano,
+      partes.mes - 1,
+      partes.dia,
+      partes.hora,
+      partes.minuto,
+      partes.segundo,
+      0
+    );
+
+    if (
+      data.getFullYear() !== partes.ano ||
+      data.getMonth() !== partes.mes - 1 ||
+      data.getDate() !== partes.dia ||
+      data.getHours() !== partes.hora ||
+      data.getMinutes() !== partes.minuto ||
+      data.getSeconds() !== partes.segundo
+    ) {
+      return null;
+    }
+
+    return data.getTime();
+  }
+
+  /**
+   * Associa uma solicitação registrada ao processo exato.
+   * Não seleciona linhas nem executa ações no ERP.
+   */
+  function analisarProcessos(registros, solicitacao, agora) {
+    const atual = Number(agora ?? Date.now());
+    const instanteSolicitacao = Number(solicitacao?.solicitadoEm);
+    const tituloSolicitado = normalizarTextoProcesso(solicitacao?.titulo);
+    const tituloEsperado = normalizarTextoProcesso(TITULO_PROCESSO_BOLETO);
+
+    if (
+      !Number.isFinite(instanteSolicitacao) ||
+      instanteSolicitacao <= 0 ||
+      instanteSolicitacao > atual + TOLERANCIA_HORARIO_PROCESSO_MS ||
+      !tituloSolicitado ||
+      !solicitacao?.parcela
+    ) {
+      return {
+        status: "sem-solicitacao",
+        mensagem: "Não há uma solicitação válida registrada nesta sessão."
+      };
+    }
+
+    if (atual - instanteSolicitacao > MAX_IDADE_SOLICITACAO_MS) {
+      return {
+        status: "solicitacao-expirada",
+        mensagem: "A solicitação registrada tem mais de 30 minutos. Faça uma nova emissão para evitar associar um processo antigo."
+      };
+    }
+
+    const candidatos = [];
+    let horariosNaoInterpretados = 0;
+
+    (Array.isArray(registros) ? registros : []).forEach((registro, indice) => {
+      if (normalizarTextoProcesso(registro?.titulo) !== tituloEsperado) {
+        return;
+      }
+
+      const executadoEm = interpretarDataHoraProcesso(registro?.dataExecucao);
+
+      if (executadoEm === null) {
+        horariosNaoInterpretados += 1;
+        return;
+      }
+
+      const dentroDaJanela =
+        executadoEm >= instanteSolicitacao - TOLERANCIA_HORARIO_PROCESSO_MS &&
+        executadoEm <= atual + TOLERANCIA_HORARIO_PROCESSO_MS;
+
+      if (!dentroDaJanela) return;
+
+      candidatos.push({
+        titulo: registro.titulo,
+        dataExecucao: registro.dataExecucao,
+        executadoEm,
+        mensagem: String(registro.mensagem ?? "").trim(),
+        rowIndex: Number.isInteger(registro.rowIndex) ? registro.rowIndex : indice,
+        visualIndex: (Number.isInteger(registro.rowIndex) ? registro.rowIndex : indice) + 1,
+        recordNumber: (Number.isInteger(registro.rowIndex) ? registro.rowIndex : indice) + 1
+      });
+    });
+
+    if (horariosNaoInterpretados > 0) {
+      return {
+        status: "nao-verificavel",
+        mensagem: "Há registro(s) de emissão sem data/hora reconhecida. Não é possível confirmar uma correspondência única.",
+        candidatos: candidatos.length,
+        horariosNaoInterpretados
+      };
+    }
+
+    if (candidatos.length === 0) {
+      return {
+        status: "nao-encontrado",
+        mensagem: "Ainda não foi localizado um processo de emissão posterior ao horário da solicitação.",
+        candidatos: 0
+      };
+    }
+
+    if (candidatos.length > 1) {
+      return {
+        status: "ambiguo",
+        mensagem: "Mais de um processo corresponde ao horário da solicitação. A identificação automática foi interrompida.",
+        candidatos: candidatos.length
+      };
+    }
+
+    const registro = candidatos[0];
+    const mensagemNormalizada = normalizarTextoProcesso(registro.mensagem);
+    const sucessoEsperado = normalizarTextoProcesso(MENSAGEM_SUCESSO_PROCESSO);
+
+    if (mensagemNormalizada.includes(sucessoEsperado)) {
+      return {
+        status: "sucesso",
+        mensagem: "Processo único identificado e concluído com sucesso.",
+        candidatos: 1,
+        registro
+      };
+    }
+
+    if (!mensagemNormalizada) {
+      return {
+        status: "em-andamento",
+        mensagem: "O processo correspondente foi localizado, mas ainda não apresenta confirmação de conclusão.",
+        candidatos: 1,
+        registro
+      };
+    }
+
+    return {
+      status: "falha",
+      mensagem: "O processo correspondente foi localizado, mas o ERP não informou a mensagem de sucesso. O download não deve prosseguir.",
+      candidatos: 1,
+      registro
+    };
+  }
+
+  function coletarDocumentosMesmoDominio(janelaRaiz) {
+    const raiz = janelaRaiz || window;
+    const documentos = [];
+    const janelasVisitadas = new Set();
+
+    function visitar(janelaAtual) {
+      if (!janelaAtual || janelasVisitadas.has(janelaAtual)) return;
+      janelasVisitadas.add(janelaAtual);
+
+      try {
+        if (janelaAtual.document) documentos.push(janelaAtual.document);
+      } catch (_) {
+        return;
+      }
+
+      let totalFrames = 0;
+      try {
+        totalFrames = janelaAtual.frames.length;
+      } catch (_) {
+        return;
+      }
+
+      for (let indice = 0; indice < totalFrames; indice += 1) {
+        try {
+          visitar(janelaAtual.frames[indice]);
+        } catch (_) {
+          // Frames de outra origem são ignorados.
+        }
+      }
+    }
+
+    visitar(raiz);
+    return documentos;
+  }
+
+  function nomeCampoProcesso(nomeBase, indice) {
+    return indice === 0 ? nomeBase : nomeBase + String(indice - 1);
+  }
+
+  function localizarFormularioProcessos() {
+    const documentos = coletarDocumentosMesmoDominio(window);
+    const camposObrigatorios = ["titulo.", "DATA_EXECUCAO.", "MSG_EXCEPTION."];
+    const formularios = [];
+
+    documentos.forEach(documento => {
+      Array.from(documento.forms || []).forEach(formulario => {
+        const possuiCampos = camposObrigatorios.every(nome => {
+          const campo = formulario.elements.namedItem(nome);
+          return campo && typeof campo.value === "string";
+        });
+
+        if (possuiCampos) formularios.push({ formulario, documento });
+      });
+    });
+
+    if (formularios.length !== 1) {
+      throw new Error(
+        formularios.length === 0
+          ? "Formulário de Processos agendados não identificado."
+          : "Mais de uma grade de Processos agendados foi encontrada; análise interrompida."
+      );
+    }
+
+    return formularios[0];
+  }
+
+  function lerRegistrosProcessos() {
+    const localizado = localizarFormularioProcessos();
+    const formulario = localizado.formulario;
+    const registros = [];
+
+    for (let indice = 0; indice < MAX_REGISTROS_PROCESSO; indice += 1) {
+      const nomes = {
+        titulo: nomeCampoProcesso("titulo.", indice),
+        dataExecucao: nomeCampoProcesso("DATA_EXECUCAO.", indice),
+        mensagem: nomeCampoProcesso("MSG_EXCEPTION.", indice)
+      };
+
+      const campos = {
+        titulo: formulario.elements.namedItem(nomes.titulo),
+        dataExecucao: formulario.elements.namedItem(nomes.dataExecucao),
+        mensagem: formulario.elements.namedItem(nomes.mensagem)
+      };
+
+      const encontrados = Object.values(campos).filter(Boolean).length;
+
+      if (encontrados === 0) break;
+
+      if (encontrados !== 3) {
+        throw new Error(
+          "A estrutura da linha " + (indice + 1) +
+          " está incompleta; análise interrompida para evitar associação incorreta."
+        );
+      }
+
+      const registro = {
+        rowIndex: indice,
+        titulo: String(campos.titulo.value ?? "").trim(),
+        dataExecucao: String(campos.dataExecucao.value ?? "").trim(),
+        mensagem: String(campos.mensagem.value ?? "").trim()
+      };
+
+      if (!registro.titulo && !registro.dataExecucao && !registro.mensagem) {
+        break;
+      }
+
+      registros.push(registro);
+    }
+
+    if (registros.length === 0) {
+      throw new Error("A grade não contém registros legíveis.");
+    }
+
+    if (registros.length === MAX_REGISTROS_PROCESSO) {
+      throw new Error("A grade ultrapassou o limite seguro de leitura de 200 registros.");
+    }
+
+    return registros;
+  }
+
+  function salvarSolicitacaoEmissao(documento) {
+    const formularios = coletarDocumentosMesmoDominio(window).flatMap(documentoAtual =>
+      Array.from(documentoAtual.forms || []).filter(formulario => {
+        return [CAMPOS.titulo, CAMPOS.parcela].every(nome => {
+          const campo = formulario.elements.namedItem(nome);
+          return campo && typeof campo.value === "string";
+        });
+      })
+    );
+
+    if (formularios.length !== 1) {
+      throw new Error("Não foi possível associar o clique de emissão a um único título.");
+    }
+
+    const formulario = formularios[0];
+    const titulo = String(formulario.elements.namedItem(CAMPOS.titulo).value ?? "").trim();
+    const parcela = String(formulario.elements.namedItem(CAMPOS.parcela).value ?? "").trim();
+
+    if (!titulo || !parcela) {
+      throw new Error("O título e a parcela precisam estar preenchidos antes da emissão.");
+    }
+
+    const solicitacao = {
+      solicitadoEm: Date.now(),
+      titulo,
+      parcela,
+      versao: VERSION
+    };
+
+    const armazenamento = documento.defaultView?.sessionStorage || window.sessionStorage;
+    armazenamento.setItem(CHAVE_SOLICITACAO_EMISSAO, JSON.stringify(solicitacao));
+
+    return solicitacao;
+  }
+
+  function recuperarSolicitacaoEmissao() {
+    const armazenamentos = [];
+
+    try {
+      armazenamentos.push(window.sessionStorage);
+    } catch (_) {
+      // O acesso pode ser bloqueado por política do navegador.
+    }
+
+    try {
+      if (window.opener && window.opener !== window) {
+        armazenamentos.push(window.opener.sessionStorage);
+      }
+    } catch (_) {
+      // Opener de outra origem é ignorado.
+    }
+
+    for (const armazenamento of armazenamentos) {
+      try {
+        const bruto = armazenamento.getItem(CHAVE_SOLICITACAO_EMISSAO);
+        if (!bruto) continue;
+
+        const solicitacao = JSON.parse(bruto);
+        if (
+          Number.isFinite(Number(solicitacao?.solicitadoEm)) &&
+          solicitacao?.titulo &&
+          solicitacao?.parcela
+        ) {
+          return solicitacao;
+        }
+      } catch (_) {
+        // Tenta a próxima origem de armazenamento.
+      }
+    }
+
+    return null;
+  }
+
+  function limparSolicitacaoEmissao() {
+    try {
+      window.sessionStorage.removeItem(CHAVE_SOLICITACAO_EMISSAO);
+    } catch (_) {
+      // Não há outra ação necessária se o navegador bloquear o armazenamento.
+    }
+  }
+
+  function instalarCapturaCliqueEmissao() {
+    coletarDocumentosMesmoDominio(window).forEach(documento => {
+      const janela = documento.defaultView;
+      if (!janela) return;
+
+      const handlerAnterior = janela.__systextilSegundaViaEmissaoHandler;
+      if (handlerAnterior) {
+        documento.removeEventListener("click", handlerAnterior, true);
+      }
+
+      const handler = function (evento) {
+        let elemento = evento.target;
+
+        while (elemento && elemento !== documento) {
+          if (
+            elemento.id === "BTNEmetirBoletos." ||
+            elemento.name === "CMDEmetirBoletos"
+          ) {
+            try {
+              const solicitacao = salvarSolicitacaoEmissao(documento);
+              const aviso = document.getElementById(PANEL_ID + "-emissao-status");
+
+              if (aviso) {
+                aviso.textContent =
+                  "Horário da solicitação registrado: " +
+                  new Date(solicitacao.solicitadoEm).toLocaleTimeString("pt-BR") +
+                  ". Agora abra Processos agendados.";
+                aviso.style.color = "#166534";
+              }
+            } catch (erro) {
+              const aviso = document.getElementById(PANEL_ID + "-emissao-status");
+              if (aviso) {
+                aviso.textContent = erro.message;
+                aviso.style.color = "#b91c1c";
+              }
+            }
+            return;
+          }
+
+          elemento = elemento.parentElement;
+        }
+      };
+
+      documento.addEventListener("click", handler, true);
+      janela.__systextilSegundaViaEmissaoHandler = handler;
+    });
+  }
+
+  function ehTelaProcessosAgendados() {
+    try {
+      localizarFormularioProcessos();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function formatarDataHoraLocal(timestamp) {
+    return new Date(timestamp).toLocaleString("pt-BR");
+  }
+
+  function renderizarResultadoProcessos(container, resultado) {
+    container.replaceChildren();
+
+    const cores = {
+      sucesso: "#166534",
+      "em-andamento": "#92400e",
+      falha: "#b91c1c",
+      ambiguo: "#b91c1c",
+      "nao-verificavel": "#b91c1c",
+      "nao-encontrado": "#475569",
+      "sem-solicitacao": "#b91c1c",
+      "solicitacao-expirada": "#b91c1c"
+    };
+
+    const status = criarElemento("p", resultado.mensagem);
+    status.style.margin = "0";
+    status.style.color = cores[resultado.status] || "#334155";
+    status.style.fontWeight = "600";
+    container.append(status);
+
+    if (resultado.registro) {
+      const detalhes = [
+        "Linha visual: " + resultado.registro.visualIndex,
+        "Registro: " + resultado.registro.recordNumber,
+        "Execução: " + resultado.registro.dataExecucao
+      ];
+
+      detalhes.forEach(texto => {
+        const detalhe = criarElemento("p", texto);
+        detalhe.style.margin = "6px 0 0";
+        detalhe.style.color = "#334155";
+        container.append(detalhe);
+      });
+
+      const limite = criarElemento(
+        "p",
+        "A identificação é somente leitura. Nenhuma linha foi selecionada e nenhum PDF foi baixado."
+      );
+      limite.style.margin = "9px 0 0";
+      limite.style.padding = "8px";
+      limite.style.background = "#f1f5f9";
+      limite.style.borderRadius = "5px";
+      container.append(limite);
+    }
+  }
+
+  function montarPainelProcessos() {
+    if (!document.body || document.getElementById(PANEL_ID)) return;
+
+    const painel = criarElemento("section");
+    painel.id = PANEL_ID;
+    painel.dataset.scriptVersion = VERSION;
+
+    Object.assign(painel.style, {
+      position: "fixed",
+      right: "18px",
+      bottom: "18px",
+      zIndex: "2147483000",
+      width: "360px",
+      maxWidth: "calc(100vw - 36px)",
+      maxHeight: "80vh",
+      overflowY: "auto",
+      boxSizing: "border-box",
+      padding: "14px",
+      border: "1px solid #cbd5e1",
+      borderRadius: "8px",
+      background: "#ffffff",
+      color: "#172033",
+      boxShadow: "0 8px 28px rgba(15, 23, 42, 0.20)",
+      font: "13px/1.45 Arial, sans-serif"
+    });
+
+    const titulo = criarElemento("strong", "Segunda via — Processos agendados");
+    titulo.style.display = "block";
+    titulo.style.fontSize = "14px";
+    titulo.style.marginBottom = "8px";
+
+    const explicacao = criarElemento(
+      "p",
+      "Analisa a grade em modo somente leitura e procura uma única emissão solicitada nesta sessão."
+    );
+    explicacao.style.margin = "0 0 10px";
+    explicacao.style.color = "#475569";
+
+    const solicitacao = recuperarSolicitacaoEmissao();
+    const resumo = criarElemento(
+      "p",
+      solicitacao
+        ? "Título: " + solicitacao.titulo + " · Parcela: " + solicitacao.parcela +
+          "\nSolicitado em: " + formatarDataHoraLocal(Number(solicitacao.solicitadoEm))
+        : "Nenhuma solicitação registrada. Volte à Consulta de títulos, ative o painel e clique manualmente em Emite boleto."
+    );
+    resumo.style.margin = "0 0 10px";
+    resumo.style.padding = "8px";
+    resumo.style.background = "#f1f5f9";
+    resumo.style.borderRadius = "5px";
+    resumo.style.whiteSpace = "pre-line";
+
+    const botaoAnalisar = criarElemento("button", "Analisar processos");
+    botaoAnalisar.type = "button";
+    Object.assign(botaoAnalisar.style, {
+      width: "100%",
+      border: "0",
+      borderRadius: "5px",
+      padding: "9px 12px",
+      background: "#1d4ed8",
+      color: "#ffffff",
+      fontWeight: "600",
+      cursor: "pointer"
+    });
+
+    const resultado = criarElemento("div");
+    resultado.style.marginTop = "10px";
+    resultado.setAttribute("aria-live", "polite");
+
+    const botaoLimpar = criarElemento("button", "Limpar solicitação registrada");
+    botaoLimpar.type = "button";
+    Object.assign(botaoLimpar.style, {
+      marginTop: "10px",
+      border: "1px solid #cbd5e1",
+      borderRadius: "5px",
+      padding: "7px 10px",
+      background: "#ffffff",
+      color: "#334155",
+      cursor: "pointer"
+    });
+
+    const fechar = criarElemento("button", "Fechar");
+    Object.assign(fechar.style, {
+      marginTop: "10px",
+      marginLeft: "6px",
+      border: "1px solid #cbd5e1",
+      borderRadius: "5px",
+      padding: "7px 10px",
+      background: "#ffffff",
+      color: "#334155",
+      cursor: "pointer"
+    });
+
+    botaoAnalisar.addEventListener("click", function () {
+      try {
+        const pedidoAtual = recuperarSolicitacaoEmissao();
+        const registros = lerRegistrosProcessos();
+        const analise = analisarProcessos(registros, pedidoAtual, Date.now());
+        renderizarResultadoProcessos(resultado, analise);
+      } catch (erro) {
+        renderizarResultadoProcessos(resultado, {
+          status: "nao-verificavel",
+          mensagem: erro.message
+        });
+      }
+    });
+
+    botaoLimpar.addEventListener("click", function () {
+      limparSolicitacaoEmissao();
+      resumo.textContent = "Solicitação local removida. Para uma nova análise, registre outra emissão na tela Consulta de títulos.";
+      resultado.replaceChildren();
+    });
+
+    fechar.addEventListener("click", function () {
+      painel.remove();
+      window.__systextilSegundaViaBoletoLoaded = false;
+    });
+
+    painel.append(
+      titulo,
+      explicacao,
+      resumo,
+      botaoAnalisar,
+      resultado,
+      botaoLimpar,
+      fechar
+    );
+    document.body.append(painel);
+  }
+
   function criarElemento(tag, texto, classe) {
     const elemento = document.createElement(tag);
 
@@ -398,6 +1031,17 @@
     dicaAtalho.style.margin = "0 0 10px";
     dicaAtalho.style.color = "#475569";
     dicaAtalho.style.fontSize = "11px";
+
+    const statusEmissao = criarElemento(
+      "p",
+      "Mantenha este userscript ativo antes de clicar em Emite boleto para registrar o horário da solicitação."
+    );
+    statusEmissao.id = PANEL_ID + "-emissao-status";
+    statusEmissao.style.margin = "0 0 10px";
+    statusEmissao.style.padding = "8px";
+    statusEmissao.style.background = "#f1f5f9";
+    statusEmissao.style.borderRadius = "5px";
+    statusEmissao.style.color = "#475569";
 
     const grupoEntradas = criarElemento("div");
     Object.assign(grupoEntradas.style, {
@@ -596,6 +1240,7 @@
       explicacao,
       alerta,
       dicaAtalho,
+      statusEmissao,
       grupoEntradas,
       botaoPreencher,
       botao,
@@ -616,16 +1261,29 @@
     validarCodigoConsulta,
     normalizarCodigoConsulta,
     obterLarguraCampo,
-    preencherCamposConsulta
+    preencherCamposConsulta,
+    normalizarTextoProcesso,
+    interpretarDataHoraProcesso,
+    nomeCampoProcesso,
+    analisarProcessos
   });
 
+  function ehTelaSuportada() {
+    return ehTelaConsultaTitulo() || ehTelaProcessosAgendados();
+  }
+
   function alternarPainel() {
-    if (!ehTelaConsultaTitulo()) {
+    const telaConsulta = ehTelaConsultaTitulo();
+    const telaProcessos = !telaConsulta && ehTelaProcessosAgendados();
+
+    if (!telaConsulta && !telaProcessos) {
       console.warn(
-        "[Systextil Segunda Via] Abra a tela Consulta de títulos antes de usar o atalho."
+        "[Systextil Segunda Via] Abra Consulta de títulos ou Processos agendados antes de executar o painel."
       );
       return;
     }
+
+    if (telaConsulta) instalarCapturaCliqueEmissao();
 
     const painelExistente = document.getElementById(PANEL_ID);
 
@@ -636,16 +1294,25 @@
     }
 
     window.__systextilSegundaViaBoletoLoaded = true;
-    montarPainel();
+
+    if (telaConsulta) {
+      montarPainel();
+    } else {
+      montarPainelProcessos();
+    }
   }
 
   // O popup do Tampermonkey injeta esta rotina na aba ativa sem reload.
-  // Depois da primeira ativação, Ctrl+Alt+B alterna o painel nesta aba.
-  if (!ehTelaConsultaTitulo()) {
+  // O script reconhece Consulta de títulos e Processos agendados.
+  if (!ehTelaSuportada()) {
     console.warn(
-      "[Systextil Segunda Via] Abra a tela Consulta de títulos antes de executar este atalho."
+      "[Systextil Segunda Via] Abra Consulta de títulos ou Processos agendados antes de executar este atalho."
     );
     return;
+  }
+
+  if (ehTelaConsultaTitulo()) {
+    instalarCapturaCliqueEmissao();
   }
 
   // Listener no window permite substituir em memória listeners antigos

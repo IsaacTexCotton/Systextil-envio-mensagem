@@ -44,13 +44,13 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
   assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.2.1');
+  assert.equal(api.version, '0.3.0');
 });
 
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
   const url = 'https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js';
 
-  assert.match(source, /^\/\/ @version\s+0\.2\.1$/m);
+  assert.match(source, /^\/\/ @version\s+0\.3\.0$/m);
   assert.ok(source.includes('// @updateURL     ' + url));
   assert.ok(source.includes('// @downloadURL   ' + url));
 });
@@ -217,6 +217,242 @@ test('não envia F7 nem submete o formulário automaticamente', () => {
   assert.equal(source.includes('.submit('), false);
   assert.equal(source.includes('new KeyboardEvent('), false);
   assert.equal(typeof api.preencherCamposConsulta, 'function');
+});
+
+
+test('normaliza nome do processo ignorando acentos e espaços extras', () => {
+  const api = carregarApi();
+
+  assert.equal(
+    api.normalizarTextoProcesso('  Emissão   de boletos com registro  '),
+    'emissao de boletos com registro'
+  );
+});
+
+test('interpreta data e hora brasileira e ISO sem adivinhar formatos', () => {
+  const api = carregarApi();
+  const esperado = new Date(2026, 10, 4, 11, 30, 15).getTime();
+
+  assert.equal(api.interpretarDataHoraProcesso('04/11/2026 11:30:15'), esperado);
+  assert.equal(api.interpretarDataHoraProcesso('2026-11-04T11:30:15'), esperado);
+});
+
+test('rejeita data e hora inválida ou sem horário', () => {
+  const api = carregarApi();
+
+  assert.equal(api.interpretarDataHoraProcesso('31/02/2026 11:30:00'), null);
+  assert.equal(api.interpretarDataHoraProcesso('04/11/2026'), null);
+  assert.equal(api.interpretarDataHoraProcesso('data desconhecida'), null);
+});
+
+test('identifica uma única emissão concluída após o clique em Emite boleto', () => {
+  const api = carregarApi();
+  const solicitadoEm = new Date(2026, 10, 4, 11, 30, 45).getTime();
+  const agora = new Date(2026, 10, 4, 11, 35, 0).getTime();
+
+  const resultado = api.analisarProcessos([
+    {
+      rowIndex: 0,
+      titulo: 'Emissão de boletos com registro',
+      dataExecucao: '04/11/2026 11:30:00',
+      mensagem: 'Processo concluído com sucesso.'
+    }
+  ], {
+    solicitadoEm,
+    titulo: '00936520',
+    parcela: '01'
+  }, agora);
+
+  assert.equal(resultado.status, 'sucesso');
+  assert.equal(resultado.candidatos, 1);
+  assert.equal(resultado.registro.visualIndex, 1);
+  assert.equal(resultado.registro.recordNumber, 1);
+});
+
+test('ignora processos anteriores ao horário registrado da solicitação', () => {
+  const api = carregarApi();
+  const solicitadoEm = new Date(2026, 10, 4, 11, 30, 0).getTime();
+  const agora = new Date(2026, 10, 4, 11, 35, 0).getTime();
+
+  const resultado = api.analisarProcessos([
+    {
+      rowIndex: 0,
+      titulo: 'Emissão de boletos com registro',
+      dataExecucao: '04/11/2026 11:20:00',
+      mensagem: 'Processo concluído com sucesso.'
+    }
+  ], {
+    solicitadoEm,
+    titulo: '00936520',
+    parcela: '01'
+  }, agora);
+
+  assert.equal(resultado.status, 'nao-encontrado');
+});
+
+test('interrompe quando mais de um processo corresponde ao horário da solicitação', () => {
+  const api = carregarApi();
+  const solicitadoEm = new Date(2026, 10, 4, 11, 30, 0).getTime();
+  const agora = new Date(2026, 10, 4, 11, 35, 0).getTime();
+
+  const resultado = api.analisarProcessos([
+    {
+      rowIndex: 0,
+      titulo: 'Emissão de boletos com registro',
+      dataExecucao: '04/11/2026 11:30:00',
+      mensagem: 'Processo concluído com sucesso.'
+    },
+    {
+      rowIndex: 1,
+      titulo: 'Emissão de boletos com registro',
+      dataExecucao: '04/11/2026 11:31:00',
+      mensagem: 'Processo concluído com sucesso.'
+    }
+  ], {
+    solicitadoEm,
+    titulo: '00936520',
+    parcela: '01'
+  }, agora);
+
+  assert.equal(resultado.status, 'ambiguo');
+  assert.equal(resultado.candidatos, 2);
+});
+
+test('classifica processo ainda sem mensagem final como em andamento', () => {
+  const api = carregarApi();
+  const solicitadoEm = new Date(2026, 10, 4, 11, 30, 0).getTime();
+  const agora = new Date(2026, 10, 4, 11, 35, 0).getTime();
+
+  const resultado = api.analisarProcessos([
+    {
+      rowIndex: 2,
+      titulo: 'Emissão de boletos com registro',
+      dataExecucao: '04/11/2026 11:31:00',
+      mensagem: ''
+    }
+  ], {
+    solicitadoEm,
+    titulo: '00936520',
+    parcela: '01'
+  }, agora);
+
+  assert.equal(resultado.status, 'em-andamento');
+  assert.equal(resultado.registro.visualIndex, 3);
+  assert.equal(resultado.registro.recordNumber, 3);
+});
+
+test('não classifica processo com mensagem diferente como sucesso', () => {
+  const api = carregarApi();
+  const solicitadoEm = new Date(2026, 10, 4, 11, 30, 0).getTime();
+  const agora = new Date(2026, 10, 4, 11, 35, 0).getTime();
+
+  const resultado = api.analisarProcessos([
+    {
+      rowIndex: 0,
+      titulo: 'Emissão de boletos com registro',
+      dataExecucao: '04/11/2026 11:31:00',
+      mensagem: 'Falha ao processar relatório.'
+    }
+  ], {
+    solicitadoEm,
+    titulo: '00936520',
+    parcela: '01'
+  }, agora);
+
+  assert.equal(resultado.status, 'falha');
+});
+
+test('interrompe quando há processo correspondente sem data/hora interpretável', () => {
+  const api = carregarApi();
+  const solicitadoEm = new Date(2026, 10, 4, 11, 30, 0).getTime();
+  const agora = new Date(2026, 10, 4, 11, 35, 0).getTime();
+
+  const resultado = api.analisarProcessos([
+    {
+      rowIndex: 0,
+      titulo: 'Emissão de boletos com registro',
+      dataExecucao: '04-11-2026 11h30',
+      mensagem: 'Processo concluído com sucesso.'
+    }
+  ], {
+    solicitadoEm,
+    titulo: '00936520',
+    parcela: '01'
+  }, agora);
+
+  assert.equal(resultado.status, 'nao-verificavel');
+  assert.equal(resultado.horariosNaoInterpretados, 1);
+});
+
+test('exige solicitação registrada para analisar processos', () => {
+  const api = carregarApi();
+
+  const resultado = api.analisarProcessos([
+    {
+      rowIndex: 0,
+      titulo: 'Emissão de boletos com registro',
+      dataExecucao: '04/11/2026 11:31:00',
+      mensagem: 'Processo concluído com sucesso.'
+    }
+  ], null, Date.now());
+
+  assert.equal(resultado.status, 'sem-solicitacao');
+});
+
+
+test('mapeia os nomes de campos repetidos para a linha visual correta', () => {
+  const api = carregarApi();
+
+  assert.equal(api.nomeCampoProcesso('titulo.', 0), 'titulo.');
+  assert.equal(api.nomeCampoProcesso('titulo.', 1), 'titulo.0');
+  assert.equal(api.nomeCampoProcesso('titulo.', 2), 'titulo.1');
+  assert.equal(api.nomeCampoProcesso('MSG_EXCEPTION.', 3), 'MSG_EXCEPTION.2');
+});
+
+test('expira solicitação antiga para não associar uma emissão posterior por engano', () => {
+  const api = carregarApi();
+  const solicitadoEm = new Date(2026, 10, 4, 10, 0, 0).getTime();
+  const agora = new Date(2026, 10, 4, 11, 0, 1).getTime();
+
+  const resultado = api.analisarProcessos([], {
+    solicitadoEm,
+    titulo: '00936520',
+    parcela: '01'
+  }, agora);
+
+  assert.equal(resultado.status, 'solicitacao-expirada');
+});
+
+test('a Fase 3 identifica a linha sem selecionar ou baixar o processo', () => {
+  const api = carregarApi();
+
+  assert.equal(typeof api.analisarProcessos, 'function');
+  assert.ok(source.includes('Nenhuma linha foi selecionada e nenhum PDF foi baixado.'));
+  assert.equal(source.includes('doCommand('), false);
+  assert.equal(source.includes('GM_download('), false);
+});
+
+
+test('captura clique em Emite boleto sem cancelar nem repetir a ação do ERP', () => {
+  const inicio = source.indexOf('const handler = function (evento)');
+  const fim = source.indexOf('documento.addEventListener("click", handler, true)', inicio);
+  const handler = source.slice(inicio, fim);
+
+  assert.ok(inicio >= 0);
+  assert.ok(fim > inicio);
+  assert.ok(handler.includes('elemento.id === "BTNEmetirBoletos."'));
+  assert.ok(handler.includes('elemento.name === "CMDEmetirBoletos"'));
+  assert.equal(handler.includes('preventDefault'), false);
+  assert.equal(handler.includes('stopPropagation'), false);
+  assert.ok(handler.includes('salvarSolicitacaoEmissao(documento)'));
+
+  const inicioSalvar = source.indexOf('function salvarSolicitacaoEmissao(documento)');
+  const fimSalvar = source.indexOf('function recuperarSolicitacaoEmissao()', inicioSalvar);
+  const funcaoSalvar = source.slice(inicioSalvar, fimSalvar);
+
+  assert.ok(inicioSalvar >= 0);
+  assert.ok(fimSalvar > inicioSalvar);
+  assert.ok(funcaoSalvar.includes('armazenamento.setItem(CHAVE_SOLICITACAO_EMISSAO'));
 });
 
 test('registra o atalho Ctrl+Alt+B para alternar a conferência', () => {
