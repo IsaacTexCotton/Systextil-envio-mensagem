@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-**Status:** Fase 2 implementada em branch de desenvolvimento; preenchimento assistido aguardando validação no Systextil  
+**Status:** Fase 3 integrada à `main`; correção do preenchimento assistido v0.3.1 em branch, pendente de testes e validação operacional no Systextil  
 **Última atualização:** 2026-11-04  
 **Escopo:** obter o PDF de um boleto já existente no Systextil e salvá-lo com nome padronizado em uma pasta de rede.
 
@@ -536,4 +536,48 @@ Para a nova funcionalidade:
 | Nome personalizado e pasta de rede | Validados |
 | Identificação única do processo | v0.3.0 implementada; validação operacional pendente |
 | Seleção automática do processo | Pendente; API de seleção ainda não validada |
-| Userscript da segunda via | v0.3.0: preenchimento assistido, captura local do clique em Emite boleto e análise somente leitura da grade de Processos agendados; sem seleção ou download |
+| Userscript da segunda via | v0.3.0 integrada à `main`; v0.3.1 em branch com ajuste do preenchimento via setter nativo e `InputEvent`, aguardando `npm test` e validação no ERP |
+
+
+## 12. Correção proposta do preenchimento assistido (v0.3.1 — 04/11/2026)
+
+### Problema reproduzido em operação
+
+O operador confirmou que:
+
+- O painel apresenta os códigos preenchidos corretamente nos campos do formulário.
+- Ao executar F7 após o preenchimento pelo userscript, o Systextil retorna um cliente associado ao título `000000000`, em vez do título informado.
+- Ao preencher os mesmos campos manualmente pelo teclado e executar F7, a consulta retorna o cliente correto.
+
+Essa diferença indica que a atribuição direta em `campo.value`, usada pela v0.3.0, não está atualizando de forma compatível o estado interno de edição/consulta do formulário. O valor visual, isoladamente, não comprova que o ERP registrou a alteração.
+
+### Alteração proposta
+
+A v0.3.1 substitui a atribuição direta por:
+
+1. Setter nativo de `HTMLInputElement.prototype.value`, obtido do contexto do próprio campo (`ownerDocument.defaultView`).
+2. Evento `InputEvent` com `inputType: "insertReplacementText"` e propagação de `input`.
+3. Evento `change` após a atualização.
+4. Restauração dos valores anteriores usando a mesma rotina caso o preenchimento falhe.
+
+O uso do setter nativo busca evitar que mecanismos de rastreamento de alterações do campo interpretem o valor programático como uma alteração não registrada. Isso é uma hipótese técnica a validar no ERP, não uma confirmação de que todos os estados internos do Systextil serão atualizados.
+
+### Limites preservados
+
+- O userscript não pressiona F7.
+- O userscript não submete o formulário.
+- O operador continua responsável por conferir os campos e executar a consulta manualmente.
+- O userscript não clica em **Emite boleto** e não inicia uma emissão.
+- A correção não altera a captura da solicitação nem a análise de Processos agendados.
+
+### Critérios de aceite
+
+1. Executar `npm test` e confirmar que a cobertura do setter nativo e dos eventos de entrada passa.
+2. Na tela Consulta de títulos já autenticada, preencher um título real por meio do painel.
+3. Conferir visualmente número e parcela no Systextil.
+4. Pressionar F7 manualmente e confirmar que o ERP retorna o cliente correspondente ao título informado.
+5. Repetir com outro título antes de considerar a correção estável.
+
+Se a consulta ainda retornar o cliente incorreto, interromper o uso do preenchimento assistido e manter a digitação manual. A próxima investigação deverá identificar o mecanismo específico do formulário Systextil (por exemplo, o estado mantido pelo gerenciador de campos), em vez de acrescentar eventos sintéticos sem evidência.
+
+**Estado:** correção v0.3.1 preparada em branch; testes automatizados e validação operacional ainda pendentes.
