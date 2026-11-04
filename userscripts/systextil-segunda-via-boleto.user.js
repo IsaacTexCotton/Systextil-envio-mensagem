@@ -197,10 +197,18 @@
       "p",
       "Confirme visualmente se Cliente corresponde à razão social e se a sequência corresponde à parcela."
     );
-    alerta.style.margin = "0 0 10px";
+    alerta.style.margin = "0 0 8px";
     alerta.style.padding = "8px";
     alerta.style.background = "#f1f5f9";
     alerta.style.borderRadius = "5px";
+
+    const dicaAtalho = criarElemento(
+      "p",
+      "Atalho nesta aba: Ctrl + Alt + B"
+    );
+    dicaAtalho.style.margin = "0 0 10px";
+    dicaAtalho.style.color = "#475569";
+    dicaAtalho.style.fontSize = "11px";
 
     const botao = criarElemento("button", "Ler dados do título");
     Object.assign(botao.style, {
@@ -294,7 +302,15 @@
       window.__systextilSegundaViaBoletoLoaded = false;
     });
 
-    painel.append(titulo, explicacao, alerta, botao, resultado, fechar);
+    painel.append(
+      titulo,
+      explicacao,
+      alerta,
+      dicaAtalho,
+      botao,
+      resultado,
+      fechar
+    );
     document.body.append(painel);
   }
 
@@ -307,8 +323,28 @@
     lerDadosTitulo
   });
 
-  // Este userscript é iniciado pelo menu do Tampermonkey, na aba atual.
-  // Assim, ele pode ser acionado sem recarregar a sessão do Systextil.
+  function alternarPainel() {
+    if (!ehTelaConsultaTitulo()) {
+      console.warn(
+        "[Systextil Segunda Via] Abra a tela Consulta de títulos antes de usar o atalho."
+      );
+      return;
+    }
+
+    const painelExistente = document.getElementById(PANEL_ID);
+
+    if (painelExistente) {
+      painelExistente.remove();
+      window.__systextilSegundaViaBoletoLoaded = false;
+      return;
+    }
+
+    window.__systextilSegundaViaBoletoLoaded = true;
+    montarPainel();
+  }
+
+  // O popup do Tampermonkey injeta esta rotina na aba ativa sem reload.
+  // Depois da primeira ativação, Ctrl+Alt+B alterna o painel nesta aba.
   if (!ehTelaConsultaTitulo()) {
     console.warn(
       "[Systextil Segunda Via] Abra a tela Consulta de títulos antes de executar este atalho."
@@ -316,18 +352,23 @@
     return;
   }
 
-  const painelExistente = document.getElementById(PANEL_ID);
+  if (!window.__systextilSegundaViaBoletoShortcutAttached) {
+    document.addEventListener("keydown", function (event) {
+      const atalho =
+        event.ctrlKey &&
+        event.altKey &&
+        !event.shiftKey &&
+        String(event.key || "").toLowerCase() === "b";
 
-  if (painelExistente) {
-    painelExistente.remove();
-    window.__systextilSegundaViaBoletoLoaded = false;
-    return;
+      if (!atalho || event.repeat) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      alternarPainel();
+    }, true);
+
+    window.__systextilSegundaViaBoletoShortcutAttached = true;
   }
 
-  if (window.__systextilSegundaViaBoletoLoaded) {
-    return;
-  }
-
-  window.__systextilSegundaViaBoletoLoaded = true;
-  montarPainel();
+  alternarPainel();
 })();
