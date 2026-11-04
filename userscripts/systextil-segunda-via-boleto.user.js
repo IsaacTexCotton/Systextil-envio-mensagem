@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.4.0
+// @version      0.4.1
 // @updateURL     https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @downloadURL   https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @description  Consulta, identifica e baixa a segunda via de boleto sem recarregar a página.
@@ -16,7 +16,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.4.0";
+  const VERSION = "0.4.1";
   const PANEL_ID = "st-segunda-via-boleto-panel";
 
   const CAMPOS = Object.freeze({
@@ -197,13 +197,10 @@
   }
 
   /**
-   * Normaliza códigos numéricos com zeros à esquerda.
-   * A largura é derivada do maxlength do campo do ERP quando disponível;
-   * caso contrário, usa os tamanhos padrão conhecidos: título 8 e parcela 2.
+   * Valida o comprimento permitido pelo campo sem alterar o identificador.
+   * maxLength representa o limite máximo, não a quantidade obrigatória de dígitos.
    */
-  function normalizarCodigoConsulta(valor, rotulo, largura) {
-    const codigo = validarCodigoConsulta(valor, rotulo);
-
+  function validarComprimentoCodigoConsulta(codigo, rotulo, largura) {
     if (!Number.isInteger(largura) || largura < 1) {
       throw new Error("Não foi possível determinar o tamanho do campo " + rotulo.toLowerCase() + ".");
     }
@@ -215,9 +212,28 @@
       );
     }
 
+    return codigo;
+  }
+
+  /**
+   * Normaliza somente o número do título, completando zeros à esquerda.
+   */
+  function normalizarCodigoConsulta(valor, rotulo, largura) {
+    const codigo = validarCodigoConsulta(valor, rotulo);
+    validarComprimentoCodigoConsulta(codigo, rotulo, largura);
+
     return /^[0-9]+$/.test(codigo)
       ? codigo.padStart(largura, "0")
       : codigo;
+  }
+
+  /**
+   * Valida a parcela sem acrescentar zeros à esquerda.
+   * O Systextil aceita a parcela exatamente como informada pelo operador.
+   */
+  function preservarCodigoConsulta(valor, rotulo, largura) {
+    const codigo = validarCodigoConsulta(valor, rotulo);
+    return validarComprimentoCodigoConsulta(codigo, rotulo, largura);
   }
 
   function obterLarguraCampo(campo, larguraPadrao) {
@@ -311,7 +327,7 @@
       "Número do título",
       obterLarguraCampo(campoTitulo, LARGURAS_PADRAO_CONSULTA.titulo)
     );
-    const parcela = normalizarCodigoConsulta(
+    const parcela = preservarCodigoConsulta(
       dados?.parcela,
       "Parcela",
       obterLarguraCampo(campoParcela, LARGURAS_PADRAO_CONSULTA.parcela)
@@ -2009,6 +2025,7 @@
     lerDadosTitulo,
     validarCodigoConsulta,
     normalizarCodigoConsulta,
+    preservarCodigoConsulta,
     obterLarguraCampo,
     preencherCamposConsulta,
     normalizarTextoProcesso,
