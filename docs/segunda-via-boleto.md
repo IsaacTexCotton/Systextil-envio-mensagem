@@ -197,6 +197,20 @@ O script deve funcionar apenas nas telas e frames necessários do Systextil, con
 - Em caso de erro ou ambiguidade, preservar a seleção atual e deixar o download manual disponível.
 - Não incluir integração com CRM, armazenamento externo ou serviço de terceiros.
 
+## 8.1. Descoberta adicional dos campos da consulta (04/11/2026)
+
+Um diagnóstico posterior encontrou os seguintes nomes de campo na tela `forms.crec.crec_f090`:
+
+| Campo | Interpretação provável | Confirmação |
+|---|---|---|
+| `nome_empresa.` | Nome/descrição da empresa emissora do ERP | Não é o campo de razão social do cliente; não usar para nome do boleto sem validação |
+| `nome_cliente.` | Nome/descrição do cliente | Candidato para compor o nome do arquivo; confirmar se representa razão social ou nome fantasia |
+| `seq_duplicatas.` | Sequência da duplicata | Ainda precisa de confirmação do rótulo e do valor de parcela |
+
+**Limitação do diagnóstico:** o script usado comparou `label.htmlFor` com `campo.id`, mas os campos observados não possuem `id`; por isso, ele retornou a lista de labels do documento inteiro para cada campo. A saída não comprova a associação entre rótulo e campo. Não tratar a lista de labels como evidência de que `seq_duplicatas.` corresponde à parcela nem de que `nome_cliente.` contém a razão social.
+
+O próximo diagnóstico deve inspecionar apenas os ancestrais e irmãos DOM dos campos alvo, removendo valores de inputs antes de exibir o HTML/texto, e avaliar o rótulo imediatamente associado. A confirmação final da razão social pode ser feita localmente no ERP sem expor o nome do cliente no relatório de diagnóstico.
+
 ## 9. Pendências antes da implementação funcional
 
 1. Confirmar o rótulo e o significado do campo `seq_duplicatas.`.
