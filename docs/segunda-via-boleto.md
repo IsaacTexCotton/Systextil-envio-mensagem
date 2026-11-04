@@ -642,8 +642,11 @@ A comparação do segundo utiliza o timestamp local em precisão de segundos, po
 - O userscript não clica em **Download** do ERP; obtém a URL com `getFileUrl()` e usa a API de download do Tampermonkey.
 - Não aceita URLs externas, caminhos que não sejam o endpoint de PDF do Systextil, formatos diferentes de PDF ou relatórios de outro programa.
 - Não baixa quando a seleção da grade não pode ser comprovada.
-- Mantém um registro na `sessionStorage` para bloquear nova tentativa do mesmo processo quando o download já está pendente ou concluído.
-- Uma tentativa que falha libera a reserva para permitir nova tentativa depois da verificação do navegador.
+- Mantém um registro na `sessionStorage` para bloquear nova tentativa do mesmo processo quando o download está pendente, concluído ou com resultado indeterminado.
+- Uma falha reportada pelo navegador libera somente uma reserva ainda pendente; reservas concluídas não podem ser removidas pelo fluxo genérico de falha.
+- Um timeout é tratado como resultado indeterminado: a reserva fica persistida e não expira automaticamente para permitir nova tentativa.
+- Reservas pendentes antigas, por exemplo após fechar a aba antes do callback, também passam a indeterminadas após 15 minutos, em vez de liberar um possível download duplicado.
+- A interface oferece **Já conferi a pasta; liberar nova tentativa** somente após o operador confirmar em diálogo que verificou a pasta e que o PDF não foi salvo. Depois da liberação, é obrigatória uma nova análise do processo.
 - O nome do arquivo não contém o caminho de rede; `GM_download` envia apenas o nome. A pasta é controlada pela configuração padrão do Chrome já validada manualmente.
 
 ### Permissões Tampermonkey
@@ -664,7 +667,11 @@ O userscript deve ser atualizado pelo verificador do Tampermonkey. Não recarreg
 - restauração da seleção anterior quando a URL retornada é inválida;
 - verificação de que `getFileUrl()` só é chamado depois da seleção;
 - chave de deduplicação por solicitação/processo;
-- bloqueio de download pendente/concluído e liberação após falha;
+- bloqueio de download pendente/concluído;
+- timeout encaminhado para callback próprio, sem tratá-lo como falha comprovada;
+- conversão de timeout e reserva pendente expirada para estado indeterminado;
+- manutenção do bloqueio indeterminado até liberação manual explícita;
+- liberação de reserva somente quando a falha foi confirmada ou após conferência manual;
 - confirmação de que análise de processo não dispara download automaticamente.
 
 ### Validação operacional pendente
@@ -687,6 +694,7 @@ Depois de os testes passarem, validar no Systextil usando um processo real já c
 5. Clicar em **Baixar PDF do processo identificado**.
 6. Confirmar se o registro visual selecionado corresponde à análise, se o PDF chega à pasta padrão e se o nome está correto.
 7. Clicar novamente no mesmo botão e confirmar que o bloqueio de duplicidade aparece.
+8. Em caso de timeout, conferir manualmente a pasta de destino antes de usar **Já conferi a pasta; liberar nova tentativa**. Não liberar a reserva se o PDF estiver presente ou se houver dúvida sobre o resultado.
 
 Se a grade não expuser `DataView.currentRow` ou o índice atribuído não refletir a linha selecionada, a função interromperá antes de chamar `getFileUrl()` ou `GM_download`. Nesse caso, não forçar a seleção: coletar o erro exibido e investigar a API real do ERP.
 
