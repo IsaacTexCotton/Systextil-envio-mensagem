@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.3.1
+// @version      0.3.2
 // @updateURL     https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @downloadURL   https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @description  Consulta e identifica o processo da segunda via sem recarregar a página.
@@ -15,7 +15,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.3.1";
+  const VERSION = "0.3.2";
   const PANEL_ID = "st-segunda-via-boleto-panel";
 
   const CAMPOS = Object.freeze({
@@ -475,9 +475,9 @@
         return;
       }
 
+      const diferencaMs = executadoEm - instanteSolicitacao;
       const dentroDaJanela =
-        executadoEm >= instanteSolicitacao - TOLERANCIA_HORARIO_PROCESSO_MS &&
-        executadoEm <= atual + TOLERANCIA_HORARIO_PROCESSO_MS;
+        Math.abs(diferencaMs) <= TOLERANCIA_HORARIO_PROCESSO_MS;
 
       if (!dentroDaJanela) return;
 
@@ -485,6 +485,7 @@
         titulo: registro.titulo,
         dataExecucao: registro.dataExecucao,
         executadoEm,
+        diferencaMs,
         mensagem: String(registro.mensagem ?? "").trim(),
         rowIndex: Number.isInteger(registro.rowIndex) ? registro.rowIndex : indice,
         visualIndex: (Number.isInteger(registro.rowIndex) ? registro.rowIndex : indice) + 1,
@@ -509,15 +510,34 @@
       };
     }
 
-    if (candidatos.length > 1) {
+    // A grade exibe o horário até segundos. Quando um registro coincide com
+    // o segundo exato do clique, essa evidência prevalece sobre outro processo
+    // próximo dentro da tolerância. Se houver mais de uma correspondência exata,
+    // a análise continua ambígua.
+    const segundoSolicitacao = Math.floor(instanteSolicitacao / 1000);
+    const candidatosExatos = candidatos.filter(
+      candidato => Math.floor(candidato.executadoEm / 1000) === segundoSolicitacao
+    );
+
+    let registro;
+
+    if (candidatosExatos.length === 1) {
+      registro = candidatosExatos[0];
+    } else if (candidatosExatos.length > 1) {
       return {
         status: "ambiguo",
-        mensagem: "Mais de um processo corresponde ao horário da solicitação. A identificação automática foi interrompida.",
+        mensagem: "Mais de um processo possui o mesmo segundo da solicitação. A identificação automática foi interrompida.",
+        candidatos: candidatosExatos.length
+      };
+    } else if (candidatos.length > 1) {
+      return {
+        status: "ambiguo",
+        mensagem: "Mais de um processo está dentro da tolerância de horário e nenhum coincide exatamente com o segundo da solicitação. A identificação automática foi interrompida.",
         candidatos: candidatos.length
       };
+    } else {
+      registro = candidatos[0];
     }
-
-    const registro = candidatos[0];
     const mensagemNormalizada = normalizarTextoProcesso(registro.mensagem);
     const sucessoEsperado = normalizarTextoProcesso(MENSAGEM_SUCESSO_PROCESSO);
 

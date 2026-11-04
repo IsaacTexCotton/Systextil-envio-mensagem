@@ -534,7 +534,7 @@ Para a nova funcionalidade:
 | Geração da URL PDF pelo ERP | Validada |
 | Download autenticado com `GM_download` | Validado |
 | Nome personalizado e pasta de rede | Validados |
-| Identificação única do processo | v0.3.0 implementada; validação operacional pendente |
+| Identificação única do processo | v0.3.2 prioriza segundo exato e limita tolerância a ±90s; validação operacional pendente |
 | Seleção automática do processo | Pendente; API de seleção ainda não validada |
 | Userscript da segunda via | v0.3.0 integrada à `main`; v0.3.1 em branch com ajuste do preenchimento via setter nativo e `InputEvent`, aguardando `npm test` e validação no ERP |
 
@@ -581,3 +581,37 @@ O uso do setter nativo busca evitar que mecanismos de rastreamento de alteraçõ
 Se a consulta ainda retornar o cliente incorreto, interromper o uso do preenchimento assistido e manter a digitação manual. A próxima investigação deverá identificar o mecanismo específico do formulário Systextil (por exemplo, o estado mantido pelo gerenciador de campos), em vez de acrescentar eventos sintéticos sem evidência.
 
 **Estado:** correção v0.3.1 preparada em branch; testes automatizados e validação operacional ainda pendentes.
+
+
+## 13. Correção da correspondência de horário dos Processos agendados (v0.3.2 — 04/11/2026)
+
+### Problema identificado pela validação operacional
+
+Na tela de Processos agendados, a solicitação registrada pelo userscript ocorreu em **04/11/2026 às 12:12:38**. A grade mostrava, entre outros, estes processos de emissão:
+
+- 12:12:38 — processo concluído com sucesso;
+- 12:11:59 — processo concluído com sucesso;
+- 11:57:45 — processo sem informações para gerar relatório;
+- 11:30:44, 08:15:59 e 08:15:23 — emissões anteriores.
+
+A versão 0.3.1 usava uma condição inferior a partir de `solicitadoEm - 90 segundos`, mas o limite superior era o horário atual da análise. Assim, processos posteriores dentro da validade de 30 minutos eram indevidamente agrupados como candidatos, mesmo sem proximidade real com o clique. Isso provocava ambiguidade.
+
+### Regra corrigida na v0.3.2
+
+1. Considerar somente processos cujo horário esteja dentro de **±90 segundos** do instante capturado.
+2. Dentro desse conjunto, procurar correspondência no **mesmo segundo** da solicitação.
+3. Se houver exatamente uma correspondência exata, priorizá-la, mesmo que exista outro processo próximo dentro da tolerância.
+4. Se houver mais de uma correspondência exata, interromper por ambiguidade.
+5. Se não houver correspondência exata, aceitar somente um candidato dentro da tolerância.
+6. Se houver vários candidatos aproximados e nenhum exato, interromper por ambiguidade.
+7. Processos fora da janela de ±90 segundos não participam da associação.
+
+A comparação do segundo utiliza o timestamp local em precisão de segundos, porque a grade do ERP apresenta o campo de execução nesse formato. A tolerância continua existindo para casos em que o processamento do ERP não coincida exatamente com o segundo do clique.
+
+### Testes acrescentados
+
+- Prioridade de um processo que coincide no segundo exato, mesmo com outro processo 39 segundos antes.
+- Exclusão de processos muito posteriores à solicitação.
+- Manutenção do bloqueio quando dois processos aproximados estão dentro da tolerância e nenhum coincide exatamente.
+
+**Estado:** implementação v0.3.2 preparada em branch; testes automatizados e validação operacional no Systextil pendentes.
