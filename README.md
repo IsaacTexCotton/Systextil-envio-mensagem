@@ -10,7 +10,7 @@ Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/syste
 
 Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
 
-**Status atual:** versão 0.1.3 limita o início da razão social a 35 caracteres, priorizando palavras inteiras e acrescentando reticências, mantendo o título e a parcela completos no nome do PDF. A ativação continua sob demanda pelo menu do Tampermonkey e pelo atalho `Ctrl + Alt + B`, sem recarregar o Systextil. Não consulta, emite nem baixa boletos. Permanecem pendentes a confirmação operacional de sequência/parcela e a seleção inequívoca do processo, além da integração do download ao fluxo completo.
+**Status atual:** versão 0.1.4 limita o início da razão social a 35 caracteres, priorizando palavras inteiras e acrescentando reticências; mantém título e parcela completos; e declara `@updateURL`/`@downloadURL` para permitir atualizações pelo Tampermonkey após a integração à `main`. A versão 0.1.3 exige uma última atualização manual para habilitar esse mecanismo. A ativação continua sob demanda pelo menu do Tampermonkey e pelo atalho `Ctrl + Alt + B`, sem recarregar o Systextil. Não consulta, emite nem baixa boletos. Permanecem pendentes a confirmação operacional de sequência/parcela e a seleção inequívoca do processo, além da integração do download ao fluxo completo.
 
 
 ## Script: Parâmetros da Régua de Cobrança
