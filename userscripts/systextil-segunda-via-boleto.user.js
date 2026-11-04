@@ -809,6 +809,14 @@
     return CHAVE_DOWNLOAD_PREFIXO + (hash >>> 0).toString(36);
   }
 
+  function criarErroDownloadIndeterminado() {
+    const erro = new Error(
+      "O resultado da tentativa anterior é indeterminado. Confira manualmente a pasta de destino antes de liberar outro download."
+    );
+    erro.code = "DOWNLOAD_INDETERMINADO";
+    return erro;
+  }
+
   function reservarDownload(armazenamento, chave, agora) {
     if (
       !armazenamento ||
@@ -826,19 +834,38 @@
       try {
         estadoAnterior = JSON.parse(anterior);
       } catch (_) {
-        throw new Error("Existe um registro de download inválido. Limpe a solicitação antes de continuar.");
+        throw new Error("Existe um registro de download inválido. Limpe a solicitação somente após conferir o navegador.");
       }
 
       if (estadoAnterior?.status === "concluido") {
         throw new Error("Este processo já teve o download concluído nesta sessão. Download duplicado bloqueado.");
       }
 
-      if (
-        estadoAnterior?.status === "pendente" &&
-        instante - Number(estadoAnterior.iniciadoEm) < TEMPO_RESERVA_DOWNLOAD_MS
-      ) {
-        throw new Error("Já existe um download deste processo em andamento nesta sessão.");
+      if (estadoAnterior?.status === "indeterminado") {
+        throw criarErroDownloadIndeterminado();
       }
+
+      if (estadoAnterior?.status === "pendente") {
+        const iniciadoEm = Number(estadoAnterior.iniciadoEm);
+        const idadeReserva = instante - iniciadoEm;
+
+        if (!Number.isFinite(iniciadoEm) || idadeReserva < 0) {
+          throw new Error("O horário da reserva de download não é verificável. A tentativa permanece bloqueada.");
+        }
+
+        if (idadeReserva < TEMPO_RESERVA_DOWNLOAD_MS) {
+          throw new Error("Já existe um download deste processo em andamento nesta sessão.");
+        }
+
+        armazenamento.setItem(chave, JSON.stringify({
+          status: "indeterminado",
+          indeterminadoEm: instante,
+          motivo: "reserva-expirada-sem-confirmacao"
+        }));
+        throw criarErroDownloadIndeterminado();
+      }
+
+      throw new Error("O estado salvo para este download é desconhecido. A tentativa permanece bloqueada.");
     }
 
     armazenamento.setItem(chave, JSON.stringify({
@@ -848,18 +875,69 @@
   }
 
   function concluirDownload(armazenamento, chave, agora) {
+    const estado = JSON.parse(armazenamento.getItem(chave) || "null");
+    if (estado?.status !== "pendente") {
+      throw new Error("A reserva não está pendente; a conclusão do download não foi registrada.");
+    }
+
     armazenamento.setItem(chave, JSON.stringify({
       status: "concluido",
       concluidoEm: Number(agora ?? Date.now())
     }));
   }
 
+  function marcarDownloadIndeterminado(armazenamento, chave, agora) {
+    if (
+      !armazenamento ||
+      typeof armazenamento.getItem !== "function" ||
+      typeof armazenamento.setItem !== "function"
+    ) {
+      throw new Error("Não foi possível acessar o armazenamento para marcar o download como indeterminado.");
+    }
+
+    const estado = JSON.parse(armazenamento.getItem(chave) || "null");
+
+    if (estado?.status === "indeterminado") return false;
+    if (estado?.status !== "pendente") {
+      throw new Error("A reserva não está pendente; não foi possível registrar o resultado indeterminado.");
+    }
+
+    armazenamento.setItem(chave, JSON.stringify({
+      status: "indeterminado",
+      indeterminadoEm: Number(agora ?? Date.now()),
+      motivo: "timeout"
+    }));
+    return true;
+  }
+
   function liberarDownload(armazenamento, chave) {
     try {
+      const estado = JSON.parse(armazenamento.getItem(chave) || "null");
+      if (estado?.status !== "pendente") return false;
       armazenamento.removeItem(chave);
+      return true;
     } catch (_) {
-      // Sem confirmação de conclusão, a próxima tentativa poderá ser bloqueada.
+      // Em caso de estado ilegível ou falha de armazenamento, mantém o bloqueio.
+      return false;
     }
+  }
+
+  function liberarDownloadIndeterminado(armazenamento, chave) {
+    if (
+      !armazenamento ||
+      typeof armazenamento.getItem !== "function" ||
+      typeof armazenamento.removeItem !== "function"
+    ) {
+      throw new Error("O armazenamento da sessão não permite conferir e liberar a reserva.");
+    }
+
+    const estado = JSON.parse(armazenamento.getItem(chave) || "null");
+    if (estado?.status !== "indeterminado") {
+      throw new Error("A reserva não está no estado indeterminado. Nenhuma liberação foi realizada.");
+    }
+
+    armazenamento.removeItem(chave);
+    return true;
   }
 
   function iniciarDownloadPdf(url, nomeArquivo, callbacks) {
@@ -874,6 +952,8 @@
 
       if (tipo === "sucesso") {
         callbacks?.onload?.(detalhe);
+      } else if (tipo === "timeout") {
+        callbacks?.ontimeout?.(detalhe);
       } else {
         callbacks?.onerror?.(detalhe);
       }
@@ -887,7 +967,7 @@
         conflictAction: "uniquify",
         onload: detalhe => finalizar("sucesso", detalhe),
         onerror: detalhe => finalizar("falha", detalhe),
-        ontimeout: detalhe => finalizar("falha", detalhe)
+        ontimeout: detalhe => finalizar("timeout", detalhe)
       });
     } catch (erro) {
       finalizar("falha", erro);
