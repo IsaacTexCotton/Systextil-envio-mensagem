@@ -281,7 +281,7 @@ A versão `0.1.2` mantém essa execução sob demanda e registra um atalho de te
 
 ### Instruções de uso
 
-1. Salvar/atualizar a versão 0.1.1 no Tampermonkey.
+1. Salvar/atualizar a versão 0.1.2 no Tampermonkey.
 2. Manter a aba e a sessão do Systextil abertas, sem recarregar.
 3. Abrir a tela **Consulta de títulos**.
 4. Clicar no ícone do Tampermonkey na barra do Chrome.
