@@ -10,7 +10,7 @@ Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/syste
 
 Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
 
-**Status atual:** a `main` contém a versão **0.4.2** da segunda via, com confirmação dos campos por comandos NXJ. A versão **0.4.3** ajusta as pausas entre preenchimento e mudança de foco, reproduzindo a temporização dos testes manuais bem-sucedidos; está em revisão na branch `fix/pausas-confirmacao-nxj`. A suíte automatizada da nova alteração e a validação operacional no Tampermonkey permanecem pendentes. A validação operacional da Fase 4 — seleção real da linha de processo, associação do `.jrprint`, download e bloqueio de duplicidade — também permanece separada e pendente.
+**Status atual:** a `main` contém a versão **0.4.3** da segunda via, com confirmação dos campos por comandos NXJ e pausas compatíveis com os testes manuais. A versão **0.4.4**, na branch `fix/parcela-sem-foco-apos-nxj`, reaplica o foco no controle atual de parcela após a resposta NXJ do título e inclui um teste que simula a recriação desse campo pelo ERP. A validação automatizada dessa correção no Codespace e o teste operacional no Tampermonkey estão pendentes. A validação operacional da Fase 4 — seleção real da linha de processo, associação do `.jrprint`, download e bloqueio de duplicidade — também permanece separada e pendente.
 
 
 ## Script: Parâmetros da Régua de Cobrança
