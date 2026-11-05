@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-**Status:** v0.4.3 integrada; correção v0.4.4 de foco no campo da parcela em revisão na branch `fix/parcela-sem-foco-apos-nxj`  
+**Status:** v0.4.4 integrada; ajuste v0.4.5 de eventos de entrada e diagnóstico NXJ em revisão na branch `fix/event-input-padrao-nxj`  
 **Última atualização:** 2026-11-05  
 **Escopo:** obter o PDF de um boleto já existente no Systextil e salvá-lo com nome padronizado em uma pasta de rede.
 
@@ -796,3 +796,27 @@ Foi acrescentado um cenário que simula a recriação do controle de parcela ap�
 - Somente depois da mensagem de confirmação, pressionar F7 manualmente e conferir o resultado. Não clicar em **Emite boleto**.
 
 **Estado:** correção implementada na branch `fix/parcela-sem-foco-apos-nxj`. Ainda não integrada à `main`; a validação no ERP real permanece pendente.
+
+
+## 19. Compatibilidade dos eventos de edição com a sequência manual (v0.4.5 — 05/11/2026)
+
+### Evidência e hipótese
+
+Mesmo após o ajuste de foco da v0.4.4, o operador continuou recebendo timeout na confirmação NXJ do título. O fluxo manual conhecido como funcional usa o setter nativo do input e dispara `new Event("input", { bubbles: true })` e `new Event("change", { bubbles: true })`.
+
+A v0.4.4 usava `InputEvent` com `inputType: "insertReplacementText"` para o evento `input`. Essa é uma diferença observável em relação ao procedimento manual bem-sucedido e passa a ser a hipótese principal a ser isolada. Ainda não há evidência suficiente para afirmar que essa diferença é a causa definitiva.
+
+### Alteração
+
+A v0.4.5 passa a emitir os eventos padrão `Event("input")` e `Event("change")`, com `bubbles: true`, mantendo o setter nativo, as pausas e a confirmação assíncrona NXJ.
+
+Quando ocorre timeout, a mensagem também informa contagens de requisições NXJ, POSTs, comandos de saída de campo reconhecidos e valores correspondentes. Nenhum número de título/parcela ou conteúdo de payload é exibido.
+
+### Validação pendente
+
+- Executar `npm run verify` no Codespace.
+- Validar no Systextil real usando título antigo/quitado autorizado.
+- Em caso de timeout, enviar a mensagem completa de diagnóstico sem adicionar número de título, cliente, cookies ou payload.
+- Não pressionar F7 depois de erro; não clicar em **Emite boleto**.
+
+**Estado:** implementação na branch `fix/event-input-padrao-nxj`; não integrada à `main`. A validação automatizada e operacional desta versão está pendente.
