@@ -14,6 +14,8 @@ Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
 
 **Status atual:** a `main` contém a versão **0.5.0**, que resolve a seleção da grade por `window.curDataView` e valida `forms.systextil.batch` (PR [#27](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/27)). A sincronização do metadado `@version` também está integrada pela PR [#28](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/28). A gravação direta na pasta exclusiva, usando um auxiliar PowerShell local e sem alterar Downloads do Chrome, está sendo proposta na PR [#29](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/29), versão **0.6.0**. A instalação do auxiliar, o pareamento, a execução de `npm run verify` e a validação no Windows/Chrome real ainda são pendentes.
 
+**Auxiliar local:** instruções de instalação e pareamento estão em [tools/boleto-helper/README.md](tools/boleto-helper/README.md). A versão v0.6.0 ainda está em revisão na PR #29.
+
 ## Script: Parâmetros da Régua de Cobrança
 
 Arquivo: [userscripts/systextil-parametros-regua.user.js](userscripts/systextil-parametros-regua.user.js)
