@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.4.1
+// @version      0.4.2
 // @updateURL     https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @downloadURL   https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @description  Consulta, identifica e baixa a segunda via de boleto sem recarregar a página.
@@ -16,8 +16,12 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.4.1";
+  const VERSION = "0.4.2";
   const PANEL_ID = "st-segunda-via-boleto-panel";
+  const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
+  const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
+  const COMANDOS_NXJ_CONFIRMACAO = new Set(["CLICKONFIELD", "NEXT_FIELD"]);
+  let preenchimentoEmAndamento = false;
 
   const CAMPOS = Object.freeze({
     titulo: "num_duplicata.",
@@ -308,74 +312,479 @@
     campo.dispatchEvent(new (janela.Event || Event)("change", { bubbles: true }));
   }
 
-  function preencherCamposConsulta(dados) {
-    const formulario = localizarFormularioConsulta();
-    const campoTitulo = formulario.elements.namedItem(CAMPOS.titulo);
-    const campoParcela = formulario.elements.namedItem(CAMPOS.parcela);
+  function obterJanelaPaginaSystextil() {
+    const pagina = typeof unsafeWindow !== "undefined" && unsafeWindow
+      ? unsafeWindow
+      : window;
 
-    if (
-      campoTitulo.disabled ||
-      campoTitulo.readOnly ||
-      campoParcela.disabled ||
-      campoParcela.readOnly
-    ) {
-      throw new Error("Um dos campos do ERP está bloqueado para edição.");
+    if (!pagina?.XMLHttpRequest) {
+      throw new Error("Não foi possível acessar o XMLHttpRequest da página do Systextil.");
     }
 
-    const titulo = normalizarCodigoConsulta(
-      dados?.titulo,
-      "Número do título",
-      obterLarguraCampo(campoTitulo, LARGURAS_PADRAO_CONSULTA.titulo)
-    );
-    const parcela = preservarCodigoConsulta(
-      dados?.parcela,
-      "Parcela",
-      obterLarguraCampo(campoParcela, LARGURAS_PADRAO_CONSULTA.parcela)
-    );
+    return pagina;
+  }
 
-    const valoresAnteriores = {
-      titulo: campoTitulo.value,
-      parcela: campoParcela.value
-    };
+  function validarVisaoConsultaTitulos(pagina) {
+    const nomeVisao = pagina?.curDataView?.name;
 
-    try {
-      if (typeof campoTitulo.focus === "function") campoTitulo.focus();
-      atribuirValorCampo(campoTitulo, titulo);
-
-      if (typeof campoParcela.focus === "function") campoParcela.focus();
-      atribuirValorCampo(campoParcela, parcela);
-
-      if (
-        campoTitulo.value.trim() !== titulo ||
-        campoParcela.value.trim() !== parcela
-      ) {
-        throw new Error("O Systextil não manteve os valores preenchidos.");
-      }
-    } catch (erro) {
-      // Evita deixar a tela parcialmente preenchida se um dos campos falhar.
-      try {
-        atribuirValorCampo(campoTitulo, valoresAnteriores.titulo);
-      } catch (_) {
-        campoTitulo.value = valoresAnteriores.titulo;
-      }
-
-      try {
-        atribuirValorCampo(campoParcela, valoresAnteriores.parcela);
-      } catch (_) {
-        campoParcela.value = valoresAnteriores.parcela;
-      }
-
+    if (nomeVisao !== DATA_VIEW_CONSULTA_TITULOS) {
       throw new Error(
-        "Não foi possível preencher os dois campos; os valores anteriores foram restaurados. " +
-        erro.message
+        "A visão ativa não é Consulta de Títulos. Nenhum campo foi preenchido."
+      );
+    }
+  }
+
+  /**
+   * Monitora temporariamente o protocolo real do NXJ.
+   * Guarda somente metadados mínimos do comando e o valor pendente em memória,
+   * sem registrar managerId, URL completa, cookies ou payload em console/storage.
+   */
+  function criarMonitorComandosNxj(pagina, configuracao = {}) {
+    const XMLHttpRequestPagina = pagina?.XMLHttpRequest;
+    const prototipo = XMLHttpRequestPagina?.prototype;
+    const descritorOpen = prototipo
+      ? Object.getOwnPropertyDescriptor(prototipo, "open")
+      : null;
+    const descritorSend = prototipo
+      ? Object.getOwnPropertyDescriptor(prototipo, "send")
+      : null;
+
+    if (
+      !descritorOpen ||
+      typeof descritorOpen.value !== "function" ||
+      !descritorOpen.writable ||
+      !descritorSend ||
+      typeof descritorSend.value !== "function" ||
+      !descritorSend.writable
+    ) {
+      throw new Error(
+        "Não foi possível instalar o monitor temporário de comandos NXJ. Nenhum campo foi alterado."
       );
     }
 
-    if (typeof campoTitulo.focus === "function") {
-      campoTitulo.focus();
+    const silencioMs = Number.isInteger(configuracao.silencioMs) &&
+      configuracao.silencioMs >= 0
+      ? configuracao.silencioMs
+      : 300;
+    const limiteEsperaMs = Number.isInteger(configuracao.limiteEsperaMs) &&
+      configuracao.limiteEsperaMs > 0
+      ? Math.min(configuracao.limiteEsperaMs, 30000)
+      : 20000;
+    const intervaloMs = Number.isInteger(configuracao.intervaloMs) &&
+      configuracao.intervaloMs > 0
+      ? Math.min(configuracao.intervaloMs, 250)
+      : 60;
+
+    const abrirOriginal = descritorOpen.value;
+    const enviarOriginal = descritorSend.value;
+    const metadadosXhr = new WeakMap();
+    const requisicoes = [];
+    const estado = {
+      emAndamento: 0,
+      ultimaConclusao: Date.now(),
+      sequencia: 0
+    };
+
+    function extrairDadosComando(body) {
+      try {
+        if (body && typeof body.get === "function") {
+          return {
+            comando: String(body.get("commandName") ?? "").trim().toUpperCase(),
+            fieldValues: body.get("fieldValues")
+          };
+        }
+
+        if (typeof body !== "string") {
+          return { comando: "", fieldValues: null };
+        }
+
+        const ConstrutorParametros = pagina.URLSearchParams || URLSearchParams;
+        const parametros = new ConstrutorParametros(body);
+
+        return {
+          comando: String(parametros.get("commandName") ?? "").trim().toUpperCase(),
+          fieldValues: parametros.get("fieldValues")
+        };
+      } catch (_) {
+        return { comando: "", fieldValues: null };
+      }
     }
 
-    return { titulo, parcela };
+    function extrairValorPendente(fieldValues) {
+      if (typeof fieldValues !== "string") return null;
+
+      const partes = fieldValues.split("\f");
+
+      for (let indice = partes.length - 1; indice >= 0; indice -= 1) {
+        const valor = partes[indice].trim();
+        if (valor) return valor;
+      }
+
+      return "";
+    }
+
+    function abrirInterceptado(metodo, url) {
+      metadadosXhr.set(this, {
+        metodo: String(metodo ?? "GET").toUpperCase(),
+        url: String(url ?? "")
+      });
+
+      return abrirOriginal.apply(this, arguments);
+    }
+
+    function enviarInterceptado(body) {
+      const metadados = metadadosXhr.get(this);
+
+      if (!metadados || !ENDPOINT_COMANDO_NXJ.test(metadados.url)) {
+        return enviarOriginal.apply(this, arguments);
+      }
+
+      const dadosComando = metadados.metodo === "POST"
+        ? extrairDadosComando(body)
+        : { comando: "", fieldValues: null };
+
+      const registro = {
+        sequencia: ++estado.sequencia,
+        metodo: metadados.metodo,
+        comando: dadosComando.comando,
+        valorPendente: extrairValorPendente(dadosComando.fieldValues),
+        finalizado: false,
+        monitoramentoFalhou: false,
+        status: 0
+      };
+
+      requisicoes.push(registro);
+
+      let acompanhada = false;
+      let finalizada = false;
+
+      function finalizarRequisicao() {
+        if (finalizada) return;
+        finalizada = true;
+        registro.finalizado = true;
+
+        try {
+          registro.status = Number(this.status) || 0;
+        } catch (_) {
+          registro.status = 0;
+        }
+
+        if (acompanhada) {
+          estado.emAndamento = Math.max(0, estado.emAndamento - 1);
+        }
+
+        estado.ultimaConclusao = Date.now();
+      }
+
+      if (typeof this.addEventListener === "function") {
+        try {
+          estado.emAndamento += 1;
+          acompanhada = true;
+          this.addEventListener("loadend", finalizarRequisicao.bind(this), { once: true });
+        } catch (_) {
+          estado.emAndamento = Math.max(0, estado.emAndamento - 1);
+          acompanhada = false;
+          registro.monitoramentoFalhou = true;
+          registro.finalizado = true;
+        }
+      } else {
+        registro.monitoramentoFalhou = true;
+        registro.finalizado = true;
+      }
+
+      try {
+        return enviarOriginal.apply(this, arguments);
+      } catch (erro) {
+        finalizarRequisicao.call(this);
+        throw erro;
+      }
+    }
+
+    const abrirInterceptadoRef = abrirInterceptado;
+    const enviarInterceptadoRef = enviarInterceptado;
+
+    try {
+      Object.defineProperty(prototipo, "open", {
+        ...descritorOpen,
+        value: abrirInterceptadoRef
+      });
+      Object.defineProperty(prototipo, "send", {
+        ...descritorSend,
+        value: enviarInterceptadoRef
+      });
+    } catch (_) {
+      if (prototipo.open === abrirInterceptadoRef) {
+        Object.defineProperty(prototipo, "open", descritorOpen);
+      }
+
+      throw new Error(
+        "Não foi possível ativar o monitor de comandos NXJ. Nenhum campo foi alterado."
+      );
+    }
+
+    function pausa(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function aguardarOcioso() {
+      const inicio = Date.now();
+
+      while (true) {
+        validarVisaoConsultaTitulos(pagina);
+
+        if (
+          estado.emAndamento === 0 &&
+          Date.now() - estado.ultimaConclusao >= silencioMs
+        ) {
+          return;
+        }
+
+        if (Date.now() - inicio >= limiteEsperaMs) {
+          throw new Error(
+            "O Systextil não ficou ocioso dentro de " +
+            Math.round(limiteEsperaMs / 1000) +
+            " segundos."
+          );
+        }
+
+        await pausa(intervaloMs);
+      }
+    }
+
+    async function aguardarConfirmacao(valorEsperado, sequenciaMinima, rotulo) {
+      const inicio = Date.now();
+      let registro = null;
+
+      while (!registro) {
+        validarVisaoConsultaTitulos(pagina);
+
+        registro = requisicoes.find(requisicao =>
+          requisicao.sequencia > sequenciaMinima &&
+          requisicao.metodo === "POST" &&
+          COMANDOS_NXJ_CONFIRMACAO.has(requisicao.comando) &&
+          requisicao.valorPendente === valorEsperado
+        ) || null;
+
+        if (registro) break;
+
+        if (Date.now() - inicio >= limiteEsperaMs) {
+          throw new Error(
+            "O Systextil não confirmou o campo " + rotulo +
+            " pelo comando NXJ dentro de " +
+            Math.round(limiteEsperaMs / 1000) +
+            " segundos."
+          );
+        }
+
+        await pausa(intervaloMs);
+      }
+
+      if (registro.monitoramentoFalhou) {
+        throw new Error(
+          "O comando de confirmação do campo " + rotulo +
+          " foi enviado, mas não pôde ser monitorado."
+        );
+      }
+
+      while (!registro.finalizado) {
+        validarVisaoConsultaTitulos(pagina);
+
+        if (Date.now() - inicio >= limiteEsperaMs) {
+          throw new Error(
+            "O comando NXJ do campo " + rotulo + " não terminou dentro do limite de espera."
+          );
+        }
+
+        await pausa(intervaloMs);
+      }
+
+      if (registro.status < 200 || registro.status >= 300) {
+        throw new Error(
+          "O comando NXJ de confirmação do campo " + rotulo +
+          " retornou HTTP " + registro.status + "."
+        );
+      }
+
+      await aguardarOcioso();
+
+      return {
+        confirmado: true,
+        comando: registro.comando
+      };
+    }
+
+    return {
+      obterSequencia() {
+        return estado.sequencia;
+      },
+      aguardarOcioso,
+      aguardarConfirmacao,
+      remover() {
+        if (prototipo.open === abrirInterceptadoRef) {
+          Object.defineProperty(prototipo, "open", descritorOpen);
+        }
+
+        if (prototipo.send === enviarInterceptadoRef) {
+          Object.defineProperty(prototipo, "send", descritorSend);
+        }
+      }
+    };
+  }
+
+  async function preencherCamposConsulta(dados, configuracaoTeste = {}) {
+    if (preenchimentoEmAndamento) {
+      throw new Error("Já existe um preenchimento em andamento nesta tela.");
+    }
+
+    preenchimentoEmAndamento = true;
+    let monitor = null;
+    let valoresAlterados = false;
+
+    const atrasoFocoMs = Number.isInteger(configuracaoTeste.atrasoFocoMs) &&
+      configuracaoTeste.atrasoFocoMs >= 0
+      ? configuracaoTeste.atrasoFocoMs
+      : 200;
+
+    function pausa(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function obterCamposAtuais() {
+      const formularioAtual = localizarFormularioConsulta();
+      const tituloAtual = formularioAtual.elements.namedItem(CAMPOS.titulo);
+      const parcelaAtual = formularioAtual.elements.namedItem(CAMPOS.parcela);
+
+      if (!tituloAtual || !parcelaAtual) {
+        throw new Error("Um dos campos da consulta deixou de existir após a atualização da tela.");
+      }
+
+      return {
+        formulario: formularioAtual,
+        titulo: tituloAtual,
+        parcela: parcelaAtual
+      };
+    }
+
+    function validarCampoEditavel(campo) {
+      if (campo.disabled || campo.readOnly) {
+        throw new Error("Um dos campos do ERP está bloqueado para edição.");
+      }
+
+      if (typeof campo.focus !== "function") {
+        throw new Error("O campo do ERP não oferece a operação de foco necessária.");
+      }
+    }
+
+    try {
+      let campos = obterCamposAtuais();
+
+      validarCampoEditavel(campos.titulo);
+      validarCampoEditavel(campos.parcela);
+
+      const titulo = normalizarCodigoConsulta(
+        dados?.titulo,
+        "Número do título",
+        obterLarguraCampo(campos.titulo, LARGURAS_PADRAO_CONSULTA.titulo)
+      );
+      const parcela = preservarCodigoConsulta(
+        dados?.parcela,
+        "Parcela",
+        obterLarguraCampo(campos.parcela, LARGURAS_PADRAO_CONSULTA.parcela)
+      );
+
+      const pagina = obterJanelaPaginaSystextil();
+      validarVisaoConsultaTitulos(pagina);
+
+      monitor = criarMonitorComandosNxj(pagina, configuracaoTeste);
+
+      // O primeiro foco só prepara o campo. Aguarda qualquer comando que o NXJ
+      // tenha iniciado ao abandonar o campo anteriormente ativo.
+      campos.titulo.focus();
+      await pausa(atrasoFocoMs);
+      await monitor.aguardarOcioso();
+
+      validarVisaoConsultaTitulos(pagina);
+      campos = obterCamposAtuais();
+      validarCampoEditavel(campos.titulo);
+      valoresAlterados = true;
+      atribuirValorCampo(campos.titulo, titulo);
+
+      if (String(campos.titulo.value ?? "").trim() !== titulo) {
+        throw new Error("O navegador não manteve o número do título no campo.");
+      }
+
+      // Ao sair do título, o NXJ deve transportar o valor pendente no POST.
+      const sequenciaAntesDoTitulo = monitor.obterSequencia();
+      campos.parcela.focus();
+      await pausa(atrasoFocoMs);
+      await monitor.aguardarConfirmacao(
+        titulo,
+        sequenciaAntesDoTitulo,
+        "número do título"
+      );
+
+      // O NXJ pode atualizar/recriar controles ao responder. Nunca reutilize a
+      // referência anterior sem reler o formulário.
+      validarVisaoConsultaTitulos(pagina);
+      campos = obterCamposAtuais();
+
+      if (String(campos.titulo.value ?? "").trim() !== titulo) {
+        throw new Error("O Systextil não manteve o número do título após a confirmação.");
+      }
+
+      validarCampoEditavel(campos.parcela);
+      atribuirValorCampo(campos.parcela, parcela);
+
+      if (String(campos.parcela.value ?? "").trim() !== parcela) {
+        throw new Error("O navegador não manteve a parcela no campo.");
+      }
+
+      // Retornar ao título provoca a confirmação da parcela por ClickOnField.
+      const sequenciaAntesDaParcela = monitor.obterSequencia();
+      campos.titulo.focus();
+      await pausa(atrasoFocoMs);
+      await monitor.aguardarConfirmacao(
+        parcela,
+        sequenciaAntesDaParcela,
+        "parcela"
+      );
+
+      validarVisaoConsultaTitulos(pagina);
+      campos = obterCamposAtuais();
+
+      if (
+        String(campos.titulo.value ?? "").trim() !== titulo ||
+        String(campos.parcela.value ?? "").trim() !== parcela
+      ) {
+        throw new Error(
+          "Os valores visíveis mudaram após as confirmações do Systextil."
+        );
+      }
+
+      return {
+        titulo,
+        parcela,
+        confirmacoes: {
+          titulo: "NXJ",
+          parcela: "NXJ"
+        }
+      };
+    } catch (erro) {
+      if (valoresAlterados) {
+        throw new Error(
+          "Preenchimento interrompido. NÃO pressione F7. Confira ou limpe manualmente os campos no ERP antes de tentar novamente. " +
+          erro.message
+        );
+      }
+
+      throw erro;
+    } finally {
+      try {
+        monitor?.remover();
+      } finally {
+        preenchimentoEmAndamento = false;
+      }
+    }
   }
 
 
@@ -1903,18 +2312,36 @@
       cursor: "pointer"
     });
 
-    botaoPreencher.addEventListener("click", function () {
+    botaoPreencher.addEventListener("click", async function () {
+      if (botaoPreencher.disabled) return;
+
       resultado.replaceChildren();
+      botaoPreencher.disabled = true;
+      botaoPreencher.textContent = "Aguardando confirmação do Systextil...";
+      botaoPreencher.style.cursor = "wait";
+      botaoPreencher.style.opacity = "0.65";
+      entradaTitulo.disabled = true;
+      entradaParcela.disabled = true;
+
+      const andamento = criarElemento(
+        "p",
+        "Confirmando o título e a parcela, um campo de cada vez. Não interaja com os campos do ERP durante esta etapa."
+      );
+      andamento.style.color = "#475569";
+      andamento.style.margin = "0";
+      resultado.append(andamento);
 
       try {
-        const preenchidos = preencherCamposConsulta({
+        const preenchidos = await preencherCamposConsulta({
           titulo: entradaTitulo.value,
           parcela: entradaParcela.value
         });
 
+        resultado.replaceChildren();
+
         const status = criarElemento(
           "p",
-          "Campos preenchidos e conferidos no formulário. Confira o número e a parcela no ERP; depois, pressione F7 manualmente. Nenhuma consulta foi enviada."
+          "Título e parcela confirmados pelos comandos NXJ do Systextil. Confira os valores na tela e pressione F7 manualmente. Nenhuma consulta foi enviada."
         );
         status.style.color = "#166534";
         status.style.margin = "0";
@@ -1928,10 +2355,18 @@
         detalhe.style.overflowWrap = "anywhere";
         resultado.append(detalhe);
       } catch (erro) {
+        resultado.replaceChildren();
         const status = criarElemento("p", erro.message);
         status.style.color = "#b91c1c";
         status.style.margin = "0";
         resultado.append(status);
+      } finally {
+        botaoPreencher.disabled = false;
+        botaoPreencher.textContent = "Preencher campos no Systextil";
+        botaoPreencher.style.cursor = "pointer";
+        botaoPreencher.style.opacity = "1";
+        entradaTitulo.disabled = false;
+        entradaParcela.disabled = false;
       }
     });
 
