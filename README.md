@@ -4,13 +4,15 @@ Userscripts pequenos e explícitos para reduzir trabalho repetitivo no Systextil
 
 ## Desenvolvimento: segunda via de boleto
 
+Guia transversal para novas automações e agentes de IA: [docs/guia-automacao-tampermonkey-systextil.md](docs/guia-automacao-tampermonkey-systextil.md). Ele complementa o `AGENTS.md` com padrões de DOM, contexto da página, integração com o ERP, segurança, testes e critérios de validação.
+
 Levantamento técnico, evidências, decisões, riscos e pendências estão em [docs/segunda-via-boleto.md](docs/segunda-via-boleto.md).
 
 Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/systextil-segunda-via-boleto.user.js).
 
 Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
 
-**Status atual:** a `main` contém a versão **0.4.8**. A branch `fix/confirmacao-nxj-titulo-sem-valor-dom` implementa a versão **0.4.9**: permite que a sequência funcional conclua a escrita da parcela quando o Systextil limpa o input do título no blur, desde que o monitor confirme pelo NXJ o valor exato enviado. Divergências não vazias e falhas de confirmação continuam bloqueando o sucesso. `npm run verify` e a validação operacional desta correção ainda estão pendentes. A seleção real do processo, associação do `.jrprint`, download e bloqueio de duplicidade permanecem com validação operacional própria.
+**Status atual:** a versão **0.4.9 está integrada à `main`** (PR [#25](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/25), commit `ed39d7da0bb535367bc5533559402494eacb9676`) e foi validada operacionalmente pelo usuário no Systextil real. A correção permite que a sequência de preenchimento conclua a etapa do título quando o ERP limpa o input no `blur`, desde que o monitor confirme pelo NXJ o valor exato enviado. Divergências e falhas de confirmação continuam bloqueando o sucesso. Essa validação operacional não deve ser confundida com a execução local de `npm run verify`; consulte a PR e os testes para o registro de cada evidência. A seleção do processo, a associação do `.jrprint`, o download e a proteção contra duplicidade mantêm critérios próprios documentados.
 
 ## Script: Parâmetros da Régua de Cobrança
 
