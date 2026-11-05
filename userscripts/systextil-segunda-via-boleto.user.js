@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.4.6
+// @version      0.4.7
 // @updateURL     https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @downloadURL   https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @description  Consulta, identifica e baixa a segunda via de boleto sem recarregar a página.
