@@ -137,11 +137,17 @@ function Get-QueryParameter {
   $query = $Uri.Query.TrimStart('?')
   if ([string]::IsNullOrEmpty($query)) { return $null }
   foreach ($pair in $query.Split('&')) {
-    $parts = $pair.Split('=', 2)
-    $key = [System.Uri]::UnescapeDataString($parts[0].Replace('+', ' '))
+    $separator = $pair.IndexOf('=')
+    if ($separator -lt 0) {
+      $rawKey = $pair
+      $rawValue = ''
+    } else {
+      $rawKey = $pair.Substring(0, $separator)
+      $rawValue = $pair.Substring($separator + 1)
+    }
+    $key = [System.Uri]::UnescapeDataString($rawKey.Replace('+', ' '))
     if ($key -ceq $Name) {
-      if ($parts.Length -lt 2) { return '' }
-      return [System.Uri]::UnescapeDataString($parts[1].Replace('+', ' '))
+      return [System.Uri]::UnescapeDataString($rawValue.Replace('+', ' '))
     }
   }
   return $null
@@ -194,7 +200,7 @@ function Save-PdfWithoutOverwrite {
 
 function Invoke-Request {
   param([hashtable]$Request, [System.Net.Sockets.TcpClient]$Client, [pscustomobject]$Config)
-  if (-not $Client.Client.RemoteEndPoint.Address.IsLoopback) {
+  if (-not [System.Net.IPAddress]::IsLoopback($Client.Client.RemoteEndPoint.Address)) {
     return @{ Status = 403; Payload = @{ ok = $false; error = 'loopback_only' }; Stop = $false }
   }
   if ([string]$Request.Headers['host'] -cne ('127.0.0.1:' + $script:Port)) {
@@ -264,7 +270,7 @@ if ([string]$config.Token -notmatch '^[A-Za-z0-9_-]{43}$' -or [string]::IsNullOr
   exit 1
 }
 
-$mutex = New-Object System.Threading.Mutex($false, 'Local\TexCottonBoletoHelper')
+$mutex = [System.Threading.Mutex]::new($false, 'Local\TexCottonBoletoHelper')
 if (-not $mutex.WaitOne(0)) {
   Write-Host 'O auxiliar já está em execução.'
   exit 0
