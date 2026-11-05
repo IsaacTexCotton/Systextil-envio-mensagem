@@ -1,7 +1,7 @@
 # Segunda via de boleto — levantamento técnico
 
-**Status:** Fase 4 v0.4.0 integrada; correção v0.4.1 para preservar a parcela sem zero à esquerda em branch de correção; testes e validação operacional desta correção pendentes  
-**Última atualização:** 2026-11-04  
+**Status:** v0.4.1 integrada; v0.4.2 implementada na branch `fix/confirmacao-assincrona-parcela`; verificação automatizada e validação operacional da confirmação NXJ pendentes  
+**Última atualização:** 2026-11-05  
 **Escopo:** obter o PDF de um boleto já existente no Systextil e salvá-lo com nome padronizado em uma pasta de rede.
 
 ## 1. Objetivo e limites
@@ -694,28 +694,59 @@ Se a grade não expuser `DataView.currentRow` ou o índice atribuído não refle
 **Estado:** verificação local da v0.4.0 aprovada pelo operador no Codespace (76/76 testes). A validação operacional da seleção de linha, correspondência do PDF, nome/pasta de destino e bloqueio de duplicidade permanece pendente.
 
 
-## 15. Correção do preenchimento da parcela (v0.4.1 — 04/11/2026)
+## 15. Preservação da parcela (v0.4.1 — 04/11/2026)
 
-### Causa identificada pelo operador
+### Alteração entregue
 
-O operador confirmou que a consulta funciona quando a parcela é digitada manualmente como um único dígito (exemplo: `3`). A implementação anterior usava a largura declarada pelo campo (ou o fallback padrão de 2 caracteres) como tamanho obrigatório e transformava automaticamente `3` em `03`.
+- O número do título continua sendo normalizado com zeros à esquerda, conforme o comportamento anterior.
+- A parcela passou a ser preservada exatamente como informada: `3` continua `3`; `01` continua `01`.
+- O limite máximo do campo continua sendo respeitado; valores maiores são rejeitados sem truncamento.
+- Foram mantidos o setter nativo e os eventos sintéticos `input` e `change`.
 
-`maxLength` define o limite máximo permitido pelo campo, não exige que o valor tenha dois caracteres. O zero acrescentado altera o identificador enviado ao Systextil e faz a consulta retornar títulos de outras parcelas da mesma nota.
+### Limitação identificada posteriormente
 
-### Alteração da v0.4.1
+A correção de formatação não resolveu a confirmação interna da parcela pelo NXJ. A sequência de foco continuou síncrona e a validação de sucesso ainda verificava somente o valor visível no DOM. A investigação posterior observou que o valor pendente de cada campo é transportado no próximo comando NXJ e que comandos consecutivos podem se sobrepor.
 
-- O número do título continua sendo normalizado com zeros à esquerda, preservando o comportamento já validado.
-- A parcela passa a ser validada sem alteração: `3` continua `3`; `01` continua `01`.
-- O comprimento máximo do campo continua sendo respeitado; valores maiores que o limite são rejeitados, sem truncamento.
-- Não há mudança no mecanismo de eventos, no F7, na emissão de boleto ou no download.
+A versão 0.4.1, portanto, preservou a parcela no DOM, mas não comprovava que o Systextil a havia recebido. A correção desse fluxo está descrita na seção 16.
 
-### Testes de regressão adicionados/ajustados
 
-- título `936520` continua sendo preenchido como `00936520`;
-- parcela `3` permanece `3`;
-- parcela `1` permanece `1`;
-- parcela `01` permanece `01`;
-- parcela acima do comprimento permitido é rejeitada;
-- os testes de preenchimento com setter nativo confirmam que o valor enviado ao campo é `3`, não `03`.
+## 16. Confirmação assíncrona dos campos da consulta (v0.4.2 — 05/11/2026)
 
-**Estado:** correção implementada na branch `fix/parcela-sem-zero-esquerda`. A execução de `npm run verify` no Codespace e a confirmação da consulta no Systextil ainda estão pendentes. Não atualizar o userscript instalado pela URL da `main` antes da integração.
+### Comportamento implementado
+
+A rotina `preencherCamposConsulta` passou a ser assíncrona e segue a sequência de confirmação do NXJ:
+
+1. Confirma que a visão ativa é `forms.crec.crec_f090`.
+2. Instala temporariamente um monitor sobre `unsafeWindow.XMLHttpRequest`, limitado às requisições para `UnifyNXJ.jsp`.
+3. Foca o campo do título, aguarda o sistema ficar ocioso e então insere o número normalizado.
+4. Move o foco para a parcela e aguarda um POST NXJ cujo comando seja `ClickOnField` ou `NEXT_FIELD` e cujo último valor de `fieldValues` corresponda exatamente ao título inserido.
+5. Aguarda o término da requisição, resposta HTTP de sucesso e 300 ms sem requisições NXJ em andamento.
+6. Relê os campos pelo atributo `name`, pois o NXJ pode atualizar os controles após responder.
+7. Insere a parcela sem acrescentar zeros, retorna o foco ao título e exige a mesma confirmação para a parcela.
+8. Relê os dois campos uma última vez. Somente depois dessas verificações o painel apresenta sucesso.
+
+O limite operacional padrão é de 20 segundos por espera. O intervalo de silêncio padrão é de 300 ms. A espera é baseada na atividade real observada, não em uma pausa fixa isolada.
+
+### Segurança e falhas
+
+- O monitor armazena somente metadados mínimos e o último valor pendente em memória durante a execução. Não registra `managerId`, URLs completas, cookies, tokens ou valores em console ou armazenamento persistente.
+- Os métodos originais de `XMLHttpRequest.prototype.open` e `send` são restaurados ao terminar, tanto em sucesso quanto em falha.
+- Se a visão mudar, o comando não for observado, a requisição não terminar, o status HTTP não for 2xx ou o sistema não ficar ocioso, a execução falha fechada.
+- Se algum valor já tiver sido alterado antes da falha, o painel orienta a não pressionar F7. Os valores não são restaurados automaticamente, pois não há garantia de que uma sequência de restauração seria confirmada.
+- O botão e as entradas do painel ficam desabilitados durante o preenchimento. A API de diagnóstico `preencherCamposConsulta` agora retorna uma Promise.
+- O userscript não envia F7, não submete o formulário, não emite boletos e não inicia downloads como parte deste fluxo.
+
+### Testes adicionados
+
+- confirmação do título e da parcela em POSTs NXJ separados;
+- preservação do setter nativo e de `InputEvent`;
+- falha segura quando a confirmação de título não chega;
+- falha segura quando a confirmação da parcela não chega;
+- bloqueio de uma segunda execução simultânea;
+- interrupção se a visão ativa não for Consulta de Títulos.
+
+### Limitações e validação pendente
+
+O monitor observa o `XMLHttpRequest` da página, conforme o protocolo identificado na investigação. Se o Tampermonkey não alcançar esse objeto ou o ERP mudar o transporte/comando, a confirmação não será reconhecida e o preenchimento será interrompido. Essa falha é intencional: não deve haver sucesso baseado apenas no DOM.
+
+**Estado:** implementação na branch `fix/confirmacao-assincrona-parcela`. A suíte `npm run verify` ainda precisa ser executada no Codespace. Depois, é obrigatória a validação no Tampermonkey com título antigo ou quitado autorizado para teste, comparando a confirmação dos dois campos e o resultado de F7. Não usar emissão de boleto como teste. Não integrar à `main` nem atualizar a instalação antes da revisão e validação.
