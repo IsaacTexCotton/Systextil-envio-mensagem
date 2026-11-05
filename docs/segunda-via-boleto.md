@@ -960,7 +960,7 @@ A mensagem comprova que o valor não estava mais presente no input consultado ap
 
 ### Teste de regressão
 
-O ambiente simulado limpa o input do título no evento de perda de foco, depois de enviar o valor ao NXJ. O teste verifica que a rotina ainda escreve a parcela e só retorna sucesso quando os POSTs NXJ observados contêm, na ordem, o título e a parcela esperados.
+O ambiente simulado cobre dois comportamentos: limpeza do input do título no blur depois de enviar o valor ao NXJ e recriação do elemento do título durante essa transição. Os testes verificam que a rotina ainda escreve a parcela, recupera a referência atual para devolver o foco e só retorna sucesso quando os POSTs NXJ observados contêm, na ordem, o título e a parcela esperados.
 
 ### Validação pendente
 
