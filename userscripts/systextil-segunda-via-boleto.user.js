@@ -786,6 +786,13 @@
         );
       }
 
+      // O campo do título também pode ter sido recriado no blur. Recupera
+      // a referência atual antes de devolver o foco, sem exigir valor no DOM.
+      campoTitulo = obterCampoAtual(CAMPOS.titulo);
+      if (typeof campoTitulo.focus !== "function") {
+        throw new Error("O campo atual do título não permite recuperar o foco.");
+      }
+
       const sequenciaAntesDaParcela = monitor.obterSequencia();
       campoTitulo.focus();
       await pausa(atrasoAposSairCampoMs);
