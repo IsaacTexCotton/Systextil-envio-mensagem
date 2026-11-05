@@ -349,6 +349,25 @@ test('interrompe sem sucesso quando o NXJ não confirma o número do título', a
   assert.equal(ambiente.campos['seq_duplicatas.'].value, '');
 });
 
+test('não informa confirmação quando o POST NXJ retorna HTTP diferente de 2xx', async () => {
+  const ambiente = criarAmbienteConsultaNxjFake({ status: 503 });
+  const abrirOriginal = ambiente.XMLHttpRequestFake.prototype.open;
+  const enviarOriginal = ambiente.XMLHttpRequestFake.prototype.send;
+
+  await assert.rejects(
+    ambiente.api.preencherCamposConsulta(
+      { titulo: '936520', parcela: '3' },
+      { limiteEsperaMs: 100, silencioMs: 0, intervaloMs: 2, atrasoFocoMs: 0 }
+    ),
+    /retornou HTTP 503/
+  );
+
+  assert.equal(ambiente.campos['num_duplicata.'].value, '00936520');
+  assert.equal(ambiente.campos['seq_duplicatas.'].value, '');
+  assert.equal(ambiente.XMLHttpRequestFake.prototype.open, abrirOriginal);
+  assert.equal(ambiente.XMLHttpRequestFake.prototype.send, enviarOriginal);
+});
+
 test('interrompe e orienta não pressionar F7 quando a parcela não é confirmada', async () => {
   const ambiente = criarAmbienteConsultaNxjFake({
     omitirConfirmacaoCampo: 'seq_duplicatas.'
