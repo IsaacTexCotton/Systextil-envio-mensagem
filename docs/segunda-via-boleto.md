@@ -635,7 +635,7 @@ A comparação do segundo utiliza o timestamp local em precisão de segundos, po
 1. O operador analisa os Processos agendados.
 2. O botão de download só é habilitado quando a análise retorna exatamente um processo concluído com sucesso.
 3. Antes de baixar, o userscript repete a análise com os dados atuais da grade. Se o resultado mudou desde a análise visual, interrompe e solicita nova análise.
-4. O userscript localiza o controlador da grade `DataView.currentRow` (ou `dataView.currentRow`), exige um único controlador verificável e seleciona o índice zero-based correspondente ao registro da Fase 3.
+4. O userscript usa o `DataViewDescriptor` da visão ativa em `window.curDataView`, exige que `curDataView.name` seja exatamente `forms.systextil.batch` e seleciona o índice zero-based correspondente ao registro da Fase 3.
 5. Os campos do registro são relidos antes e depois da seleção. Se título do processo, data/hora ou mensagem tiverem mudado, a seleção é restaurada quando possível e o download é bloqueado.
 6. Com a linha selecionada, chama `getFileUrl()` do contexto da página do Systextil.
 7. Confere se o único `.jrprint` selecionado na lista de resultados corresponde ao parâmetro `report` da URL gerada.
@@ -661,7 +661,7 @@ A comparação do segundo utiliza o timestamp local em precisão de segundos, po
 
 A versão 0.4.0 troca `@grant none` por permissões específicas:
 
-- `@grant unsafeWindow`: acessar os objetos e funções que pertencem à página Systextil, em particular `DataView.currentRow` e `getFileUrl()`.
+- `@grant unsafeWindow`: acessar os objetos e funções que pertencem à página Systextil, em particular `curDataView.currentRow` e `getFileUrl()`.
 - `@grant GM_download`: solicitar o download autenticado para a pasta padrão do navegador.
 
 O userscript deve ser atualizado pelo verificador do Tampermonkey. Não recarregar a aba autenticada do Systextil.
@@ -686,7 +686,7 @@ O userscript deve ser atualizado pelo verificador do Tampermonkey. Não recarreg
 
 Verificação automatizada executada pelo operador no Codespace em 04/11/2026, com Node.js 24.22.2: `npm run verify` aprovou a sintaxe dos 2 userscripts e a suíte completa, com 76/76 testes e nenhuma falha. Essa execução valida a lógica coberta pelos testes, mas não substitui a conferência das APIs e do comportamento real do ERP.
 
-A implementação está protegida para interromper o fluxo caso a API da grade seja diferente da esperada. Ainda é necessário validar no Systextil usando um processo real já concluído (sem emitir boleto adicional somente para testar):
+A implementação está protegida para interromper o fluxo caso a visão ativa não seja `forms.systextil.batch` ou o `DataViewDescriptor` não exponha `currentRow`. Ainda é necessário validar no Systextil usando um processo real já concluído (sem emitir boleto adicional somente para testar):
 
 1. Atualizar o userscript para 0.4.0 pelo Tampermonkey.
 2. Na página Processos agendados já aberta, ativar o script pelo popup, sem recarregar.
@@ -1029,3 +1029,34 @@ A limpeza visual do campo, isoladamente, não é usada como prova de falha nem c
 - Validação operacional: usuário confirmou que o preenchimento voltou a funcionar no Systextil real.
 
 A nova documentação transversal de arquitetura, permissões, integração, testes e segurança está em [guia-automacao-tampermonkey-systextil.md](guia-automacao-tampermonkey-systextil.md).
+
+
+## 24. Resolução do DataViewDescriptor da grade de Processos agendados (v0.5.0 — 05/11/2026)
+
+### Causa identificada
+
+O resolvedor da v0.4.9 procurava `currentRow` em `window.DataView` e `window.dataView`. O diagnóstico no Systextil mostrou que `window.DataView` é o construtor nativo JavaScript, não o estado da grade. O objeto efetivo é `window.curDataView`, uma instância de `DataViewDescriptor`.
+
+A inspeção confirmou, na janela principal:
+
+- `clientManager` existe e seu formulário é `NXJForm`;
+- `NXJForm` contém os campos repetidos `titulo.`, `DATA_EXECUCAO.` e `MSG_EXCEPTION.`;
+- `clientManager.dataViewDescriptors` contém a visão `forms.systextil.batch`, com 10 registros na amostra observada;
+- `getFileUrl()` está disponível na mesma janela;
+- o frame adicional que contém outro formulário não possui os campos de Processos agendados nem `getFileUrl()`.
+
+Assim, a janela que contém a grade e a função de preparação do PDF é a janela principal. O frame com formulário separado não deve ser usado como contexto de seleção.
+
+### Correção v0.5.0
+
+- O resolvedor usa exclusivamente `janelaPagina.curDataView`; não tenta usar o construtor global `DataView`.
+- Exige que o objeto exponha `currentRow`.
+- Exige que `curDataView.name` seja exatamente `forms.systextil.batch`. Uma visão diferente interrompe a operação antes de chamar `getFileUrl()` ou iniciar o download.
+- Mantém a verificação de integridade do registro antes e depois da seleção e a restauração best-effort da linha anterior em caso de falha.
+- Os testes de seleção, preparação da URL e restauração usam o formato observado do `DataViewDescriptor`; foi acrescentado um cenário que bloqueia uma visão ativa diferente.
+
+### Segurança e validação
+
+A correção não chama `clientManager.moveRepFieldRecord()`, `setListboxSelection()`, `onGridClick()` nem comandos NXJ. Ela preserva a atribuição de `currentRow` já coberta pelo fluxo existente, agora aplicada ao objeto correto e condicionada ao nome da visão.
+
+A verificação automatizada completa e o teste operacional da v0.5.0 no Systextil ainda precisam ser executados. Para a validação operacional, use um processo já concluído e identificado, sem emitir um boleto adicional apenas para testar. Confira se o registro correto foi selecionado e se o relatório retornado por `getFileUrl()` corresponde ao `.jrprint` selecionado. O download continua condicionado ao clique explícito do operador.
