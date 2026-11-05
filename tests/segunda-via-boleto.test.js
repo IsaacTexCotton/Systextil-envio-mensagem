@@ -998,9 +998,14 @@ test('expira solicitação antiga para não associar uma emissão posterior por 
   assert.equal(resultado.status, 'solicitacao-expirada');
 });
 
-test('a Fase 4 declara somente as permissões Tampermonkey necessárias', () => {
+test('o userscript declara somente as permissões necessárias para o auxiliar local', () => {
   assert.match(source, /^\/\/ @grant\s+unsafeWindow$/m);
-  assert.match(source, /^\/\/ @grant\s+GM_download$/m);
+  assert.match(source, /^\/\/ @grant\s+GM_getValue$/m);
+  assert.match(source, /^\/\/ @grant\s+GM_setValue$/m);
+  assert.match(source, /^\/\/ @grant\s+GM_xmlhttpRequest$/m);
+  assert.match(source, /^\/\/ @connect\s+systextil\.texcotton\.com\.br$/m);
+  assert.match(source, /^\/\/ @connect\s+127\.0\.0\.1$/m);
+  assert.equal(source.includes('// @grant        GM_download'), false);
   assert.equal(source.includes('// @grant        none'), false);
 });
 
@@ -1517,40 +1522,169 @@ test('não aceita mais de um relatório .jrprint selecionado na página', () => 
   );
 });
 
-test('GM_download usa o nome PDF e a pasta padrão sem abrir diálogo de destino', () => {
-  let opcoes = null;
-  let sucesso = 0;
+test('valida assinatura, limite e marcador final de um PDF antes de enviá-lo ao auxiliar', () => {
+  const api = carregarApi();
+  const pdf = Uint8Array.from(Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF', 'ascii')).buffer;
+  assert.equal(api.validarBytesPdf(pdf).byteLength, pdf.byteLength);
+
+  const html = Uint8Array.from(Buffer.from('<html>erro</html>', 'ascii')).buffer;
+  assert.throws(() => api.validarBytesPdf(html), /assinatura de um PDF/);
+
+  const semFim = Uint8Array.from(Buffer.from('%PDF-1.7\nconteudo sem marcador', 'ascii')).buffer;
+  assert.throws(() => api.validarBytesPdf(semFim), /marcador final/);
+
+  const vazio = new ArrayBuffer(0);
+  assert.throws(() => api.validarBytesPdf(vazio), /vazio ou excede/);
+});
+
+test('baixa o PDF autenticado do Systextil e o envia ao auxiliar local sem usar Downloads', () => {
+  const url = 'http://systextil.texcotton.com.br/systextil/download/blt365332.pdf?report=blt365332.jrprint&ext=pdf&program=forms.crec.crec_e259';
+  const nome = 'Confecções Industriais… - 000944246.01.pdf';
+  const token = 'A'.repeat(43);
+  const pdf = Uint8Array.from(Buffer.from('%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF', 'ascii')).buffer;
+  const requisicoes = [];
+  let sucesso = null;
+  let falhas = 0;
+
   const api = carregarApi([], {}, {
-    GM_download(detalhes) {
-      opcoes = detalhes;
+    GM_xmlhttpRequest(detalhes) {
+      requisicoes.push(detalhes);
+      if (detalhes.method === 'GET') {
+        detalhes.onload({ status: 200, finalUrl: url, response: pdf });
+      } else {
+        detalhes.onload({
+          status: 201,
+          responseText: JSON.stringify({
+            ok: true,
+            fileName: nome,
+            bytes: pdf.byteLength
+          })
+        });
+      }
       return { abort() {} };
     }
   });
 
-  api.iniciarDownloadPdf(
-    'http://systextil.texcotton.com.br/systextil/download/blt365332.pdf?report=blt365332.jrprint&ext=pdf&program=forms.crec.crec_e259',
-    'Confecções Industriais… - 000944246.01.pdf',
-    { onload() { sucesso += 1; } }
-  );
+  api.iniciarDownloadPdf(url, nome, token, {
+    onload(detalhe) { sucesso = detalhe; },
+    onerror() { falhas += 1; }
+  });
 
-  assert.equal(opcoes.name, 'Confecções Industriais… - 000944246.01.pdf');
-  assert.equal(opcoes.saveAs, false);
-  assert.equal(typeof opcoes.onload, 'function');
-  assert.equal(typeof opcoes.onerror, 'function');
-  assert.equal(typeof opcoes.ontimeout, 'function');
-
-  opcoes.onload({ state: 'complete' });
-  opcoes.onerror({ error: 'late-error' });
-  assert.equal(sucesso, 1);
+  assert.equal(requisicoes.length, 2);
+  assert.equal(requisicoes[0].method, 'GET');
+  assert.equal(requisicoes[0].responseType, 'arraybuffer');
+  assert.equal(requisicoes[0].anonymous, false);
+  assert.equal(requisicoes[1].method, 'POST');
+  assert.match(requisicoes[1].url, /^http:\/\/127\.0\.0\.1:17834\/api\/pdf\?name=/);
+  assert.equal(new URL(requisicoes[1].url).searchParams.get('name'), nome);
+  assert.equal(requisicoes[1].headers['Content-Type'], 'application/pdf');
+  assert.equal(requisicoes[1].headers['X-ST-Boleto-Token'], token);
+  assert.equal(requisicoes[1].data.byteLength, pdf.byteLength);
+  assert.deepEqual(sucesso, { fileName: nome, bytes: pdf.byteLength });
+  assert.equal(falhas, 0);
 });
 
-test('GM_download falha de forma explícita quando a permissão não está disponível', () => {
-  const api = carregarApi();
+test('não inicia transferência se a chave do auxiliar estiver ausente ou inválida', () => {
+  let requisicoes = 0;
+  const api = carregarApi([], {}, {
+    GM_xmlhttpRequest() {
+      requisicoes += 1;
+      return { abort() {} };
+    }
+  });
 
   assert.throws(
-    () => api.iniciarDownloadPdf('https://systextil.exemplo/arquivo.pdf', 'arquivo.pdf', {}),
-    /GM_download não está disponível/
+    () => api.iniciarDownloadPdf('http://systextil.texcotton.com.br/systextil/download/x.pdf?report=x.jrprint&ext=pdf&program=forms.crec.crec_e259', 'arquivo.pdf', 'invalida', {}),
+    /chave do auxiliar/
   );
+  assert.equal(requisicoes, 0);
+});
+
+test('trata falha de conexão durante envio ao auxiliar como resultado indeterminado', () => {
+  const url = 'http://systextil.texcotton.com.br/systextil/download/blt365332.pdf?report=blt365332.jrprint&ext=pdf&program=forms.crec.crec_e259';
+  const pdf = Uint8Array.from(Buffer.from('%PDF-1.7\n%%EOF', 'ascii')).buffer;
+  let indeterminados = 0;
+  let falhasComprovadas = 0;
+  const api = carregarApi([], {}, {
+    GM_xmlhttpRequest(detalhes) {
+      if (detalhes.method === 'GET') {
+        detalhes.onload({ status: 200, finalUrl: url, response: pdf });
+      } else {
+        detalhes.ontimeout();
+      }
+      return { abort() {} };
+    }
+  });
+
+  api.iniciarDownloadPdf(url, 'arquivo.pdf', 'B'.repeat(43), {
+    ontimeout() { indeterminados += 1; },
+    onerror() { falhasComprovadas += 1; }
+  });
+
+  assert.equal(indeterminados, 1);
+  assert.equal(falhasComprovadas, 0);
+});
+
+test('testa a conexão e só aprova auxiliar com pasta de destino acessível', () => {
+  let requisicao = null;
+  let sucesso = null;
+  const token = 'C'.repeat(43);
+  const api = carregarApi([], {}, {
+    GM_xmlhttpRequest(detalhes) {
+      requisicao = detalhes;
+      detalhes.onload({
+        status: 200,
+        responseText: JSON.stringify({ ok: true, destinationReady: true, version: '1.0.0' })
+      });
+      return { abort() {} };
+    }
+  });
+
+  api.testarConexaoAuxiliar(token, { onload(detalhe) { sucesso = detalhe; } });
+
+  assert.equal(requisicao.method, 'GET');
+  assert.equal(requisicao.url, 'http://127.0.0.1:17834/api/ready');
+  assert.equal(requisicao.headers['X-ST-Boleto-Token'], token);
+  assert.equal(sucesso.destinationReady, true);
+});
+
+test('o auxiliar PowerShell fica limitado a loopback, autentica e grava sem sobrescrever', () => {
+  const helperPath = path.join(
+    __dirname,
+    '..',
+    'tools',
+    'boleto-helper',
+    'BoletoHelper.ps1'
+  );
+  const helper = fs.readFileSync(helperPath, 'utf8');
+
+  assert.match(helper, /TcpListener.*127\.0\.0\.1/s);
+  assert.match(helper, /IPAddress\]::IsLoopback/);
+  assert.match(helper, /Test-RequestToken/);
+  assert.match(helper, /MaxPdfBytes = 25MB/);
+  assert.match(helper, /Test-PdfBytes/);
+  assert.match(helper, /Test-SafePdfName/);
+  assert.match(helper, /\[System\.IO\.File\]::Move/);
+  assert.match(helper, /127\.0\.0\.1:17834/);
+  assert.equal(helper.includes('IPAddress]::Any'), false);
+});
+
+test('o instalador cria configuração local protegida e inicialização no logon', () => {
+  const installerPath = path.join(
+    __dirname,
+    '..',
+    'tools',
+    'boleto-helper',
+    'Instalar.ps1'
+  );
+  const installer = fs.readFileSync(installerPath, 'utf8');
+
+  assert.match(installer, /RandomNumberGenerator/);
+  assert.match(installer, /DestinationDirectory/);
+  assert.match(installer, /CreateShortcut/);
+  assert.match(installer, /Programs\\Startup/);
+  assert.match(installer, /127\.0\.0\.1:17834/);
+  assert.equal(installer.includes('Set-ExecutionPolicy'), false);
 });
 
 
