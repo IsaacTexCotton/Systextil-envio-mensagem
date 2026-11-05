@@ -340,6 +340,7 @@
    * sem registrar managerId, URL completa, cookies ou payload em console/storage.
    */
   function criarMonitorComandosNxj(pagina, configuracao = {}) {
+    configuracao = configuracao && typeof configuracao === "object" ? configuracao : {};
     const XMLHttpRequestPagina = pagina?.XMLHttpRequest;
     const prototipo = XMLHttpRequestPagina?.prototype;
     const descritorOpen = prototipo
@@ -632,6 +633,10 @@
   }
 
   async function preencherCamposConsulta(dados, configuracaoTeste = {}) {
+    configuracaoTeste = configuracaoTeste && typeof configuracaoTeste === "object"
+      ? configuracaoTeste
+      : {};
+
     if (preenchimentoEmAndamento) {
       throw new Error("Já existe um preenchimento em andamento nesta tela.");
     }
