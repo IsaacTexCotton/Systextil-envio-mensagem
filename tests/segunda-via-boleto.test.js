@@ -366,7 +366,7 @@ test('aguarda a atualização NXJ após refocalizar a parcela e escreve no contr
 
   const confirmacoes = ambiente.requisicoes
     .filter(requisicao => requisicao.metodo === 'POST')
-    .map(requisicao => new URLSearchParams(requisicao.body).get('fieldValues').split('\\f').at(-1));
+    .map(requisicao => new URLSearchParams(requisicao.body).get('fieldValues').split('\f').at(-1));
 
   assert.deepEqual(confirmacoes, ['936520', '3']);
 });
