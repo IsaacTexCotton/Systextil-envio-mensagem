@@ -10,7 +10,7 @@ Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/syste
 
 Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
 
-**Status atual:** a `main` contém a versão **0.4.1** da segunda via. A versão **0.4.2**, que confirma título e parcela por comandos NXJ sequenciais antes de informar sucesso, está em desenvolvimento na branch `fix/confirmacao-assincrona-parcela`. Os testes automatizados dessa alteração e a validação operacional no Tampermonkey ainda estão pendentes. A validação operacional da Fase 4 — seleção real da linha de processo, associação do `.jrprint`, download e bloqueio de duplicidade — também permanece separada e pendente. Não atualizar a instalação pela URL da `main` antes da integração da correção.
+**Status atual:** a `main` contém a versão **0.4.2** da segunda via, com confirmação dos campos por comandos NXJ. A versão **0.4.3** ajusta as pausas entre preenchimento e mudança de foco, reproduzindo a temporização dos testes manuais bem-sucedidos; está em revisão na branch `fix/pausas-confirmacao-nxj`. A suíte automatizada da nova alteração e a validação operacional no Tampermonkey permanecem pendentes. A validação operacional da Fase 4 — seleção real da linha de processo, associação do `.jrprint`, download e bloqueio de duplicidade — também permanece separada e pendente.
 
 
 ## Script: Parâmetros da Régua de Cobrança
