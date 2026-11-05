@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.4.5
+// @version      0.4.6
 // @updateURL     https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @downloadURL   https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @description  Consulta, identifica e baixa a segunda via de boleto sem recarregar a página.
@@ -16,7 +16,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.4.5";
+  const VERSION = "0.4.6";
   const PANEL_ID = "st-segunda-via-boleto-panel";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
@@ -706,7 +706,9 @@
       validarCampoEditavel(campos.titulo);
       validarCampoEditavel(campos.parcela);
 
-      const titulo = normalizarCodigoConsulta(
+      // O fluxo manual validado pelo operador envia o título exatamente como digitado.
+      // Não completar zeros à esquerda: o NXJ confirma o valor pendente original.
+      const titulo = preservarCodigoConsulta(
         dados?.titulo,
         "Número do título",
         obterLarguraCampo(campos.titulo, LARGURAS_PADRAO_CONSULTA.titulo)
