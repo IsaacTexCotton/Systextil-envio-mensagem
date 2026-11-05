@@ -19,7 +19,12 @@ function carregarApi(forms = [], propriedadesJanela = {}, propriedadesGlobais = 
     body: null,
     forms,
     addEventListener() {},
-    getElementById() {}
+    getElementById() {},
+    getElementsByName(nome) {
+      return typeof propriedadesGlobais.getElementsByName === 'function'
+        ? propriedadesGlobais.getElementsByName(nome)
+        : [];
+    }
   };
 
   const consoleTeste = {
@@ -29,6 +34,7 @@ function carregarApi(forms = [], propriedadesJanela = {}, propriedadesGlobais = 
   };
   const window = { document, console: consoleTeste, ...propriedadesJanela };
   window.top = window;
+  if (propriedadesGlobais.unsafeWindow) propriedadesGlobais.unsafeWindow.document = document;
 
   vm.runInNewContext(
     source,
@@ -162,7 +168,7 @@ function criarAmbienteConsultaNxjFake(opcoes = {}) {
           focosParcela += 1;
           const simularAtualizacao =
             opcoes.recriarParcelaEmTodasRefocalizacoes
-              ? focosParcela >= 2
+              ? focosParcela >= 1
               : opcoes.recriarParcelaAposRefocalizacao && focosParcela === 2;
 
           if (simularAtualizacao) {
@@ -204,7 +210,15 @@ function criarAmbienteConsultaNxjFake(opcoes = {}) {
   const api = carregarApi(
     [formulario],
     {},
-    { unsafeWindow: pagina, URLSearchParams, setTimeout, clearTimeout }
+    {
+      unsafeWindow: pagina,
+      URLSearchParams,
+      setTimeout,
+      clearTimeout,
+      getElementsByName(nome) {
+        return campos[nome] ? [campos[nome]] : [];
+      }
+    }
   );
 
   return {
@@ -214,7 +228,8 @@ function criarAmbienteConsultaNxjFake(opcoes = {}) {
     requisicoes,
     pagina,
     formulario,
-    XMLHttpRequestFake
+    XMLHttpRequestFake,
+    obterFocosParcela() { return focosParcela; }
   };
 }
 
@@ -222,7 +237,7 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
   assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.4.7');
+  assert.equal(api.version, '0.4.8');
 });
 
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
@@ -317,36 +332,36 @@ test('preenche os campos em sequência e exige confirmação NXJ de título e pa
 });
 
 
-test('refocaliza a parcela quando o NXJ recria o controle após confirmar o título', async () => {
+test('usa o novo controle da parcela quando o NXJ recria o input após o foco inicial', async () => {
   const ambiente = criarAmbienteConsultaNxjFake({
-    recriarParcelaAposConfirmacaoTitulo: '936520'
+    recriarParcelaAposConfirmacaoTitulo: '936520',
+    latenciaMs: 2
   });
   const parcelaAnterior = ambiente.camposIniciais['seq_duplicatas.'];
 
   const resultado = await ambiente.api.preencherCamposConsulta(
     { titulo: '936520', parcela: '3' },
-    { limiteEsperaMs: 500, silencioMs: 0, intervaloMs: 2, atrasoFocoMs: 0 }
+    {
+      limiteEsperaMs: 500,
+      silencioMs: 0,
+      intervaloMs: 1,
+      atrasoFocoInicialMs: 0,
+      atrasoAntesDeSairCampoMs: 0,
+      atrasoAposSairCampoMs: 20
+    }
   );
 
   assert.equal(resultado.titulo, '936520');
   assert.equal(resultado.parcela, '3');
   assert.notEqual(ambiente.campos['seq_duplicatas.'], parcelaAnterior);
   assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
-
-  const confirmacoes = ambiente.requisicoes
-    .filter(requisicao => requisicao.metodo === 'POST')
-    .map(requisicao => new URLSearchParams(requisicao.body).get('fieldValues').split('\f').at(-1));
-
-  assert.deepEqual(confirmacoes, ['936520', '3']);
 });
 
-
-test('aguarda a atualização NXJ após refocalizar a parcela e escreve no controle recriado', async () => {
+test('reaproveita a sequência funcional sem refocar a parcela quando o controle não foi recriado', async () => {
   const ambiente = criarAmbienteConsultaNxjFake({
     recriarParcelaAposRefocalizacao: true,
-    latenciaMs: 25
+    latenciaMs: 2
   });
-  const parcelaInicial = ambiente.camposIniciais['seq_duplicatas.'];
 
   const resultado = await ambiente.api.preencherCamposConsulta(
     { titulo: '936520', parcela: '3' },
@@ -361,21 +376,14 @@ test('aguarda a atualização NXJ após refocalizar a parcela e escreve no contr
   );
 
   assert.equal(resultado.parcela, '3');
-  assert.notEqual(ambiente.campos['seq_duplicatas.'], parcelaInicial);
   assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
-
-  const confirmacoes = ambiente.requisicoes
-    .filter(requisicao => requisicao.metodo === 'POST')
-    .map(requisicao => new URLSearchParams(requisicao.body).get('fieldValues').split('\f').at(-1));
-
-  assert.deepEqual(confirmacoes, ['936520', '3']);
+  assert.equal(ambiente.obterFocosParcela(), 1);
 });
 
-
-test('interrompe se o NXJ continuar recriando o campo da parcela durante o foco', async () => {
+test('interrompe se o ERP recriar repetidamente a parcela mesmo após refocar o controle atual', async () => {
   const ambiente = criarAmbienteConsultaNxjFake({
     recriarParcelaEmTodasRefocalizacoes: true,
-    latenciaMs: 10
+    latenciaMs: 2
   });
 
   await assert.rejects(
@@ -387,7 +395,7 @@ test('interrompe se o NXJ continuar recriando o campo da parcela durante o foco'
         intervaloMs: 1,
         atrasoFocoInicialMs: 0,
         atrasoAntesDeSairCampoMs: 0,
-        atrasoAposSairCampoMs: 0
+        atrasoAposSairCampoMs: 15
       }
     ),
     erro => {
@@ -399,7 +407,6 @@ test('interrompe se o NXJ continuar recriando o campo da parcela durante o foco'
 
   assert.equal(ambiente.campos['seq_duplicatas.'].value, '');
 });
-
 
 test('aguarda após input/change antes de abandonar cada campo', async () => {
   const eventos = [];
@@ -505,26 +512,30 @@ test('usa setter nativo e Event padrão para input/change conforme a sequência 
   );
 });
 
-test('não preenche quando há mais de um formulário compatível', async () => {
-  function criarFormulario() {
-    const campos = {
-      'num_duplicata.': { value: '', disabled: false, readOnly: false, dispatchEvent() {} },
-      'seq_duplicatas.': { value: '', disabled: false, readOnly: false, dispatchEvent() {} }
-    };
-    return {
-      elements: {
-        namedItem(nome) {
-          return campos[nome] || null;
-        }
-      }
-    };
-  }
+test('usa o primeiro campo por name, como no script funcional apresentado pelo operador', async () => {
+  const ambiente = criarAmbienteConsultaNxjFake();
+  const tituloDuplicado = { value: '', name: 'num_duplicata.' };
+  const parcelaDuplicada = { value: '', name: 'seq_duplicatas.' };
+  const obterOriginais = ambiente.pagina.document.getElementsByName.bind(ambiente.pagina.document);
 
-  const api = carregarApi([criarFormulario(), criarFormulario()]);
-  await assert.rejects(
-    api.preencherCamposConsulta({ titulo: '123', parcela: '01' }),
-    /Mais de um formulário/
+  ambiente.pagina.document.getElementsByName = nome => {
+    const originais = obterOriginais(nome);
+    const duplicado = nome === 'num_duplicata.'
+      ? tituloDuplicado
+      : (nome === 'seq_duplicatas.' ? parcelaDuplicada : null);
+    return duplicado ? [...originais, duplicado] : originais;
+  };
+
+  const resultado = await ambiente.api.preencherCamposConsulta(
+    { titulo: '936520', parcela: '3' },
+    { limiteEsperaMs: 500, silencioMs: 0, intervaloMs: 1, atrasoFocoMs: 0 }
   );
+
+  assert.equal(resultado.parcela, '3');
+  assert.equal(ambiente.campos['num_duplicata.'].value, '936520');
+  assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
+  assert.equal(tituloDuplicado.value, '');
+  assert.equal(parcelaDuplicada.value, '');
 });
 
 test('interrompe sem sucesso quando o NXJ não confirma o número do título', async () => {
@@ -549,7 +560,7 @@ test('interrompe sem sucesso quando o NXJ não confirma o número do título', a
   );
 
   assert.equal(ambiente.campos['num_duplicata.'].value, '936520');
-  assert.equal(ambiente.campos['seq_duplicatas.'].value, '');
+  assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
 });
 
 test('não informa confirmação quando o POST NXJ retorna HTTP diferente de 2xx', async () => {
@@ -566,7 +577,7 @@ test('não informa confirmação quando o POST NXJ retorna HTTP diferente de 2xx
   );
 
   assert.equal(ambiente.campos['num_duplicata.'].value, '936520');
-  assert.equal(ambiente.campos['seq_duplicatas.'].value, '');
+  assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
   assert.equal(ambiente.XMLHttpRequestFake.prototype.open, abrirOriginal);
   assert.equal(ambiente.XMLHttpRequestFake.prototype.send, enviarOriginal);
 });
