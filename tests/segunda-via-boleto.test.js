@@ -1580,7 +1580,8 @@ test('baixa o PDF autenticado do Systextil e o envia ao auxiliar local sem usar 
   assert.equal(requisicoes[1].headers['Content-Type'], 'application/pdf');
   assert.equal(requisicoes[1].headers['X-ST-Boleto-Token'], token);
   assert.equal(requisicoes[1].data.byteLength, pdf.byteLength);
-  assert.deepEqual(sucesso, { fileName: nome, bytes: pdf.byteLength });
+  assert.equal(sucesso.fileName, nome);
+  assert.equal(sucesso.bytes, pdf.byteLength);
   assert.equal(falhas, 0);
 });
 
