@@ -1051,7 +1051,10 @@ test('seleciona a linha zero-based somente quando os dados da grade continuam ig
     visualIndex: 1,
     recordNumber: 1
   };
-  const page = { curDataView: { name: 'forms.systextil.batch', currentRow: 4 } };
+  const page = {
+    DataView: function DataView() {},
+    curDataView: { name: 'forms.systextil.batch', currentRow: 4 }
+  };
 
   const selecao = api.selecionarRegistroProcesso(registro, page, () => [registro]);
 
@@ -1089,10 +1092,17 @@ test('não tenta selecionar quando curDataView.currentRow não está disponível
     mensagem: 'Processo concluído com sucesso.'
   };
 
+  const page = {
+    DataView: { currentRow: 4 },
+    dataView: { currentRow: 2 }
+  };
+
   assert.throws(
-    () => api.selecionarRegistroProcesso(registro, {}, () => [registro]),
+    () => api.selecionarRegistroProcesso(registro, page, () => [registro]),
     /API de seleção da grade/
   );
+  assert.equal(page.DataView.currentRow, 4);
+  assert.equal(page.dataView.currentRow, 2);
 });
 
 test('interrompe seleção quando curDataView aponta para outra visão do Systextil', () => {
