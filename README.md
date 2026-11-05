@@ -12,7 +12,7 @@ Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/syste
 
 Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
 
-**Status atual:** a `main` permanece na versão **0.4.9**, validada operacionalmente pelo usuário no Systextil real para o preenchimento dos campos e confirmação NXJ. A correção da seleção da grade está proposta na PR [#27](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/27), versão **0.5.0**: ela usa o `DataViewDescriptor` em `window.curDataView` e valida a visão `forms.systextil.batch`. A PR ainda aguarda revisão, execução de `npm run verify` e validação operacional da seleção/associação do PDF; até sua integração, a atualização automática continua entregando a versão 0.4.9.
+**Status atual:** a `main` contém o código da v0.5.0 para a seleção do processo. Foi identificada e está em correção uma divergência de metadados: o cabeçalho `@version` ainda estava em 0.4.9, embora a constante interna já estivesse em 0.5.0, impedindo o Tampermonkey de detectar a atualização. A correção está proposta na PR [#28](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/28), que sincroniza as versões e adiciona um teste de consistência. Até a integração da PR, pode ser necessário instalar manualmente a versão 0.5.0.
 
 ## Script: Parâmetros da Régua de Cobrança
 
