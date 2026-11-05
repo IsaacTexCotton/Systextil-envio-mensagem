@@ -187,7 +187,19 @@ function criarAmbienteConsultaNxjFake(opcoes = {}) {
           if (opcoes.limparCampoAoPerderFoco === campoAnterior.name) {
             campoAnterior.value = '';
           }
+
+          if (opcoes.recriarCampoAoPerderFoco === campoAnterior.name) {
+            campos[campoAnterior.name] = criarCampo(campoAnterior.name);
+          }
         }
+
+        if (
+          opcoes.exigirCampoAtualAoFocar &&
+          campos[nome] !== this
+        ) {
+          throw new Error('Tentativa de focar um controle substituído.');
+        }
+
         campoAtivo = this;
         opcoes.registrarEvento?.({
           tipo: 'foco',
@@ -371,6 +383,32 @@ test('continua a sequência quando o ERP limpa o input do título após o blur e
     .map(requisicao => new URLSearchParams(requisicao.body).get('fieldValues').split('\f').at(-1));
 
   assert.deepEqual(confirmacoes, ['936520', '3']);
+});
+
+test('recupera o elemento atual do título quando o ERP o recria no blur', async () => {
+  const ambiente = criarAmbienteConsultaNxjFake({
+    recriarCampoAoPerderFoco: 'num_duplicata.',
+    exigirCampoAtualAoFocar: true,
+    latenciaMs: 2
+  });
+  const tituloAnterior = ambiente.camposIniciais['num_duplicata.'];
+
+  const resultado = await ambiente.api.preencherCamposConsulta(
+    { titulo: '936520', parcela: '3' },
+    {
+      limiteEsperaMs: 500,
+      silencioMs: 0,
+      intervaloMs: 1,
+      atrasoFocoInicialMs: 0,
+      atrasoAntesDeSairCampoMs: 0,
+      atrasoAposSairCampoMs: 0
+    }
+  );
+
+  assert.equal(resultado.titulo, '936520');
+  assert.equal(resultado.parcela, '3');
+  assert.notEqual(ambiente.campos['num_duplicata.'], tituloAnterior);
+  assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
 });
 
 test('usa o novo controle da parcela quando o NXJ recria o input após o foco inicial', async () => {
