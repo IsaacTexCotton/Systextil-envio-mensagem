@@ -179,8 +179,14 @@ function criarAmbienteConsultaNxjFake(opcoes = {}) {
         }
 
         if (campoAtivo && campoAtivo !== this) {
-          const ignorar = opcoes.omitirConfirmacaoCampo === campoAtivo.name;
-          if (!ignorar) enviarComandoConfirmacao(campoAtivo.value);
+          const campoAnterior = campoAtivo;
+          const ignorar = opcoes.omitirConfirmacaoCampo === campoAnterior.name;
+          if (!ignorar) enviarComandoConfirmacao(campoAnterior.value);
+
+          // Simula ERP que limpa o input no blur depois de enviar o valor ao NXJ.
+          if (opcoes.limparCampoAoPerderFoco === campoAnterior.name) {
+            campoAnterior.value = '';
+          }
         }
         campoAtivo = this;
         opcoes.registrarEvento?.({
@@ -237,13 +243,13 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
   assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.4.8');
+  assert.equal(api.version, '0.4.9');
 });
 
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
   const url = 'https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js';
 
-  assert.match(source, /^\/\/ @version\s+0\.4\.7$/m);
+  assert.match(source, /^\/\/ @version\s+0\.4\.9$/m);
   assert.ok(source.includes('// @updateURL     ' + url));
   assert.ok(source.includes('// @downloadURL   ' + url));
 });
@@ -331,6 +337,41 @@ test('preenche os campos em sequência e exige confirmação NXJ de título e pa
   );
 });
 
+
+test('continua a sequência quando o ERP limpa o input do título após o blur e confirma pelo NXJ', async () => {
+  const ambiente = criarAmbienteConsultaNxjFake({
+    limparCampoAoPerderFoco: 'num_duplicata.',
+    latenciaMs: 2
+  });
+
+  const resultado = await ambiente.api.preencherCamposConsulta(
+    { titulo: '936520', parcela: '3' },
+    {
+      limiteEsperaMs: 500,
+      silencioMs: 0,
+      intervaloMs: 1,
+      atrasoFocoInicialMs: 0,
+      atrasoAntesDeSairCampoMs: 0,
+      atrasoAposSairCampoMs: 0
+    }
+  );
+
+  assert.equal(resultado.titulo, '936520');
+  assert.equal(resultado.parcela, '3');
+  assert.equal(resultado.confirmacoes.titulo, 'NXJ');
+  assert.equal(resultado.confirmacoes.parcela, 'NXJ');
+
+  // O DOM limpou o input ao perder foco, mas o POST NXJ recebeu o título
+  // exato e a rotina conseguiu inserir e confirmar a parcela.
+  assert.equal(ambiente.campos['num_duplicata.'].value, '');
+  assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
+
+  const confirmacoes = ambiente.requisicoes
+    .filter(requisicao => requisicao.metodo === 'POST')
+    .map(requisicao => new URLSearchParams(requisicao.body).get('fieldValues').split('\\f').at(-1));
+
+  assert.deepEqual(confirmacoes, ['936520', '3']);
+});
 
 test('usa o novo controle da parcela quando o NXJ recria o input após o foco inicial', async () => {
   const ambiente = criarAmbienteConsultaNxjFake({
