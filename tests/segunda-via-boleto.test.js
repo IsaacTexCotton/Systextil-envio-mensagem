@@ -76,7 +76,7 @@ function criarAmbienteConsultaNxjFake(opcoes = {}) {
         const parametros = this.metodo === 'POST' && typeof body === 'string'
           ? new URLSearchParams(body)
           : null;
-        const valorPendente = parametros?.get('fieldValues')?.split('\\f').at(-1);
+        const valorPendente = parametros?.get('fieldValues')?.split('\f').at(-1);
 
         // Simula o redesenho do formulário após o NXJ confirmar o título:
         // a referência anterior da parcela deixa de ser o controle ativo.
@@ -203,7 +203,7 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
   const url = 'https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js';
 
-  assert.match(source, /^\/\/ @version\s+0\.4\.3$/m);
+  assert.match(source, /^\/\/ @version\s+0\.4\.4$/m);
   assert.ok(source.includes('// @updateURL     ' + url));
   assert.ok(source.includes('// @downloadURL   ' + url));
 });
@@ -310,7 +310,7 @@ test('refocaliza a parcela quando o NXJ recria o controle após confirmar o tít
 
   const confirmacoes = ambiente.requisicoes
     .filter(requisicao => requisicao.metodo === 'POST')
-    .map(requisicao => new URLSearchParams(requisicao.body).get('fieldValues').split('\\f').at(-1));
+    .map(requisicao => new URLSearchParams(requisicao.body).get('fieldValues').split('\f').at(-1));
 
   assert.deepEqual(confirmacoes, ['00936520', '3']);
 });
