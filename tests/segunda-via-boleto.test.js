@@ -368,7 +368,7 @@ test('continua a sequência quando o ERP limpa o input do título após o blur e
 
   const confirmacoes = ambiente.requisicoes
     .filter(requisicao => requisicao.metodo === 'POST')
-    .map(requisicao => new URLSearchParams(requisicao.body).get('fieldValues').split('\\f').at(-1));
+    .map(requisicao => new URLSearchParams(requisicao.body).get('fieldValues').split('\f').at(-1));
 
   assert.deepEqual(confirmacoes, ['936520', '3']);
 });
