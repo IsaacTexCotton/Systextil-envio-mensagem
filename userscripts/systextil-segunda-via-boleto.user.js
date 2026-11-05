@@ -2257,6 +2257,7 @@
     let ultimaAnalise = null;
     let downloadEmAndamento = false;
     let downloadIndeterminado = null;
+    let auxiliarValidado = false;
 
     function atualizarBotaoDownload() {
       const habilitado =
@@ -2264,7 +2265,8 @@
         !downloadIndeterminado &&
         ultimaAnalise?.status === "sucesso" &&
         Boolean(String(entradaCliente.value ?? "").trim()) &&
-        Boolean(obterTokenAuxiliarConfigurado());
+        Boolean(obterTokenAuxiliarConfigurado()) &&
+        auxiliarValidado;
 
       botaoBaixar.disabled = !habilitado;
       botaoBaixar.style.cursor = habilitado ? "pointer" : "not-allowed";
@@ -2276,6 +2278,7 @@
     entradaTokenAuxiliar.addEventListener("input", function () {
       const tokenAtual = String(entradaTokenAuxiliar.value ?? "").trim();
       if (tokenAtual !== obterTokenAuxiliarConfigurado()) {
+        auxiliarValidado = false;
         try {
           GM_setValue(CHAVE_TOKEN_AUXILIAR, "");
         } catch (_) {
@@ -2298,6 +2301,7 @@
           onload() {
             try {
               salvarTokenAuxiliar(tokenInformado);
+              auxiliarValidado = true;
               statusAuxiliar.textContent =
                 "Auxiliar conectado. Pasta de destino acessível; chave salva no Tampermonkey.";
               statusAuxiliar.style.color = "#166534";
@@ -2310,6 +2314,7 @@
             atualizarBotaoDownload();
           },
           onerror(erro) {
+            auxiliarValidado = false;
             statusAuxiliar.textContent = erro?.message || "Não foi possível validar o auxiliar.";
             statusAuxiliar.style.color = "#b91c1c";
             botaoTestarAuxiliar.disabled = false;
@@ -2317,6 +2322,7 @@
           }
         });
       } catch (erro) {
+        auxiliarValidado = false;
         statusAuxiliar.textContent = erro.message;
         statusAuxiliar.style.color = "#b91c1c";
         botaoTestarAuxiliar.disabled = false;
