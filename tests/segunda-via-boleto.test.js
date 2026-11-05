@@ -43,6 +43,7 @@ function carregarApi(forms = [], propriedadesJanela = {}, propriedadesGlobais = 
 function criarAmbienteConsultaNxjFake(opcoes = {}) {
   const requisicoes = [];
   let campoAtivo = null;
+  let focosParcela = 0;
   const campos = {};
 
   class XMLHttpRequestFake {
@@ -83,6 +84,16 @@ function criarAmbienteConsultaNxjFake(opcoes = {}) {
         if (
           parametros &&
           opcoes.recriarParcelaAposConfirmacaoTitulo === valorPendente
+        ) {
+          const parcelaAnterior = campos['seq_duplicatas.'];
+          campos['seq_duplicatas.'] = criarCampo('seq_duplicatas.');
+          if (campoAtivo === parcelaAnterior) campoAtivo = null;
+        }
+
+        // Simula um redesenho tardio do input após uma resposta NXJ observada.
+        if (
+          this.metodo === 'GET' &&
+          this.url.includes('refresh-parcela=1')
         ) {
           const parcelaAnterior = campos['seq_duplicatas.'];
           campos['seq_duplicatas.'] = criarCampo('seq_duplicatas.');
@@ -147,6 +158,20 @@ function criarAmbienteConsultaNxjFake(opcoes = {}) {
         return true;
       },
       focus() {
+        if (nome === 'seq_duplicatas.') {
+          focosParcela += 1;
+          const simularAtualizacao =
+            opcoes.recriarParcelaEmTodasRefocalizacoes
+              ? focosParcela >= 2
+              : opcoes.recriarParcelaAposRefocalizacao && focosParcela === 2;
+
+          if (simularAtualizacao) {
+            const atualizacao = new pagina.XMLHttpRequest();
+            atualizacao.open('GET', '/systextil/UnifyNXJ.jsp?refresh-parcela=1');
+            atualizacao.send();
+          }
+        }
+
         if (campoAtivo && campoAtivo !== this) {
           const ignorar = opcoes.omitirConfirmacaoCampo === campoAtivo.name;
           if (!ignorar) enviarComandoConfirmacao(campoAtivo.value);
@@ -197,13 +222,13 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
   assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.4.6');
+  assert.equal(api.version, '0.4.7');
 });
 
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
   const url = 'https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js';
 
-  assert.match(source, /^\/\/ @version\s+0\.4\.6$/m);
+  assert.match(source, /^\/\/ @version\s+0\.4\.7$/m);
   assert.ok(source.includes('// @updateURL     ' + url));
   assert.ok(source.includes('// @downloadURL   ' + url));
 });
@@ -313,6 +338,66 @@ test('refocaliza a parcela quando o NXJ recria o controle após confirmar o tít
     .map(requisicao => new URLSearchParams(requisicao.body).get('fieldValues').split('\f').at(-1));
 
   assert.deepEqual(confirmacoes, ['936520', '3']);
+});
+
+
+test('aguarda a atualização NXJ após refocalizar a parcela e escreve no controle recriado', async () => {
+  const ambiente = criarAmbienteConsultaNxjFake({
+    recriarParcelaAposRefocalizacao: true,
+    latenciaMs: 25
+  });
+  const parcelaInicial = ambiente.camposIniciais['seq_duplicatas.'];
+
+  const resultado = await ambiente.api.preencherCamposConsulta(
+    { titulo: '936520', parcela: '3' },
+    {
+      limiteEsperaMs: 500,
+      silencioMs: 0,
+      intervaloMs: 1,
+      atrasoFocoInicialMs: 0,
+      atrasoAntesDeSairCampoMs: 0,
+      atrasoAposSairCampoMs: 0
+    }
+  );
+
+  assert.equal(resultado.parcela, '3');
+  assert.notEqual(ambiente.campos['seq_duplicatas.'], parcelaInicial);
+  assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
+
+  const confirmacoes = ambiente.requisicoes
+    .filter(requisicao => requisicao.metodo === 'POST')
+    .map(requisicao => new URLSearchParams(requisicao.body).get('fieldValues').split('\f').at(-1));
+
+  assert.deepEqual(confirmacoes, ['936520', '3']);
+});
+
+
+test('interrompe se o NXJ continuar recriando o campo da parcela durante o foco', async () => {
+  const ambiente = criarAmbienteConsultaNxjFake({
+    recriarParcelaEmTodasRefocalizacoes: true,
+    latenciaMs: 10
+  });
+
+  await assert.rejects(
+    ambiente.api.preencherCamposConsulta(
+      { titulo: '936520', parcela: '3' },
+      {
+        limiteEsperaMs: 500,
+        silencioMs: 0,
+        intervaloMs: 1,
+        atrasoFocoInicialMs: 0,
+        atrasoAntesDeSairCampoMs: 0,
+        atrasoAposSairCampoMs: 0
+      }
+    ),
+    erro => {
+      assert.match(erro.message, /NÃO pressione F7/);
+      assert.match(erro.message, /recriou repetidamente o campo da parcela/);
+      return true;
+    }
+  );
+
+  assert.equal(ambiente.campos['seq_duplicatas.'].value, '');
 });
 
 

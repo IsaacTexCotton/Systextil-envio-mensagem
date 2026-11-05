@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-**Status:** v0.4.5 integrada; ajuste v0.4.6 para preservar o número do título digitado em revisão na branch `fix/preservar-titulo-digitado`  
+**Status:** v0.4.6 integrada; correção v0.4.7 para estabilizar o campo da parcela em revisão na branch `fix/parcela-aguarda-ocioso-nxj`  
 **Última atualização:** 2026-11-05  
 **Escopo:** obter o PDF de um boleto já existente no Systextil e salvá-lo com nome padronizado em uma pasta de rede.
 
@@ -819,7 +819,7 @@ Quando ocorre timeout, a mensagem também informa contagens de requisições NXJ
 - Em caso de timeout, enviar a mensagem completa de diagnóstico sem adicionar número de título, cliente, cookies ou payload.
 - Não pressionar F7 depois de erro; não clicar em **Emite boleto**.
 
-**Estado:** implementação na branch `fix/event-input-padrao-nxj`; não integrada à `main`. A validação automatizada e operacional desta versão está pendente.
+**Estado:** v0.4.5 integrada à `main` pela PR #21. A validação operacional no Tampermonkey/Systextil real permanece separada da aprovação automatizada.
 
 
 ## 20. Preservação do número do título informado pelo operador (v0.4.6 — 05/11/2026)
@@ -857,4 +857,37 @@ Essa diferença entre o procedimento manual e o automático é uma hipótese con
 - Pressionar F7 somente depois da mensagem de sucesso e verificar o título/parcela retornados.
 - Não clicar em **Emite boleto**.
 
-**Estado:** correção implementada na branch `fix/preservar-titulo-digitado`; não integrada à `main`. Sintaxe e suíte completa ainda precisam ser validadas no Codespace; teste operacional segue pendente.
+**Estado:** v0.4.6 integrada à `main` pela PR #22. A validação operacional específica do preenchimento automático no Systextil permanece pendente.
+
+
+## 21. Estabilização do campo da parcela após o foco (v0.4.7 — 05/11/2026)
+
+### Problema tratado
+
+Após confirmar o título pelo NXJ, o script relocalizava o campo da parcela, aplicava foco e aguardava um intervalo fixo. Esse intervalo, isoladamente, não comprovava que a comunicação assíncrona do NXJ havia terminado nem que o elemento continuava sendo o controle atual do formulário.
+
+Se o ERP substituísse o input durante esse intervalo, a rotina poderia escrever em uma referência antiga.
+
+### Correção
+
+- Depois de focar a parcela, aguarda o estado ocioso real do monitor NXJ.
+- Relê o formulário após a resposta e compara a identidade do controle com o elemento que recebeu foco.
+- Se o ERP recriar o campo, repete a estabilização no controle atual, com limite de três tentativas.
+- Somente escreve quando o campo permanece estável após o ciclo NXJ.
+- Após inserir o valor e aguardar a janela de estabilização, relê o formulário e confirma que o mesmo controle ainda contém a parcela antes de mudar o foco.
+- Se o campo continuar sendo recriado ou perder o valor, interrompe o preenchimento e orienta a não pressionar F7.
+
+### Testes de regressão
+
+- Atualização NXJ assíncrona após refocalizar a parcela, com recriação do input antes da escrita.
+- Confirmação de que a parcela é inserida no controle novo e enviada no POST NXJ.
+- Bloqueio seguro quando o NXJ continua recriando o controle além do limite de tentativas.
+
+### Validação pendente
+
+- Executar `npm run verify` na branch `fix/parcela-aguarda-ocioso-nxj`.
+- Instalar a versão 0.4.7 no Tampermonkey, desativando a versão anterior para evitar execução duplicada.
+- Validar com título autorizado e confirmar visualmente a parcela antes de pressionar F7.
+- Se a rotina interromper, não pressionar F7; conferir ou limpar manualmente os campos no ERP.
+
+**Estado:** correção implementada na branch `fix/parcela-aguarda-ocioso-nxj`; validação automatizada e operacional ainda pendentes até a execução das verificações.
