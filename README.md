@@ -10,7 +10,7 @@ Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/syste
 
 Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
 
-**Status atual:** a `main` contém a versão **0.4.7**. A branch `fix/reutiliza-sequencia-funcional-parcela` implementa a versão **0.4.8**, que reaproveita a sequência de foco e escrita comprovada pelo operador no Systextil e deixa a confirmação NXJ ocorrer depois da inserção dos dois campos. A nova versão ainda precisa de `npm run verify` e validação operacional. A seleção real do processo, associação do `.jrprint`, download e bloqueio de duplicidade permanecem com validação operacional própria.
+**Status atual:** a `main` contém a versão **0.4.8**. A branch `fix/confirmacao-nxj-titulo-sem-valor-dom` implementa a versão **0.4.9**: permite que a sequência funcional conclua a escrita da parcela quando o Systextil limpa o input do título no blur, desde que o monitor confirme pelo NXJ o valor exato enviado. Divergências não vazias e falhas de confirmação continuam bloqueando o sucesso. `npm run verify` e a validação operacional desta correção ainda estão pendentes. A seleção real do processo, associação do `.jrprint`, download e bloqueio de duplicidade permanecem com validação operacional própria.
 
 ## Script: Parâmetros da Régua de Cobrança
 
