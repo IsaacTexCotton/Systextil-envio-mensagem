@@ -1290,33 +1290,48 @@ test('reserva pendente expirada vira indeterminada, em vez de permitir novo down
   assert.equal(JSON.parse(storage.getItem(chave)).status, 'indeterminado');
 });
 
-test('encaminha timeout para callback próprio, sem tratá-lo como falha comprovada', () => {
-  let opcoesDownload;
+test('timeout ao obter PDF do Systextil não inicia upload e é falha comprovada', () => {
+  let onerrorRequest = null;
+  let uploads = 0;
+  let erros = 0;
+  let indeterminados = 0;
+
   const api = carregarApi([], {}, {
-    GM_download(opcoes) {
-      opcoesDownload = opcoes;
-      return 'download-id';
+    GM_xmlhttpRequest(opcoes) {
+      if (opcoes.method === 'GET') {
+        onerrorRequest = opcoes.ontimeout;
+      } else {
+        uploads += 1;
+      }
+      return { abort() {} };
     }
   });
 
-  let erros = 0;
-  let timeouts = 0;
-  let sucessos = 0;
-  api.iniciarDownloadPdf('https://exemplo.test/arquivo.pdf', 'arquivo.pdf', {
-    onload() { sucessos += 1; },
-    onerror() { erros += 1; },
-    ontimeout() { timeouts += 1; }
-  });
+  api.iniciarDownloadPdf(
+    'http://systextil.texcotton.com.br/systextil/download/x.pdf?report=x.jrprint&ext=pdf&program=forms.crec.crec_e259',
+    'arquivo.pdf',
+    'D'.repeat(43),
+    {
+      onerror() { erros += 1; },
+      ontimeout() { indeterminados += 1; }
+    }
+  );
 
-  opcoesDownload.ontimeout({ error: 'timeout' });
-  opcoesDownload.onload({});
-  opcoesDownload.onerror({ error: 'late-error' });
-
-  assert.equal(timeouts, 1);
-  assert.equal(erros, 0);
-  assert.equal(sucessos, 0);
+  onerrorRequest();
+  assert.equal(erros, 1);
+  assert.equal(indeterminados, 0);
+  assert.equal(uploads, 0);
 });
 
+
+
+test('download exige chave salva e teste do auxiliar antes de habilitar a ação', () => {
+  assert.match(source, /let auxiliarValidado = false/);
+  assert.match(source, /&&\s*auxiliarValidado;/);
+  assert.match(source, /auxiliarValidado = true/);
+  assert.match(source, /auxiliarValidado = false/);
+  assert.equal(source.includes('GM_download('), false);
+});
 test('a análise da Fase 3 não seleciona nem inicia download automaticamente', () => {
   const api = carregarApi();
 
