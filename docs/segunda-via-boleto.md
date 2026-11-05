@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-**Status:** v0.4.4 integrada; ajuste v0.4.5 de eventos de entrada e diagnóstico NXJ em revisão na branch `fix/event-input-padrao-nxj`  
+**Status:** v0.4.5 integrada; ajuste v0.4.6 para preservar o número do título digitado em revisão na branch `fix/preservar-titulo-digitado`  
 **Última atualização:** 2026-11-05  
 **Escopo:** obter o PDF de um boleto já existente no Systextil e salvá-lo com nome padronizado em uma pasta de rede.
 
@@ -820,3 +820,41 @@ Quando ocorre timeout, a mensagem também informa contagens de requisições NXJ
 - Não pressionar F7 depois de erro; não clicar em **Emite boleto**.
 
 **Estado:** implementação na branch `fix/event-input-padrao-nxj`; não integrada à `main`. A validação automatizada e operacional desta versão está pendente.
+
+
+## 20. Preservação do número do título informado pelo operador (v0.4.6 — 05/11/2026)
+
+### Evidência
+
+O fluxo manual apresentado pelo operador:
+- solicita o número do título via `prompt`;
+- usa `titulo.trim()` sem completar zeros;
+- atribui o valor diretamente pelo setter nativo;
+- dispara `Event("input")` e `Event("change")`;
+- aguarda as pausas observadas e executa F7 manualmente.
+
+O operador confirmou que esse procedimento preenche os campos e que o F7 retorna o título correto.
+
+Na v0.4.5, a rotina automática ainda chamava `normalizarCodigoConsulta`, completando o número com zeros à esquerda (por exemplo, `936520` virava `00936520`). O último diagnóstico observou um comando de saída NXJ, mas nenhum valor exatamente igual ao valor normalizado esperado.
+
+Essa diferença entre o procedimento manual e o automático é uma hipótese concreta para a divergência. A confirmação definitiva depende do teste operacional da nova versão.
+
+### Alteração v0.4.6
+
+- A rotina de preenchimento passa a usar `preservarCodigoConsulta` também no número do título.
+- O valor é enviado exatamente como digitado, sem completar zeros à esquerda.
+- A validação de caracteres e o limite de comprimento do campo continuam ativos.
+- O monitor NXJ continua exigindo a confirmação do valor exato que foi digitado.
+- Os testes de sequência, recriação do campo e falhas passam a esperar o valor original sem preenchimento automático.
+- A função utilitária `normalizarCodigoConsulta` permanece disponível e coberta pelos testes, mas deixa de ser usada no preenchimento assistido.
+
+### Validação pendente
+
+- Executar `npm run verify` no Codespace.
+- Instalar a v0.4.6 no Tampermonkey, desativando a v0.4.5 para evitar execução duplicada.
+- Usar título antigo ou quitado autorizado; digitar o número no painel exatamente como é informado manualmente.
+- Conferir o valor do título e da parcela e aguardar as confirmações NXJ.
+- Pressionar F7 somente depois da mensagem de sucesso e verificar o título/parcela retornados.
+- Não clicar em **Emite boleto**.
+
+**Estado:** correção implementada na branch `fix/preservar-titulo-digitado`; não integrada à `main`. Sintaxe e suíte completa ainda precisam ser validadas no Codespace; teste operacional segue pendente.
