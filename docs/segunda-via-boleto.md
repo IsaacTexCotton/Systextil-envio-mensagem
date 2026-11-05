@@ -1060,3 +1060,65 @@ Assim, a janela que contém a grade e a função de preparação do PDF é a jan
 A correção não chama `clientManager.moveRepFieldRecord()`, `setListboxSelection()`, `onGridClick()` nem comandos NXJ. Ela preserva a atribuição de `currentRow` já coberta pelo fluxo existente, agora aplicada ao objeto correto e condicionada ao nome da visão.
 
 A verificação automatizada completa e o teste operacional da v0.5.0 no Systextil ainda precisam ser executados. Para a validação operacional, use um processo já concluído e identificado, sem emitir um boleto adicional apenas para testar. Confira se o registro correto foi selecionado e se o relatório retornado por `getFileUrl()` corresponde ao `.jrprint` selecionado. O download continua condicionado ao clique explícito do operador.
+
+
+## 25. Gravação direta na pasta por auxiliar local Windows (v0.6.0 — 05/11/2026)
+
+### Motivação
+
+A v0.5.0 usava GM_download com saveAs false, que grava na pasta padrão do Chrome. Alterar esse destino global afetaria todos os downloads do navegador. A API do userscript também não permite escolher um caminho absoluto arbitrário do Windows.
+
+A v0.6.0 substitui esse transporte por um pequeno auxiliar local PowerShell. O usuário configura uma pasta exclusiva e os demais downloads do Chrome continuam inalterados.
+
+### Arquitetura
+
+- O Tampermonkey obtém o PDF autenticado do Systextil por GM_xmlhttpRequest, com envio de cookies habilitado e responseType arraybuffer.
+- O userscript confere status, URL final, origem/caminho/relatório e assinatura/terminador do PDF.
+- O conteúdo binário é enviado a http://127.0.0.1:17834/api/pdf, acompanhado de nome de arquivo e chave de pareamento.
+- O auxiliar Windows recebe o arquivo, valida a chave, o nome, o tipo/conteúdo e o limite de tamanho, grava um temporário na pasta configurada e move o arquivo para o destino final.
+- Arquivos existentes nunca são sobrescritos; nomes repetidos recebem sufixo numérico.
+- O sucesso só é exibido após confirmação do auxiliar.
+- Não há fallback para a pasta Downloads do Chrome.
+
+### Proteções
+
+- Listener limitado a IPv4 loopback 127.0.0.1; não escuta na rede local.
+- Porta fixa 17834, endereço Host validado, chave aleatória de 256 bits e comparação em tempo constante para tokens de mesmo comprimento.
+- Configuração em %LOCALAPPDATA%\TexCotton\BoletoHelper\config.json; a requisição não pode escolher o diretório.
+- Nome restrito a um único nome de arquivo PDF, sem separadores ou caracteres proibidos no Windows.
+- Limite de 25 MB e validação de assinatura %PDF- e marcador %%EOF.
+- Gravação temporária seguida de move sem sobrescrever.
+- Acesso de rede só é testado após clique explícito em Salvar chave e testar auxiliar; downloads ficam bloqueados até o pareamento passar.
+- Se a conexão cair durante o upload, a reserva de duplicidade fica indeterminada. O operador precisa conferir manualmente a pasta antes de liberar outra tentativa.
+
+### Instalação e operação
+
+Instruções completas em tools/boleto-helper/README.md. O pacote inclui:
+
+- tools/boleto-helper/Instalar.ps1: solicita a pasta, cria token, grava configuração local, cria atalho de inicialização e inicia o auxiliar;
+- tools/boleto-helper/BoletoHelper.ps1: listener HTTP loopback e gravação segura do PDF;
+- tools/boleto-helper/Parar.ps1: encerra o listener autenticado.
+
+O instalador usa Windows PowerShell 5.1 e não exige Python, Node.js, pacotes externos ou privilégios de administrador. A configuração local contém um segredo: não a publique nem a envie para o repositório.
+
+### Permissões do userscript
+
+A v0.6.0 remove GM_download e declara somente as permissões adicionais necessárias:
+
+- GM_getValue e GM_setValue: armazenamento da chave de pareamento no escopo do userscript;
+- GM_xmlhttpRequest: obtenção do PDF autenticado e comunicação com o auxiliar;
+- @connect systextil.texcotton.com.br e @connect 127.0.0.1: lista restrita dos dois destinos usados.
+
+### Validação pendente
+
+A implementação de código e os testes de contrato não comprovam a execução do PowerShell nem a política de acesso local do Chrome. Antes de integrar, é necessário:
+
+1. Executar npm run verify com Node.js 18 ou superior.
+2. Instalar o auxiliar em Windows PowerShell 5.1 e confirmar que o atalho de inicialização funciona.
+3. Parear a chave pelo painel e confirmar /api/ready.
+4. Usar uma emissão/processo real já concluído; não criar emissão extra apenas para teste.
+5. Conferir que o PDF aparece somente na pasta configurada e que outro download comum do Chrome continua indo para Downloads.
+6. Testar nome duplicado, pasta/unidade indisponível, chave inválida, PDF inválido, queda durante upload e bloqueio de segunda tentativa.
+7. Confirmar no Chrome 156 que GM_xmlhttpRequest consegue acessar loopback a partir do Tampermonkey instalado. Se a política Local Network Access bloquear a requisição, não desabilitar as proteções: investigar a política corporativa/HTTPS ou adotar outro transporte autorizado.
+
+**Estado da v0.6.0:** proposta em branch própria. Testes automatizados e validação operacional ainda pendentes. A v0.5.0 permanece como versão da main até revisão e integração.

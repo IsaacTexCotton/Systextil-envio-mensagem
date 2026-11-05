@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.5.0
+// @version      0.6.0
 // @updateURL     https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @downloadURL   https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @description  Consulta, identifica e baixa a segunda via de boleto sem recarregar a página.
@@ -10,13 +10,17 @@
 // @run-at       context-menu
 // @noframes
 // @grant        unsafeWindow
-// @grant        GM_download
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_xmlhttpRequest
+// @connect      systextil.texcotton.com.br
+// @connect      127.0.0.1
 // ==/UserScript==
 
 (function () {
   "use strict";
 
-  const VERSION = "0.5.0";
+  const VERSION = "0.6.0";
   const PANEL_ID = "st-segunda-via-boleto-panel";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const DATA_VIEW_PROCESSOS = "forms.systextil.batch";
@@ -42,6 +46,9 @@
   const TEMPO_RESERVA_DOWNLOAD_MS = 15 * 60 * 1000;
   const PROGRAMA_RELATORIO_BOLETO = "forms.crec.crec_e259";
   const CHAVE_DOWNLOAD_PREFIXO = "st-segunda-via-boleto:download:";
+  const CHAVE_TOKEN_AUXILIAR = "st-segunda-via-boleto:auxiliar-token";
+  const URL_AUXILIAR_LOCAL = "http://127.0.0.1:17834";
+  const TAMANHO_MAXIMO_PDF_AUXILIAR = 25 * 1024 * 1024;
 
   if (window.top !== window) {
     return;
@@ -1438,39 +1445,250 @@
     return true;
   }
 
-  function iniciarDownloadPdf(url, nomeArquivo, callbacks) {
-    if (typeof GM_download !== "function") {
-      throw new Error("GM_download não está disponível. Verifique as permissões do Tampermonkey.");
+  function obterTokenAuxiliarConfigurado() {
+    try {
+      return typeof GM_getValue === "function"
+        ? String(GM_getValue(CHAVE_TOKEN_AUXILIAR, "") || "").trim()
+        : "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function validarTokenAuxiliar(token) {
+    const valor = String(token ?? "").trim();
+    if (!/^[A-Za-z0-9_-]{43}$/.test(valor)) {
+      throw new Error("A chave do auxiliar está vazia ou inválida. Copie a chave exibida pelo instalador do auxiliar.");
+    }
+    return valor;
+  }
+
+  function salvarTokenAuxiliar(token) {
+    if (typeof GM_setValue !== "function") {
+      throw new Error("O armazenamento seguro do Tampermonkey não está disponível.");
+    }
+    GM_setValue(CHAVE_TOKEN_AUXILIAR, validarTokenAuxiliar(token));
+    return true;
+  }
+
+  function interpretarRespostaAuxiliar(response) {
+    try {
+      const texto = String(response?.responseText ?? "");
+      return texto ? JSON.parse(texto) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function testarConexaoAuxiliar(token, callbacks) {
+    const chave = validarTokenAuxiliar(token);
+    if (typeof GM_xmlhttpRequest !== "function") {
+      throw new Error("GM_xmlhttpRequest não está disponível. Atualize as permissões do userscript no Tampermonkey.");
     }
 
     let finalizado = false;
     const finalizar = (tipo, detalhe) => {
       if (finalizado) return;
       finalizado = true;
-
-      if (tipo === "sucesso") {
-        callbacks?.onload?.(detalhe);
-      } else if (tipo === "timeout") {
-        callbacks?.ontimeout?.(detalhe);
-      } else {
-        callbacks?.onerror?.(detalhe);
-      }
+      if (tipo === "sucesso") callbacks?.onload?.(detalhe);
+      else callbacks?.onerror?.(detalhe);
     };
 
     try {
-      return GM_download({
-        url,
-        name: nomeArquivo,
-        saveAs: false,
-        conflictAction: "uniquify",
-        onload: detalhe => finalizar("sucesso", detalhe),
-        onerror: detalhe => finalizar("falha", detalhe),
-        ontimeout: detalhe => finalizar("timeout", detalhe)
+      return GM_xmlhttpRequest({
+        method: "GET",
+        url: URL_AUXILIAR_LOCAL + "/api/ready",
+        headers: { "X-ST-Boleto-Token": chave },
+        timeout: 5000,
+        onload(response) {
+          const payload = interpretarRespostaAuxiliar(response);
+          if (Number(response.status) === 200 && payload?.ok === true && payload?.destinationReady === true) {
+            finalizar("sucesso", payload);
+            return;
+          }
+          const status = Number(response.status);
+          const mensagem = status === 401
+            ? "A chave não corresponde à configuração do auxiliar."
+            : status === 503
+              ? "O auxiliar está ativo, mas a pasta de destino configurada não está acessível."
+              : "O auxiliar respondeu, mas não confirmou a pasta de destino (HTTP " + status + ").";
+          finalizar("erro", new Error(mensagem));
+        },
+        onerror() {
+          finalizar("erro", new Error("Não foi possível acessar o auxiliar local. Confirme se ele está em execução e se o Tampermonkey permite conexão com 127.0.0.1."));
+        },
+        ontimeout() {
+          finalizar("erro", new Error("Tempo esgotado ao testar o auxiliar local."));
+        },
+        onabort() {
+          finalizar("erro", new Error("O teste de conexão com o auxiliar foi cancelado."));
+        }
       });
     } catch (erro) {
-      finalizar("falha", erro);
+      finalizar("erro", erro);
       throw erro;
     }
+  }
+
+  function validarBytesPdf(bytesRecebidos) {
+    let buffer;
+    if (Object.prototype.toString.call(bytesRecebidos) === "[object ArrayBuffer]") {
+      buffer = bytesRecebidos;
+    } else if (ArrayBuffer.isView(bytesRecebidos)) {
+      buffer = bytesRecebidos.buffer.slice(
+        bytesRecebidos.byteOffset,
+        bytesRecebidos.byteOffset + bytesRecebidos.byteLength
+      );
+    } else {
+      throw new Error("O Systextil não retornou o PDF em formato binário verificável.");
+    }
+
+    if (buffer.byteLength < 8 || buffer.byteLength > TAMANHO_MAXIMO_PDF_AUXILIAR) {
+      throw new Error("O PDF está vazio ou excede o limite de 25 MB.");
+    }
+
+    const bytes = new Uint8Array(buffer);
+    const assinatura = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3], bytes[4]);
+    if (assinatura !== "%PDF-") {
+      throw new Error("A resposta do Systextil não contém a assinatura de um PDF.");
+    }
+
+    const inicioCauda = Math.max(0, bytes.length - 2048);
+    const cauda = String.fromCharCode(...bytes.subarray(inicioCauda));
+    if (!cauda.includes("%%EOF")) {
+      throw new Error("O PDF recebido não contém o marcador final esperado.");
+    }
+    return buffer;
+  }
+
+  function iniciarDownloadPdf(url, nomeArquivo, token, callbacks) {
+    const chave = validarTokenAuxiliar(token || obterTokenAuxiliarConfigurado());
+    if (typeof GM_xmlhttpRequest !== "function") {
+      throw new Error("GM_xmlhttpRequest não está disponível. Verifique as permissões do Tampermonkey.");
+    }
+    if (
+      typeof nomeArquivo !== "string" ||
+      nomeArquivo.length > 180 ||
+      !/^[^<>:"/\\|?*\u0000-\u001f]+\.pdf$/i.test(nomeArquivo)
+    ) {
+      throw new Error("O nome do PDF está inválido para envio ao auxiliar.");
+    }
+
+    let finalizado = false;
+    let requisicaoRemota = null;
+    let requisicaoAuxiliar = null;
+    const finalizar = (tipo, detalhe) => {
+      if (finalizado) return;
+      finalizado = true;
+      if (tipo === "sucesso") callbacks?.onload?.(detalhe);
+      else if (tipo === "indeterminado") callbacks?.ontimeout?.(detalhe);
+      else callbacks?.onerror?.(detalhe);
+    };
+
+    try {
+      requisicaoRemota = GM_xmlhttpRequest({
+        method: "GET",
+        url,
+        responseType: "arraybuffer",
+        timeout: 60000,
+        anonymous: false,
+        onload(response) {
+          try {
+            if (Number(response.status) !== 200) {
+              throw new Error("O Systextil não entregou o PDF (HTTP " + Number(response.status) + ").");
+            }
+            const urlSolicitada = new URL(url);
+            const urlFinal = new URL(response.finalUrl || url);
+            if (
+              urlFinal.origin !== urlSolicitada.origin ||
+              urlFinal.pathname !== urlSolicitada.pathname ||
+              urlFinal.searchParams.get("report") !== urlSolicitada.searchParams.get("report")
+            ) {
+              throw new Error("A resposta do Systextil foi redirecionada para outro recurso. Download interrompido.");
+            }
+
+            const pdf = validarBytesPdf(response.response);
+            const urlUpload = URL_AUXILIAR_LOCAL + "/api/pdf?name=" + encodeURIComponent(nomeArquivo);
+            requisicaoAuxiliar = GM_xmlhttpRequest({
+              method: "POST",
+              url: urlUpload,
+              headers: {
+                "Content-Type": "application/pdf",
+                "X-ST-Boleto-Token": chave
+              },
+              data: pdf,
+              timeout: 60000,
+              onload(uploadResponse) {
+                const payload = interpretarRespostaAuxiliar(uploadResponse);
+                const status = Number(uploadResponse.status);
+                if (status >= 200 && status < 300 && payload?.ok === true && typeof payload.fileName === "string") {
+                  finalizar("sucesso", {
+                    fileName: payload.fileName,
+                    bytes: Number(payload.bytes) || pdf.byteLength
+                  });
+                  return;
+                }
+                if (status >= 500 || status === 0) {
+                  finalizar("indeterminado", new Error(
+                    "O auxiliar não confirmou o resultado da gravação (HTTP " + status + ")."
+                  ));
+                  return;
+                }
+
+                const mensagens = {
+                  400: "O auxiliar recusou o nome ou o conteúdo do PDF.",
+                  401: "A chave do auxiliar foi recusada. Teste novamente o pareamento.",
+                  403: "O auxiliar recusou a origem da conexão.",
+                  404: "A API do auxiliar não reconheceu o endpoint de gravação.",
+                  413: "O PDF excedeu o limite do auxiliar.",
+                  415: "O auxiliar recebeu um conteúdo que não é PDF.",
+                  503: "A pasta de destino não está acessível."
+                };
+                finalizar("erro", new Error(
+                  mensagens[status] || ("O auxiliar recusou o arquivo (HTTP " + status + ").")
+                ));
+              },
+              onerror() {
+                finalizar("indeterminado", new Error(
+                  "A conexão caiu durante o envio ao auxiliar. O arquivo pode ter sido salvo; confira a pasta antes de liberar nova tentativa."
+                ));
+              },
+              ontimeout() {
+                finalizar("indeterminado", new Error(
+                  "O auxiliar não respondeu a tempo. O arquivo pode ter sido salvo; confira a pasta antes de liberar nova tentativa."
+                ));
+              },
+              onabort() {
+                finalizar("indeterminado", new Error(
+                  "O envio ao auxiliar foi interrompido. Confira a pasta antes de liberar nova tentativa."
+                ));
+              }
+            });
+          } catch (erro) {
+            finalizar("erro", erro);
+          }
+        },
+        onerror() {
+          finalizar("erro", new Error("Não foi possível obter o PDF autenticado do Systextil."));
+        },
+        ontimeout() {
+          finalizar("erro", new Error("O Systextil excedeu o tempo para entregar o PDF. Nenhum envio ao auxiliar foi iniciado."));
+        },
+        onabort() {
+          finalizar("erro", new Error("A obtenção do PDF no Systextil foi cancelada."));
+        }
+      });
+    } catch (erro) {
+      finalizar("erro", erro);
+      throw erro;
+    }
+
+    return {
+      abort() {
+        try { requisicaoRemota?.abort?.(); } catch (_) {}
+        try { requisicaoAuxiliar?.abort?.(); } catch (_) {}
+      }
+    };
   }
 
   function localizarJanelaPagina(documentoAlvo) {
@@ -1891,6 +2109,68 @@
     });
     grupoCliente.append(rotuloCliente, entradaCliente);
 
+    const grupoAuxiliar = criarElemento("div");
+    Object.assign(grupoAuxiliar.style, {
+      margin: "0 0 10px",
+      padding: "9px",
+      border: "1px solid #cbd5e1",
+      borderRadius: "6px",
+      background: "#f8fafc"
+    });
+
+    const rotuloTokenAuxiliar = criarElemento("label", "Chave do auxiliar local");
+    rotuloTokenAuxiliar.style.display = "block";
+    rotuloTokenAuxiliar.style.fontWeight = "600";
+    rotuloTokenAuxiliar.style.marginBottom = "5px";
+
+    const entradaTokenAuxiliar = document.createElement("input");
+    entradaTokenAuxiliar.type = "password";
+    entradaTokenAuxiliar.autocomplete = "off";
+    entradaTokenAuxiliar.spellcheck = false;
+    entradaTokenAuxiliar.placeholder = "Cole a chave exibida pelo instalador";
+    entradaTokenAuxiliar.value = obterTokenAuxiliarConfigurado();
+    Object.assign(entradaTokenAuxiliar.style, {
+      width: "100%",
+      boxSizing: "border-box",
+      border: "1px solid #cbd5e1",
+      borderRadius: "5px",
+      padding: "8px",
+      color: "#172033",
+      background: "#ffffff",
+      font: "12px monospace"
+    });
+
+    const botaoTestarAuxiliar = criarElemento("button", "Salvar chave e testar auxiliar");
+    botaoTestarAuxiliar.type = "button";
+    Object.assign(botaoTestarAuxiliar.style, {
+      width: "100%",
+      marginTop: "6px",
+      border: "1px solid #64748b",
+      borderRadius: "5px",
+      padding: "7px 9px",
+      background: "#ffffff",
+      color: "#334155",
+      fontWeight: "600",
+      cursor: "pointer"
+    });
+
+    const statusAuxiliar = criarElemento(
+      "p",
+      obterTokenAuxiliarConfigurado()
+        ? "Chave salva no Tampermonkey. Teste a conexão para liberar os downloads."
+        : "Instale o auxiliar no Windows e cole aqui a chave de pareamento."
+    );
+    statusAuxiliar.style.margin = "6px 0 0";
+    statusAuxiliar.style.color = "#475569";
+    statusAuxiliar.setAttribute("aria-live", "polite");
+
+    grupoAuxiliar.append(
+      rotuloTokenAuxiliar,
+      entradaTokenAuxiliar,
+      botaoTestarAuxiliar,
+      statusAuxiliar
+    );
+
     const botaoAnalisar = criarElemento("button", "Analisar processos");
     botaoAnalisar.type = "button";
     Object.assign(botaoAnalisar.style, {
@@ -1983,7 +2263,8 @@
         !downloadEmAndamento &&
         !downloadIndeterminado &&
         ultimaAnalise?.status === "sucesso" &&
-        Boolean(String(entradaCliente.value ?? "").trim());
+        Boolean(String(entradaCliente.value ?? "").trim()) &&
+        Boolean(obterTokenAuxiliarConfigurado());
 
       botaoBaixar.disabled = !habilitado;
       botaoBaixar.style.cursor = habilitado ? "pointer" : "not-allowed";
@@ -1991,6 +2272,57 @@
     }
 
     entradaCliente.addEventListener("input", atualizarBotaoDownload);
+
+    entradaTokenAuxiliar.addEventListener("input", function () {
+      const tokenAtual = String(entradaTokenAuxiliar.value ?? "").trim();
+      if (tokenAtual !== obterTokenAuxiliarConfigurado()) {
+        try {
+          GM_setValue(CHAVE_TOKEN_AUXILIAR, "");
+        } catch (_) {
+          // O botão de download continuará bloqueado se o armazenamento não estiver disponível.
+        }
+        statusAuxiliar.textContent = "Chave alterada. Teste e salve novamente antes de baixar PDFs.";
+        statusAuxiliar.style.color = "#92400e";
+        atualizarBotaoDownload();
+      }
+    });
+
+    botaoTestarAuxiliar.addEventListener("click", function () {
+      const tokenInformado = String(entradaTokenAuxiliar.value ?? "").trim();
+      botaoTestarAuxiliar.disabled = true;
+      statusAuxiliar.textContent = "Testando a conexão local e a pasta de destino...";
+      statusAuxiliar.style.color = "#475569";
+
+      try {
+        testarConexaoAuxiliar(tokenInformado, {
+          onload() {
+            try {
+              salvarTokenAuxiliar(tokenInformado);
+              statusAuxiliar.textContent =
+                "Auxiliar conectado. Pasta de destino acessível; chave salva no Tampermonkey.";
+              statusAuxiliar.style.color = "#166534";
+              entradaTokenAuxiliar.value = tokenInformado;
+            } catch (erro) {
+              statusAuxiliar.textContent = erro.message;
+              statusAuxiliar.style.color = "#b91c1c";
+            }
+            botaoTestarAuxiliar.disabled = false;
+            atualizarBotaoDownload();
+          },
+          onerror(erro) {
+            statusAuxiliar.textContent = erro?.message || "Não foi possível validar o auxiliar.";
+            statusAuxiliar.style.color = "#b91c1c";
+            botaoTestarAuxiliar.disabled = false;
+            atualizarBotaoDownload();
+          }
+        });
+      } catch (erro) {
+        statusAuxiliar.textContent = erro.message;
+        statusAuxiliar.style.color = "#b91c1c";
+        botaoTestarAuxiliar.disabled = false;
+        atualizarBotaoDownload();
+      }
+    });
 
     botaoLiberarDownload.addEventListener("click", function () {
       if (!downloadIndeterminado?.persistido) return;
@@ -2090,11 +2422,11 @@
         reservarDownload(armazenamento, chaveDownload, Date.now());
         reservaCriada = true;
 
-        iniciarDownloadPdf(preparado.url, nomeArquivo, {
-          onload() {
+        iniciarDownloadPdf(preparado.url, nomeArquivo, obterTokenAuxiliarConfigurado(), {
+          onload(detalhe) {
+            const nomeSalvo = detalhe?.fileName || nomeArquivo;
             let avisoConclusao =
-              "Download concluído: " + nomeArquivo +
-              ". O arquivo foi enviado para a pasta padrão de downloads do Chrome.";
+              "PDF salvo na pasta configurada do auxiliar: " + nomeSalvo + ".";
 
             try {
               concluirDownload(armazenamento, chaveDownload, Date.now());
@@ -2112,8 +2444,8 @@
             downloadEmAndamento = false;
             const detalhe = erro?.error || erro?.details || erro?.message || "erro não detalhado";
             statusDownload.textContent =
-              "Download não concluído (" + String(detalhe) +
-              "). A falha foi reportada pelo navegador; confira a pasta antes de uma nova tentativa.";
+              "O auxiliar recusou a gravação (" + String(detalhe) +
+              "). A tentativa foi rejeitada; confira a mensagem antes de tentar novamente.";
             statusDownload.style.color = "#b91c1c";
             atualizarBotaoDownload();
           },
@@ -2128,7 +2460,7 @@
               };
               botaoLiberarDownload.style.display = "block";
               statusDownload.textContent =
-                "Resultado indeterminado: o navegador excedeu o tempo de espera e não confirmou se o PDF foi salvo. " +
+                "Resultado indeterminado: o auxiliar não confirmou se o PDF foi gravado. " +
                 "A proteção contra duplicidade foi mantida. Confira a pasta de destino antes de liberar uma nova tentativa.";
             } catch (falhaEstado) {
               downloadIndeterminado = {
@@ -2186,6 +2518,7 @@
       explicacao,
       resumo,
       grupoCliente,
+      grupoAuxiliar,
       botaoAnalisar,
       resultado,
       botaoBaixar,
@@ -2547,6 +2880,10 @@
     obterUrlPdfSelecionado,
     obterRelatorioSelecionado,
     prepararUrlDownloadProcesso,
+    obterTokenAuxiliarConfigurado,
+    validarTokenAuxiliar,
+    validarBytesPdf,
+    testarConexaoAuxiliar,
     montarChaveDownload,
     reservarDownload,
     concluirDownload,
