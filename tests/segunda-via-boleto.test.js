@@ -121,6 +121,12 @@ function criarAmbienteConsultaNxjFake(opcoes = {}) {
           inputType: evento.inputType,
           data: evento.data
         });
+        opcoes.registrarEvento?.({
+          tipo: 'evento',
+          campo: nome,
+          evento: evento.type,
+          instante: Date.now()
+        });
         return true;
       },
       focus() {
@@ -129,6 +135,11 @@ function criarAmbienteConsultaNxjFake(opcoes = {}) {
           if (!ignorar) enviarComandoConfirmacao(campoAtivo.value);
         }
         campoAtivo = this;
+        opcoes.registrarEvento?.({
+          tipo: 'foco',
+          campo: nome,
+          instante: Date.now()
+        });
       }
     });
 
@@ -167,13 +178,13 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
   assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.4.2');
+  assert.equal(api.version, '0.4.3');
 });
 
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
   const url = 'https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js';
 
-  assert.match(source, /^\/\/ @version\s+0\.4\.2$/m);
+  assert.match(source, /^\/\/ @version\s+0\.4\.3$/m);
   assert.ok(source.includes('// @updateURL     ' + url));
   assert.ok(source.includes('// @downloadURL   ' + url));
 });
@@ -259,6 +270,53 @@ test('preenche os campos em sequência e exige confirmação NXJ de título e pa
     ambiente.campos['seq_duplicatas.'].eventos.map(evento => evento.tipo),
     ['input', 'change']
   );
+});
+
+
+test('aguarda após input/change antes de abandonar cada campo', async () => {
+  const eventos = [];
+  const ambiente = criarAmbienteConsultaNxjFake({
+    registrarEvento: evento => eventos.push(evento)
+  });
+
+  await ambiente.api.preencherCamposConsulta(
+    { titulo: '936520', parcela: '3' },
+    {
+      limiteEsperaMs: 1000,
+      silencioMs: 0,
+      intervaloMs: 1,
+      atrasoFocoInicialMs: 0,
+      atrasoAntesDeSairCampoMs: 25,
+      atrasoAposSairCampoMs: 0
+    }
+  );
+
+  const changeTitulo = eventos.find(evento =>
+    evento.tipo === 'evento' &&
+    evento.campo === 'num_duplicata.' &&
+    evento.evento === 'change'
+  );
+  const focoParcela = eventos.find(evento =>
+    evento.tipo === 'foco' &&
+    evento.campo === 'seq_duplicatas.'
+  );
+  const changeParcela = eventos.find(evento =>
+    evento.tipo === 'evento' &&
+    evento.campo === 'seq_duplicatas.' &&
+    evento.evento === 'change'
+  );
+  const focoTitulo = eventos.find((evento, indice) =>
+    evento.tipo === 'foco' &&
+    evento.campo === 'num_duplicata.' &&
+    indice > eventos.indexOf(changeParcela)
+  );
+
+  assert.ok(changeTitulo);
+  assert.ok(focoParcela);
+  assert.ok(changeParcela);
+  assert.ok(focoTitulo);
+  assert.ok(focoParcela.instante - changeTitulo.instante >= 18);
+  assert.ok(focoTitulo.instante - changeParcela.instante >= 18);
 });
 
 test('usa setter nativo e InputEvent sem dispensar a confirmação assíncrona NXJ', async () => {

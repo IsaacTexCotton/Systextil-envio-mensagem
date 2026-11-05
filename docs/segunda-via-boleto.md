@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-**Status:** v0.4.1 integrada; v0.4.2 implementada na branch `fix/confirmacao-assincrona-parcela`; verificação automatizada e validação operacional da confirmação NXJ pendentes  
+**Status:** v0.4.2 integrada; ajuste v0.4.3 de temporização NXJ em revisão na branch `fix/pausas-confirmacao-nxj`  
 **Última atualização:** 2026-11-05  
 **Escopo:** obter o PDF de um boleto já existente no Systextil e salvá-lo com nome padronizado em uma pasta de rede.
 
@@ -749,4 +749,25 @@ O limite operacional padrão é de 20 segundos por espera. O intervalo de silên
 
 O monitor observa o `XMLHttpRequest` da página, conforme o protocolo identificado na investigação. Se o Tampermonkey não alcançar esse objeto ou o ERP mudar o transporte/comando, a confirmação não será reconhecida e o preenchimento será interrompido. Essa falha é intencional: não deve haver sucesso baseado apenas no DOM.
 
-**Estado:** implementação na branch `fix/confirmacao-assincrona-parcela`. A suíte `npm run verify` ainda precisa ser executada no Codespace. Depois, é obrigatória a validação no Tampermonkey com título antigo ou quitado autorizado para teste, comparando a confirmação dos dois campos e o resultado de F7. Não usar emissão de boleto como teste. Não integrar à `main` nem atualizar a instalação antes da revisão e validação.
+**Estado da v0.4.2:** integrada à `main`. O operador informou 80 testes aprovados no Codespace. A validação operacional no Tampermonkey ainda é necessária.
+
+## 17. Ajuste da temporização de confirmação (v0.4.3 — 05/11/2026)
+
+### Evidência
+
+O operador apresentou dois testes manuais que preencheram corretamente os campos. Ambos aguardam 500 ms após inserir o título antes de focar a parcela; depois aguardam 800 ms após a mudança de foco. Após inserir a parcela, aguardam 500 ms antes de sair do campo; o teste que retorna o foco ao título aguarda mais 800 ms.
+
+A comparação com a v0.4.2 identificou que a rotina mudava o foco para a parcela imediatamente após disparar `input` e `change`. A pausa de 200 ms ocorria depois da mudança de foco. Portanto, a rotina não reproduzia a janela de estabilização observada nos testes manuais.
+
+### Alteração
+
+A v0.4.3 passa a adotar, por padrão:
+- 500 ms após focar inicialmente o título;
+- 500 ms após inserir cada valor, antes de abandonar o campo;
+- 800 ms após cada mudança de foco, antes de avaliar a confirmação NXJ.
+
+A confirmação do comando NXJ, a espera por HTTP 2xx e a verificação de ociosidade permanecem ativas. Os tempos são configuráveis internamente para os testes automatizados; o limite de cada atraso configurável é de 3 segundos. O parâmetro legado `atrasoFocoMs` continua aceito nos testes existentes.
+
+Foi acrescentado um teste de regressão que mede a distância entre o evento `change` e o foco do campo seguinte, garantindo a pausa antes de o campo ser abandonado.
+
+**Estado:** ajuste implementado na branch `fix/pausas-confirmacao-nxj`. A suíte deve ser executada no Codespace. Depois, validar no Tampermonkey com título antigo/quitado autorizado; confirmar que a mensagem de sucesso aparece e que o F7 retorna somente a parcela esperada. Não pressionar F7 em caso de falha e não clicar em Emite boleto. Não integrar à `main` antes dessa validação.

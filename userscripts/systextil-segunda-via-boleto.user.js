@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.4.2
+// @version      0.4.3
 // @updateURL     https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @downloadURL   https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @description  Consulta, identifica e baixa a segunda via de boleto sem recarregar a página.
@@ -16,7 +16,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.4.2";
+  const VERSION = "0.4.3";
   const PANEL_ID = "st-segunda-via-boleto-panel";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
@@ -645,10 +645,26 @@
     let monitor = null;
     let valoresAlterados = false;
 
-    const atrasoFocoMs = Number.isInteger(configuracaoTeste.atrasoFocoMs) &&
+    // Reproduz a temporização que comprovadamente funciona no NXJ:
+    // aguardar após inserir o valor, antes de abandonar o campo, e após focar o próximo.
+    // atrasoFocoMs permanece como atalho compatível para testes legados.
+    const atrasoFocoLegado = Number.isInteger(configuracaoTeste.atrasoFocoMs) &&
       configuracaoTeste.atrasoFocoMs >= 0
       ? configuracaoTeste.atrasoFocoMs
-      : 200;
+      : null;
+
+    function obterAtrasoConfigurado(nome, padrao) {
+      const valor = Number.isInteger(configuracaoTeste[nome]) &&
+        configuracaoTeste[nome] >= 0
+        ? configuracaoTeste[nome]
+        : (atrasoFocoLegado ?? padrao);
+
+      return Math.min(valor, 3000);
+    }
+
+    const atrasoFocoInicialMs = obterAtrasoConfigurado("atrasoFocoInicialMs", 500);
+    const atrasoAntesDeSairCampoMs = obterAtrasoConfigurado("atrasoAntesDeSairCampoMs", 500);
+    const atrasoAposSairCampoMs = obterAtrasoConfigurado("atrasoAposSairCampoMs", 800);
 
     function pausa(ms) {
       return new Promise(resolve => setTimeout(resolve, ms));
@@ -705,7 +721,7 @@
       // O primeiro foco só prepara o campo. Aguarda qualquer comando que o NXJ
       // tenha iniciado ao abandonar o campo anteriormente ativo.
       campos.titulo.focus();
-      await pausa(atrasoFocoMs);
+      await pausa(atrasoFocoInicialMs);
       await monitor.aguardarOcioso();
 
       validarVisaoConsultaTitulos(pagina);
@@ -718,10 +734,13 @@
         throw new Error("O navegador não manteve o número do título no campo.");
       }
 
+      // O NXJ precisa de uma janela após input/change antes do blur.
+      await pausa(atrasoAntesDeSairCampoMs);
+
       // Ao sair do título, o NXJ deve transportar o valor pendente no POST.
       const sequenciaAntesDoTitulo = monitor.obterSequencia();
       campos.parcela.focus();
-      await pausa(atrasoFocoMs);
+      await pausa(atrasoAposSairCampoMs);
       await monitor.aguardarConfirmacao(
         titulo,
         sequenciaAntesDoTitulo,
@@ -744,10 +763,13 @@
         throw new Error("O navegador não manteve a parcela no campo.");
       }
 
+      // A mesma janela é necessária antes de abandonar o campo da parcela.
+      await pausa(atrasoAntesDeSairCampoMs);
+
       // Retornar ao título provoca a confirmação da parcela por ClickOnField.
       const sequenciaAntesDaParcela = monitor.obterSequencia();
       campos.titulo.focus();
-      await pausa(atrasoFocoMs);
+      await pausa(atrasoAposSairCampoMs);
       await monitor.aguardarConfirmacao(
         parcela,
         sequenciaAntesDaParcela,
