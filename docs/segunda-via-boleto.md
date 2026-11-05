@@ -938,4 +938,35 @@ A v0.4.7 aguardava a confirmação NXJ do título antes de executar a atribuiç�
 - Conferir a mensagem de confirmação NXJ. Pressionar F7 manualmente somente se os dois campos estiverem corretos e a mensagem do painel confirmar ambos.
 - Não clicar em Emite boleto durante este teste.
 
-**Estado:** implementação na branch fix/reutiliza-sequencia-funcional-parcela; testes automatizados e validação operacional ainda pendentes.
+**Estado:** v0.4.8 integrada à `main` pela PR #24. A validação operacional no ERP real permaneceu pendente; a v0.4.9 corrige a validação prematura do valor do título após o blur.
+
+
+## 23. Confirmação NXJ do título mesmo quando o ERP limpa o input no blur (v0.4.9 — 05/11/2026)
+
+### Problema observado
+
+Na v0.4.8, após focar o campo da parcela e aguardar a resposta do ERP, o script relia o input do título e exigia que seu valor continuasse presente no DOM. O painel interrompia a sequência com a mensagem “O Systextil não manteve o número do título após a mudança de foco”. Essa validação ocorria antes da escrita da parcela.
+
+A mensagem comprova que o valor não estava mais presente no input consultado após o blur; isoladamente, ela não comprova se o NXJ já havia recebido e processado o valor.
+
+### Correção
+
+- Remove a validação visual intermediária do título depois da mudança de foco para a parcela.
+- Mantém a sequência original: inserir título, focar parcela, inserir parcela e retornar o foco ao título.
+- A confirmação do título passa a depender do monitor NXJ encontrar o POST de saída com o valor exato informado.
+- Após a confirmação NXJ, um input de título vazio é aceito como comportamento do ERP; um valor não vazio e divergente continua sendo erro.
+- A parcela continua exigindo valor visível correto após sua confirmação. As confirmações NXJ exatas dos dois campos continuam obrigatórias para informar sucesso.
+- Se o monitor não observar ou não confirmar os valores, a operação permanece interrompida e o painel orienta não pressionar F7.
+
+### Teste de regressão
+
+O ambiente simulado cobre dois comportamentos: limpeza do input do título no blur depois de enviar o valor ao NXJ e recriação do elemento do título durante essa transição. Os testes verificam que a rotina ainda escreve a parcela, recupera a referência atual para devolver o foco e só retorna sucesso quando os POSTs NXJ observados contêm, na ordem, o título e a parcela esperados.
+
+### Validação pendente
+
+- Executar `npm run verify` na branch `fix/confirmacao-nxj-titulo-sem-valor-dom`.
+- Instalar a v0.4.9 no Tampermonkey, desativando a v0.4.8 para evitar execução duplicada.
+- Usar título autorizado, confirmar os campos e a mensagem de confirmação do painel.
+- Se o campo do título permanecer visualmente vazio, não pressionar F7 sem verificar que o ERP preservou a consulta corretamente; validar o comportamento com F7 apenas em cenário autorizado e sem clicar em **Emite boleto**.
+
+**Estado:** v0.4.9 preparada na branch `fix/confirmacao-nxj-titulo-sem-valor-dom`; revisão do diff, testes locais e validação operacional no ERP real ainda pendentes.
