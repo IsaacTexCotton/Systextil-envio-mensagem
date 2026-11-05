@@ -10,7 +10,7 @@ Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/syste
 
 Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
 
-**Status atual:** a `main` contém a versão **0.3.2** da segunda via (Fase 3, com identificação de processo validada operacionalmente). A Fase 4 (**0.4.0**) está em desenvolvimento na [PR #14](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/14), branch `feat/download-pdf-segunda-via`. O operador informou **74/74 testes aprovados** no Codespace em 04/11/2026. A validação operacional da Fase 4 no Systextil — seleção real da linha, associação do `.jrprint`, download e bloqueio de duplicidade — ainda está pendente. A PR permanece em rascunho e não foi integrada à `main`.
+**Status atual:** a `main` contém a versão **0.4.1** da segunda via. A versão **0.4.2**, que confirma título e parcela por comandos NXJ sequenciais antes de informar sucesso, está em desenvolvimento na branch `fix/confirmacao-assincrona-parcela`. Os testes automatizados dessa alteração e a validação operacional no Tampermonkey ainda estão pendentes. A validação operacional da Fase 4 — seleção real da linha de processo, associação do `.jrprint`, download e bloqueio de duplicidade — também permanece separada e pendente. Não atualizar a instalação pela URL da `main` antes da integração da correção.
 
 
 ## Script: Parâmetros da Régua de Cobrança
