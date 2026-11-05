@@ -197,7 +197,7 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
   assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.4.5');
+  assert.equal(api.version, '0.4.6');
 });
 
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
@@ -269,18 +269,18 @@ test('preenche os campos em sequência e exige confirmação NXJ de título e pa
     { limiteEsperaMs: 500, silencioMs: 0, intervaloMs: 2, atrasoFocoMs: 0 }
   );
 
-  assert.equal(resultado.titulo, '00936520');
+  assert.equal(resultado.titulo, '936520');
   assert.equal(resultado.parcela, '3');
   assert.equal(resultado.confirmacoes.titulo, 'NXJ');
   assert.equal(resultado.confirmacoes.parcela, 'NXJ');
-  assert.equal(ambiente.campos['num_duplicata.'].value, '00936520');
+  assert.equal(ambiente.campos['num_duplicata.'].value, '936520');
   assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
 
   const confirmacoes = ambiente.requisicoes
     .filter(requisicao => requisicao.metodo === 'POST')
     .map(requisicao => new URLSearchParams(requisicao.body).get('fieldValues').split('\f').at(-1));
 
-  assert.deepEqual(confirmacoes, ['00936520', '3']);
+  assert.deepEqual(confirmacoes, ['936520', '3']);
   assert.deepEqual(
     ambiente.campos['num_duplicata.'].eventos.map(evento => evento.tipo),
     ['input', 'change']
@@ -294,7 +294,7 @@ test('preenche os campos em sequência e exige confirmação NXJ de título e pa
 
 test('refocaliza a parcela quando o NXJ recria o controle após confirmar o título', async () => {
   const ambiente = criarAmbienteConsultaNxjFake({
-    recriarParcelaAposConfirmacaoTitulo: '00936520'
+    recriarParcelaAposConfirmacaoTitulo: '936520'
   });
   const parcelaAnterior = ambiente.camposIniciais['seq_duplicatas.'];
 
@@ -303,7 +303,7 @@ test('refocaliza a parcela quando o NXJ recria o controle após confirmar o tít
     { limiteEsperaMs: 500, silencioMs: 0, intervaloMs: 2, atrasoFocoMs: 0 }
   );
 
-  assert.equal(resultado.titulo, '00936520');
+  assert.equal(resultado.titulo, '936520');
   assert.equal(resultado.parcela, '3');
   assert.notEqual(ambiente.campos['seq_duplicatas.'], parcelaAnterior);
   assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
@@ -312,7 +312,7 @@ test('refocaliza a parcela quando o NXJ recria o controle após confirmar o tít
     .filter(requisicao => requisicao.metodo === 'POST')
     .map(requisicao => new URLSearchParams(requisicao.body).get('fieldValues').split('\f').at(-1));
 
-  assert.deepEqual(confirmacoes, ['00936520', '3']);
+  assert.deepEqual(confirmacoes, ['936520', '3']);
 });
 
 
@@ -397,12 +397,12 @@ test('usa setter nativo e Event padrão para input/change conforme a sequência 
     { limiteEsperaMs: 500, silencioMs: 0, intervaloMs: 2, atrasoFocoMs: 0 }
   );
 
-  assert.equal(resultado.titulo, '00936520');
+  assert.equal(resultado.titulo, '936520');
   assert.equal(resultado.parcela, '3');
   assert.equal(chamadasSetterNativo, 2);
   assert.equal(chamadasSetterDireto, 0);
   assert.equal(chamadasInputEvent, 0);
-  assert.equal(ambiente.campos['num_duplicata.'].value, '00936520');
+  assert.equal(ambiente.campos['num_duplicata.'].value, '936520');
   assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
   assert.deepEqual(
     ambiente.campos['num_duplicata.'].eventos.map(evento => evento.tipo),
@@ -463,7 +463,7 @@ test('interrompe sem sucesso quando o NXJ não confirma o número do título', a
     }
   );
 
-  assert.equal(ambiente.campos['num_duplicata.'].value, '00936520');
+  assert.equal(ambiente.campos['num_duplicata.'].value, '936520');
   assert.equal(ambiente.campos['seq_duplicatas.'].value, '');
 });
 
@@ -480,7 +480,7 @@ test('não informa confirmação quando o POST NXJ retorna HTTP diferente de 2xx
     /retornou HTTP 503/
   );
 
-  assert.equal(ambiente.campos['num_duplicata.'].value, '00936520');
+  assert.equal(ambiente.campos['num_duplicata.'].value, '936520');
   assert.equal(ambiente.campos['seq_duplicatas.'].value, '');
   assert.equal(ambiente.XMLHttpRequestFake.prototype.open, abrirOriginal);
   assert.equal(ambiente.XMLHttpRequestFake.prototype.send, enviarOriginal);
@@ -501,7 +501,7 @@ test('interrompe e orienta não pressionar F7 quando a parcela não é confirmad
     /NÃO pressione F7.*não confirmou o campo parcela/
   );
 
-  assert.equal(ambiente.campos['num_duplicata.'].value, '00936520');
+  assert.equal(ambiente.campos['num_duplicata.'].value, '936520');
   assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
   assert.equal(ambiente.XMLHttpRequestFake.prototype.open, abrirOriginal);
   assert.equal(ambiente.XMLHttpRequestFake.prototype.send, enviarOriginal);
