@@ -2273,6 +2273,20 @@
 
     entradaCliente.addEventListener("input", atualizarBotaoDownload);
 
+    entradaTokenAuxiliar.addEventListener("input", function () {
+      const tokenAtual = String(entradaTokenAuxiliar.value ?? "").trim();
+      if (tokenAtual !== obterTokenAuxiliarConfigurado()) {
+        try {
+          GM_setValue(CHAVE_TOKEN_AUXILIAR, "");
+        } catch (_) {
+          // O botão de download continuará bloqueado se o armazenamento não estiver disponível.
+        }
+        statusAuxiliar.textContent = "Chave alterada. Teste e salve novamente antes de baixar PDFs.";
+        statusAuxiliar.style.color = "#92400e";
+        atualizarBotaoDownload();
+      }
+    });
+
     botaoTestarAuxiliar.addEventListener("click", function () {
       const tokenInformado = String(entradaTokenAuxiliar.value ?? "").trim();
       botaoTestarAuxiliar.disabled = true;
@@ -2430,8 +2444,8 @@
             downloadEmAndamento = false;
             const detalhe = erro?.error || erro?.details || erro?.message || "erro não detalhado";
             statusDownload.textContent =
-              "Download não concluído (" + String(detalhe) +
-              "). A falha foi reportada pelo navegador; confira a pasta antes de uma nova tentativa.";
+              "O auxiliar recusou a gravação (" + String(detalhe) +
+              "). A tentativa foi rejeitada; confira a mensagem antes de tentar novamente.";
             statusDownload.style.color = "#b91c1c";
             atualizarBotaoDownload();
           },
