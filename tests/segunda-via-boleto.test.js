@@ -197,7 +197,7 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
   assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.4.4');
+  assert.equal(api.version, '0.4.5');
 });
 
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
@@ -362,9 +362,10 @@ test('aguarda após input/change antes de abandonar cada campo', async () => {
   assert.ok(focoTitulo.instante - changeParcela.instante >= 18);
 });
 
-test('usa setter nativo e InputEvent sem dispensar a confirmação assíncrona NXJ', async () => {
+test('usa setter nativo e Event padrão para input/change conforme a sequência manual', async () => {
   let chamadasSetterNativo = 0;
   let chamadasSetterDireto = 0;
+  let chamadasInputEvent = 0;
 
   function HTMLInputElementFake() {}
   Object.defineProperty(HTMLInputElementFake.prototype, 'value', {
@@ -381,8 +382,7 @@ test('usa setter nativo e InputEvent sem dispensar a confirmação assíncrona N
   class InputEventFake extends Event {
     constructor(tipo, opcoes = {}) {
       super(tipo, opcoes);
-      this.inputType = opcoes.inputType;
-      this.data = opcoes.data;
+      chamadasInputEvent += 1;
     }
   }
 
@@ -401,14 +401,23 @@ test('usa setter nativo e InputEvent sem dispensar a confirmação assíncrona N
   assert.equal(resultado.parcela, '3');
   assert.equal(chamadasSetterNativo, 2);
   assert.equal(chamadasSetterDireto, 0);
+  assert.equal(chamadasInputEvent, 0);
   assert.equal(ambiente.campos['num_duplicata.'].value, '00936520');
   assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
-  assert.ok(ambiente.campos['num_duplicata.'].eventos.some(evento =>
-    evento.tipo === 'input' && evento.inputType === 'insertReplacementText'
-  ));
-  assert.ok(ambiente.campos['seq_duplicatas.'].eventos.some(evento =>
-    evento.tipo === 'input' && evento.inputType === 'insertReplacementText'
-  ));
+  assert.deepEqual(
+    ambiente.campos['num_duplicata.'].eventos.map(evento => evento.tipo),
+    ['input', 'change']
+  );
+  assert.deepEqual(
+    ambiente.campos['seq_duplicatas.'].eventos.map(evento => evento.tipo),
+    ['input', 'change']
+  );
+  assert.ok(
+    ambiente.campos['num_duplicata.'].eventos.every(evento => evento.inputType === undefined)
+  );
+  assert.ok(
+    ambiente.campos['seq_duplicatas.'].eventos.every(evento => evento.inputType === undefined)
+  );
 });
 
 test('não preenche quando há mais de um formulário compatível', async () => {
@@ -443,7 +452,15 @@ test('interrompe sem sucesso quando o NXJ não confirma o número do título', a
       { titulo: '936520', parcela: '3' },
       { limiteEsperaMs: 40, silencioMs: 0, intervaloMs: 2, atrasoFocoMs: 0 }
     ),
-    /NÃO pressione F7.*não confirmou o campo número do título/
+    erro => {
+      assert.match(
+        erro.message,
+        /NÃO pressione F7.*não confirmou o campo número do título/
+      );
+      assert.match(erro.message, /Diagnóstico NXJ/);
+      assert.match(erro.message, /0 requisição\(ões\) observada\(s\)/);
+      return true;
+    }
   );
 
   assert.equal(ambiente.campos['num_duplicata.'].value, '00936520');
