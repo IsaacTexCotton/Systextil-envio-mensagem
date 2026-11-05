@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-**Status:** v0.4.6 integrada; correção v0.4.7 para estabilizar o campo da parcela em revisão na branch `fix/parcela-aguarda-ocioso-nxj`  
+**Status:** v0.4.7 integrada; v0.4.8 reaproveita a sequência de preenchimento funcional confirmada pelo operador, em validação na branch `fix/reutiliza-sequencia-funcional-parcela`  
 **Última atualização:** 2026-11-05  
 **Escopo:** obter o PDF de um boleto já existente no Systextil e salvá-lo com nome padronizado em uma pasta de rede.
 
@@ -891,3 +891,51 @@ Se o ERP substituísse o input durante esse intervalo, a rotina poderia escrever
 - Se a rotina interromper, não pressionar F7; conferir ou limpar manualmente os campos no ERP.
 
 **Estado:** correção implementada na branch `fix/parcela-aguarda-ocioso-nxj`; validação automatizada e operacional ainda pendentes até a execução das verificações.
+
+
+## 22. Reutilização da sequência manual comprovada para preencher a parcela (v0.4.8 — 05/11/2026)
+
+### Evidência recebida
+
+O operador forneceu um script executado diretamente na página do Systextil que preenche corretamente os dois campos. A sequência observada é:
+
+1. foco do título e espera de 500 ms;
+2. atribuição do título pelo setter nativo, seguida de Event input e Event change;
+3. espera de 500 ms;
+4. foco da parcela e espera de 800 ms;
+5. atribuição da parcela pelos mesmos eventos;
+6. espera de 500 ms;
+7. retorno do foco ao título e espera de 800 ms.
+
+O script de referência observa os POSTs do UnifyNXJ.jsp, mas não aguarda uma classificação específica do comando NXJ antes de inserir a parcela.
+
+### Causa da interrupção anterior
+
+A v0.4.7 aguardava a confirmação NXJ do título antes de executar a atribuição da parcela. Se o monitor não reconhecesse o POST esperado, a função lançava timeout e encerrava antes da escrita, ainda que a sequência de foco e digitação pudesse funcionar no ERP.
+
+### Alteração v0.4.8
+
+- Reutiliza a sequência de foco, pausas, setter nativo e eventos do script funcional apresentado pelo operador.
+- Localiza os controles por document.getElementsByName(...)[0], como no teste comprovado.
+- Não usa a confirmação NXJ do título como bloqueio anterior à escrita da parcela.
+- Mantém o monitor NXJ durante toda a operação e verifica as confirmações somente depois que os dois valores foram inseridos.
+- Se o ERP recriar o campo da parcela durante a ativação, relocaliza e refoca somente quando a identidade do elemento mudou, com limite de três tentativas.
+- Mantém a interrupção segura e a orientação de não pressionar F7 em caso de divergência.
+
+### Testes de regressão adicionados/ajustados
+
+- A parcela deve ser inserida mesmo quando o monitor não reconhecer a confirmação do título; nesse caso, a execução termina com erro de confirmação e orienta a não pressionar F7.
+- A rotina deve usar o primeiro controle retornado por getElementsByName, conforme o script de referência.
+- O fluxo normal deve focar a parcela uma única vez.
+- O tratamento de recriação repetida do input continua limitado e falha de forma segura.
+- Os cenários de HTTP não 2xx e confirmação ausente continuam exigindo conferência manual antes de F7.
+
+### Validação pendente
+
+- Executar npm run verify no Codespace.
+- Instalar a v0.4.8 no Tampermonkey, desativando a versão anterior para evitar execução duplicada.
+- Usar título antigo ou quitado autorizado; confirmar visualmente que título e parcela são inseridos.
+- Conferir a mensagem de confirmação NXJ. Pressionar F7 manualmente somente se os dois campos estiverem corretos e a mensagem do painel confirmar ambos.
+- Não clicar em Emite boleto durante este teste.
+
+**Estado:** implementação na branch fix/reutiliza-sequencia-funcional-parcela; testes automatizados e validação operacional ainda pendentes.
