@@ -1004,6 +1004,15 @@ test('a Fase 4 declara somente as permissões Tampermonkey necessárias', () => 
   assert.equal(source.includes('// @grant        none'), false);
 });
 
+test('a versão do metadado Tampermonkey corresponde à versão interna do userscript', () => {
+  const versaoMetadado = source.match(/^\\/\\/ @version\\s+([^\\s]+)$/m)?.[1];
+  const versaoInterna = source.match(/const VERSION = "([^"]+)";/)?.[1];
+
+  assert.ok(versaoMetadado, 'metadado @version deve existir');
+  assert.ok(versaoInterna, 'constante VERSION deve existir');
+  assert.equal(versaoMetadado, versaoInterna);
+});
+
 test('valida a URL PDF gerada pelo Systextil e aceita somente o endpoint de boletos', () => {
   const api = carregarApi();
   const base = 'http://systextil.texcotton.com.br/systextil/forms.systextil.senha.nxj';
