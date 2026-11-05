@@ -1,7 +1,9 @@
 # Segunda via de boleto — levantamento técnico
 
-**Status:** v0.4.7 integrada; v0.4.8 reaproveita a sequência de preenchimento funcional confirmada pelo operador, em validação na branch `fix/reutiliza-sequencia-funcional-parcela`  
-**Última atualização:** 2026-11-05  
+**Status atual:** v0.4.9 integrada à `main` e validada operacionalmente pelo usuário no Systextil real. PR [#25](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/25), commit `ed39d7da0bb535367bc5533559402494eacb9676`.  
+**Última atualização:** 2026-11-05
+
+> Esta documentação preserva o histórico das fases anteriores. O estado de produção e as correções posteriores prevalecem sobre descrições históricas que indiquem versões anteriores como atuais. Para padrões transversais de automação e instruções para agentes de IA, consulte [guia-automacao-tampermonkey-systextil.md](guia-automacao-tampermonkey-systextil.md).  
 **Escopo:** obter o PDF de um boleto já existente no Systextil e salvá-lo com nome padronizado em uma pasta de rede.
 
 ## 1. Objetivo e limites
@@ -526,21 +528,27 @@ Para a nova funcionalidade:
 
 ## 11. Estado atual resumido
 
-| Item | Estado |
+**Estado de produção (05/11/2026):** a versão 0.4.9 está integrada à branch `main`. A PR #25 foi mesclada em 05/11/2026 no commit `ed39d7da0bb535367bc5533559402494eacb9676`. O usuário confirmou o funcionamento da correção no Systextil real. A versão publicada do arquivo é `0.4.9`; as URLs de atualização e download apontam para `main`.
+
+| Item | Estado atual |
 |---|---|
+| Branch/versão de produção | `main` / v0.4.9 |
+| PR de integração da correção | [#25 — aceita confirmação NXJ quando o título é limpo no blur](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/25) |
+| Commit de integração | `ed39d7da0bb535367bc5533559402494eacb9676` |
 | Fluxo operacional manual | Mapeado |
 | Campo do número do título | Identificado |
-| Campo da parcela | `seq_duplicatas.` preenchido em modo assistido; confirmação operacional pendente |
-| Campo da razão social | Campo `nome_cliente.` disponível; capturado na solicitação a partir da v0.4.0; painel permite confirmar/corrigir o nome do arquivo |
+| Campo da parcela | `seq_duplicatas.`; preenchimento assistido confirmado pelo NXJ na versão atual |
+| Campo do cliente | `nome_cliente.`; usado para compor o nome do arquivo com possibilidade de conferência/correção manual |
 | Identificação dos controles da grade | Mapeada |
-| Mensagem de sucesso | Identificada |
-| Geração da URL PDF pelo ERP | Validada manualmente; conferência automática por URL implementada na v0.4.0 |
-| Download autenticado com `GM_download` | Validado manualmente; integração com proteção contra duplicidade implementada na v0.4.0 |
-| Nome personalizado e pasta de rede | Regra de nome e pasta padrão do Chrome validadas manualmente |
-| Identificação única do processo | v0.3.2 integrada à `main` e validada operacionalmente em 04/11/2026 |
-| Seleção automática do processo | Implementada via `DataView.currentRow`, com conferência pré/pós-seleção; validação operacional pendente |
-| Userscript da segunda via | v0.3.2 na `main`; v0.4.0 em branch/PR, aguardando testes no Codespace e validação operacional |
+| Mensagem de sucesso do processo | Identificada |
+| Geração da URL PDF pelo ERP | Implementada com validação da URL e do relatório selecionado |
+| Download autenticado com `GM_download` | Implementado com proteção contra duplicidade e tratamento de timeout indeterminado |
+| Nome personalizado e pasta de destino | Regra de nome implementada; destino depende da pasta padrão configurada no Chrome |
+| Preenchimento de título/parcela | v0.4.9 confirmada operacionalmente pelo usuário |
+| Consulta F7 | Continua sendo ação manual do operador |
+| Emissão do boleto | Continua sendo ação manual do operador |
 
+**Limite da evidência:** a validação operacional relatada pelo usuário confirma a correção v0.4.9 no Systextil real. Ela não substitui a execução local de `npm run verify`, nem implica que toda alteração futura no fluxo de seleção/download esteja automaticamente revalidada. Consulte os testes e os registros de cada fase para identificar o alcance de cada evidência.
 
 ## 12. Correção proposta do preenchimento assistido (v0.3.1 — 04/11/2026)
 
@@ -970,3 +978,54 @@ O ambiente simulado cobre dois comportamentos: limpeza do input do título no bl
 - Se o campo do título permanecer visualmente vazio, não pressionar F7 sem verificar que o ERP preservou a consulta corretamente; validar o comportamento com F7 apenas em cenário autorizado e sem clicar em **Emite boleto**.
 
 **Estado:** v0.4.9 preparada na branch `fix/confirmacao-nxj-titulo-sem-valor-dom`; revisão do diff, testes locais e validação operacional no ERP real ainda pendentes.
+
+
+## 15. Correção da confirmação NXJ quando o título é limpo no blur (v0.4.9 — 05/11/2026)
+
+### Problema operacional
+
+O userscript preenchia o número do título, mas o Systextil podia limpar ou recriar o input quando o foco mudava para o campo da parcela. A validação intermediária da v0.4.8 exigia que o valor permanecesse no DOM após a mudança de foco e interrompia a rotina antes de concluir o preenchimento da parcela.
+
+### Evidências do diagnóstico
+
+- Documento principal, sem iframe para o formulário de consulta.
+- Visão ativa identificada como a consulta de títulos.
+- Campos encontrados sem ambiguidade no formulário esperado.
+- Inputs conectados ao documento e editáveis.
+- Métodos originais de `XMLHttpRequest.prototype.open` e `send` acessíveis e substituíveis no contexto da página.
+
+Essas evidências delimitam o cenário diagnosticado; não devem ser presumidas em outras telas ou versões do ERP.
+
+### Correção implementada
+
+A v0.4.9 preserva a sequência de preenchimento que o usuário já havia testado no ERP e usa a confirmação do protocolo NXJ como evidência de que o valor exato do título foi enviado e aceito na etapa correspondente.
+
+A rotina não exige que o input continue exibindo o título depois do blur. Ela só prossegue quando o monitor identifica o comando de confirmação esperado, o valor correspondente é exatamente igual ao informado e a requisição acompanhada termina de forma verificável. Em seguida, a rotina prossegue com a parcela e também exige sua confirmação.
+
+### Critérios de interrupção preservados
+
+- Não foi identificada confirmação NXJ do valor exato: interromper.
+- O valor confirmado é diferente do esperado: interromper.
+- A requisição não pode ser acompanhada ou termina em estado não verificável: interromper.
+- A visão do ERP muda durante a operação: interromper.
+- O tempo limite é atingido: interromper e informar a etapa que não foi confirmada.
+
+A limpeza visual do campo, isoladamente, não é usada como prova de falha nem como prova de sucesso. A prova é a confirmação observada do valor exato enviado ao ERP.
+
+### Limites operacionais preservados
+
+- O userscript não pressiona F7.
+- O userscript não submete o formulário.
+- O usuário deve conferir título e parcela antes de executar a consulta manualmente.
+- O monitoramento de XHR é temporário e restrito à etapa de preenchimento; não deve ser transformado em captura geral de tráfego.
+- Diagnósticos não devem registrar valores de cliente, cookies, tokens, parâmetros de sessão ou payloads completos.
+
+### Integração e validação
+
+- PR: [#25 — aceita confirmação NXJ quando o título é limpo no blur](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/25).
+- Commit de integração: `ed39d7da0bb535367bc5533559402494eacb9676`.
+- Branch de destino: `main`.
+- Versão integrada: `0.4.9`.
+- Validação operacional: usuário confirmou que o preenchimento voltou a funcionar no Systextil real.
+
+A nova documentação transversal de arquitetura, permissões, integração, testes e segurança está em [guia-automacao-tampermonkey-systextil.md](guia-automacao-tampermonkey-systextil.md).
