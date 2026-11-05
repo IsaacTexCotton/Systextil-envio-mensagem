@@ -5,6 +5,8 @@ if (-not (Test-Path -LiteralPath $helperSource -PathType Leaf)) { throw 'BoletoH
 $installDirectory = Join-Path $env:LOCALAPPDATA 'TexCotton\BoletoHelper'
 $configPath = Join-Path $installDirectory 'config.json'
 $helperInstalled = Join-Path $installDirectory 'BoletoHelper.ps1'
+$stopSource = Join-Path $PSScriptRoot 'Parar.ps1'
+$stopInstalled = Join-Path $installDirectory 'Parar.ps1'
 $startupDirectory = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup'
 $shortcutPath = Join-Path $startupDirectory 'TexCotton - Auxiliar de boletos.lnk'
 $defaultDestination = 'V:\Financeiro\Contas à Receber\Administrativo - Atualização\Banco\Boletos (2ª via)'
@@ -50,6 +52,8 @@ $config = @{
 }
 $config | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $configPath -Encoding UTF8
 Copy-Item -LiteralPath $helperSource -Destination $helperInstalled -Force
+if (-not (Test-Path -LiteralPath $stopSource -PathType Leaf)) { throw 'Parar.ps1 não foi encontrado ao lado do instalador.' }
+Copy-Item -LiteralPath $stopSource -Destination $stopInstalled -Force
 
 $powerShellPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Minimized -File "' + $helperInstalled + '"'
