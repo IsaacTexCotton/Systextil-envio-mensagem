@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.4.4
+// @version      0.4.5
 // @updateURL     https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @downloadURL   https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @description  Consulta, identifica e baixa a segunda via de boleto sem recarregar a página.
@@ -16,7 +16,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.4.4";
+  const VERSION = "0.4.5";
   const PANEL_ID = "st-segunda-via-boleto-panel";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
@@ -291,25 +291,12 @@
       campo.value = valor;
     }
 
-    const ConstrutorInputEvent = janela.InputEvent;
-    let eventoInput;
+    // Reproduz exatamente o tipo de evento dos scripts manuais que funcionaram
+    // no ERP: Event padrão para input e change (não InputEvent).
+    const ConstrutorEvento = janela.Event || Event;
 
-    if (typeof ConstrutorInputEvent === "function") {
-      try {
-        eventoInput = new ConstrutorInputEvent("input", {
-          bubbles: true,
-          inputType: "insertReplacementText",
-          data: String(valor)
-        });
-      } catch (_) {
-        eventoInput = new (janela.Event || Event)("input", { bubbles: true });
-      }
-    } else {
-      eventoInput = new (janela.Event || Event)("input", { bubbles: true });
-    }
-
-    campo.dispatchEvent(eventoInput);
-    campo.dispatchEvent(new (janela.Event || Event)("change", { bubbles: true }));
+    campo.dispatchEvent(new ConstrutorEvento("input", { bubbles: true }));
+    campo.dispatchEvent(new ConstrutorEvento("change", { bubbles: true }));
   }
 
   function obterJanelaPaginaSystextil() {
@@ -569,11 +556,28 @@
         if (registro) break;
 
         if (Date.now() - inicio >= limiteEsperaMs) {
+          const requisicoesDaEtapa = requisicoes.filter(requisicao =>
+            requisicao.sequencia > sequenciaMinima
+          );
+          const postsDaEtapa = requisicoesDaEtapa.filter(requisicao =>
+            requisicao.metodo === "POST"
+          );
+          const comandosDeSaida = postsDaEtapa.filter(requisicao =>
+            COMANDOS_NXJ_CONFIRMACAO.has(requisicao.comando)
+          );
+          const valoresCorrespondentes = comandosDeSaida.filter(requisicao =>
+            requisicao.valorPendente === valorEsperado
+          );
+
           throw new Error(
             "O Systextil não confirmou o campo " + rotulo +
             " pelo comando NXJ dentro de " +
             Math.round(limiteEsperaMs / 1000) +
-            " segundos."
+            " segundos. Diagnóstico NXJ (sem expor os valores): " +
+            requisicoesDaEtapa.length + " requisição(ões) observada(s), " +
+            postsDaEtapa.length + " POST(s), " +
+            comandosDeSaida.length + " comando(s) de saída de campo e " +
+            valoresCorrespondentes.length + " valor(es) correspondente(s)."
           );
         }
 
