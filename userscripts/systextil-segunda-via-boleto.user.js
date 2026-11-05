@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.4.3
+// @version      0.4.4
 // @updateURL     https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @downloadURL   https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @description  Consulta, identifica e baixa a segunda via de boleto sem recarregar a página.
@@ -16,7 +16,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.4.3";
+  const VERSION = "0.4.4";
   const PANEL_ID = "st-segunda-via-boleto-panel";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
@@ -757,6 +757,14 @@
       }
 
       validarCampoEditavel(campos.parcela);
+
+      // A resposta NXJ do título pode recriar os controles do formulário.
+      // Nesse caso, a referência atual da parcela ainda não recebeu foco,
+      // embora o elemento anterior tenha sido focado antes da confirmação.
+      // Refocalize o controle recém-localizado e reproduza a pausa do teste manual.
+      campos.parcela.focus();
+      await pausa(atrasoAposSairCampoMs);
+
       atribuirValorCampo(campos.parcela, parcela);
 
       if (String(campos.parcela.value ?? "").trim() !== parcela) {
