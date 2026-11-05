@@ -684,11 +684,11 @@ O userscript deve ser atualizado pelo verificador do Tampermonkey. Não recarreg
 
 ### Validação operacional pendente
 
-Verificação automatizada executada pelo operador no Codespace em 04/11/2026, com Node.js 24.22.2: `npm run verify` aprovou a sintaxe dos 2 userscripts e a suíte completa, com 76/76 testes e nenhuma falha. Essa execução valida a lógica coberta pelos testes, mas não substitui a conferência das APIs e do comportamento real do ERP.
+A execução de `npm run verify` registrada em 04/11/2026 (Node.js 24.22.2, 76/76 testes) corresponde à versão anterior. A verificação da v0.5.0 e sua validação operacional no ERP permanecem pendentes.
 
 A implementação está protegida para interromper o fluxo caso a visão ativa não seja `forms.systextil.batch` ou o `DataViewDescriptor` não exponha `currentRow`. Ainda é necessário validar no Systextil usando um processo real já concluído (sem emitir boleto adicional somente para testar):
 
-1. Atualizar o userscript para 0.4.0 pelo Tampermonkey.
+1. Instalar a versão 0.5.0 da branch de correção (ou aguardar a integração na `main` e atualização pelo Tampermonkey).
 2. Na página Processos agendados já aberta, ativar o script pelo popup, sem recarregar.
 3. Conferir a razão social no campo do painel.
 4. Clicar em **Analisar processos** e confirmar o processo único.
@@ -697,7 +697,7 @@ A implementação está protegida para interromper o fluxo caso a visão ativa n
 7. Clicar novamente no mesmo botão e confirmar que o bloqueio de duplicidade aparece.
 8. Em caso de timeout, conferir manualmente a pasta de destino antes de usar **Já conferi a pasta; liberar nova tentativa**. Não liberar a reserva se o PDF estiver presente ou se houver dúvida sobre o resultado.
 
-Se a grade não expuser `DataView.currentRow` ou o índice atribuído não refletir a linha selecionada, a função interromperá antes de chamar `getFileUrl()` ou `GM_download`. Nesse caso, não forçar a seleção: coletar o erro exibido e investigar a API real do ERP.
+Se `curDataView.name` não for exatamente `forms.systextil.batch`, se `curDataView.currentRow` não estiver disponível ou se o índice atribuído não refletir a linha identificada, a função interromperá antes de chamar `getFileUrl()` ou `GM_download`. Nesse caso, não forçar a seleção: coletar o erro exibido e investigar a API real do ERP.
 
 **Estado:** verificação local da v0.4.0 aprovada pelo operador no Codespace (76/76 testes). A validação operacional da seleção de linha, correspondência do PDF, nome/pasta de destino e bloqueio de duplicidade permanece pendente.
 
