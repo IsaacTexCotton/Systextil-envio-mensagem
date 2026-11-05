@@ -890,7 +890,7 @@ Se o ERP substituísse o input durante esse intervalo, a rotina poderia escrever
 - Validar com título autorizado e confirmar visualmente a parcela antes de pressionar F7.
 - Se a rotina interromper, não pressionar F7; conferir ou limpar manualmente os campos no ERP.
 
-**Estado:** correção implementada na branch `fix/parcela-aguarda-ocioso-nxj`; validação automatizada e operacional ainda pendentes até a execução das verificações.
+**Estado:** integrada à `main` pela PR #23 na v0.4.7. A validação operacional no ERP real permaneceu pendente; a v0.4.8 desta branch substitui a espera prévia pela sequência manual confirmada pelo operador.
 
 
 ## 22. Reutilização da sequência manual comprovada para preencher a parcela (v0.4.8 — 05/11/2026)
