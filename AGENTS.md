@@ -21,6 +21,8 @@ Os userscripts são independentes. Não misture comportamento de uma funcionalid
 
 ## 3. Fonte da verdade
 
+O guia [docs/guia-automacao-tampermonkey-systextil.md](docs/guia-automacao-tampermonkey-systextil.md) complementa estas instruções com padrões de automação web adaptados ao Systextil. Consulte-o ao criar ou revisar userscripts. Ele é referência técnica suplementar: não substitui as regras deste arquivo, a documentação específica da funcionalidade, nem as evidências do código/testes e da operação real.
+
 Antes de alterar código:
 
 1. Leia este arquivo, o README e a documentação relacionada à tarefa.
