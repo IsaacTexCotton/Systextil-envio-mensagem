@@ -9,3 +9,6 @@ Antes de alterações relevantes, inspecione implementação, testes e documenta
 Diferencie teste unitário/mocado de validação operacional real no Systextil. Informe os comandos que efetivamente executou e os resultados observados. Não adicione dependências, permissões Tampermonkey, workflows CI/CD ou integrações externas sem necessidade demonstrada e autorização explícita.
 
 Todo código assistido por IA precisa de revisão e aprovação humana antes do merge. Não faça merge, release ou publicação por conta própria.
+
+
+Para automações Tampermonkey, consulte também `docs/guia-automacao-tampermonkey-systextil.md`. Aplique os padrões conforme a evidência da tarefa; não copie exemplos genéricos sem validar o contexto, os campos, a integração e os limites operacionais do Systextil.
