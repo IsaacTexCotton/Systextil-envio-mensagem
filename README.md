@@ -10,7 +10,7 @@ Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/syste
 
 Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
 
-**Status atual:** a `main` contém a versão **0.4.4** da segunda via, com refocalização do campo da parcela após a resposta NXJ do título. A versão **0.4.5**, na branch `fix/event-input-padrao-nxj`, alinha os eventos `input` e `change` aos scripts manuais que funcionaram e acrescenta diagnóstico de contagens NXJ sem expor dados dos títulos. A validação automatizada no Codespace e o teste operacional no Tampermonkey estão pendentes. A validação operacional da Fase 4 — seleção real da linha de processo, associação do `.jrprint`, download e bloqueio de duplicidade — também permanece separada e pendente.
+**Status atual:** a `main` contém a versão **0.4.5** da segunda via, que usa os eventos padrão `input` e `change` e inclui diagnóstico de timeout NXJ. A versão **0.4.6**, na branch `fix/preservar-titulo-digitado`, deixa de completar zeros à esquerda no número do título e passa a enviar exatamente o valor informado pelo operador, como no script manual que retornou o título correto com F7. A validação automatizada no Codespace e o teste operacional no Tampermonkey estão pendentes. A validação operacional da Fase 4 — seleção real da linha de processo, associação do `.jrprint`, download e bloqueio de duplicidade — também permanece separada e pendente.
 
 
 ## Script: Parâmetros da Régua de Cobrança
