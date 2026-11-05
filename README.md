@@ -12,7 +12,7 @@ Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/syste
 
 Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
 
-**Status atual:** a versão **0.4.9 está integrada à `main`** (PR [#25](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/25), commit `ed39d7da0bb535367bc5533559402494eacb9676`) e foi validada operacionalmente pelo usuário no Systextil real. A correção permite que a sequência de preenchimento conclua a etapa do título quando o ERP limpa o input no `blur`, desde que o monitor confirme pelo NXJ o valor exato enviado. Divergências e falhas de confirmação continuam bloqueando o sucesso. Essa validação operacional não deve ser confundida com a execução local de `npm run verify`; consulte a PR e os testes para o registro de cada evidência. A seleção do processo, a associação do `.jrprint`, o download e a proteção contra duplicidade mantêm critérios próprios documentados.
+**Status atual:** a `main` permanece na versão **0.4.9**, validada operacionalmente pelo usuário no Systextil real para o preenchimento dos campos e confirmação NXJ. A correção da seleção da grade está proposta na PR [#27](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/27), versão **0.5.0**: ela usa o `DataViewDescriptor` em `window.curDataView` e valida a visão `forms.systextil.batch`. A PR ainda aguarda revisão, execução de `npm run verify` e validação operacional da seleção/associação do PDF; até sua integração, a atualização automática continua entregando a versão 0.4.9.
 
 ## Script: Parâmetros da Régua de Cobrança
 

@@ -1051,11 +1051,14 @@ test('seleciona a linha zero-based somente quando os dados da grade continuam ig
     visualIndex: 1,
     recordNumber: 1
   };
-  const page = { DataView: { currentRow: 4 } };
+  const page = {
+    DataView: function DataView() {},
+    curDataView: { name: 'forms.systextil.batch', currentRow: 4 }
+  };
 
   const selecao = api.selecionarRegistroProcesso(registro, page, () => [registro]);
 
-  assert.equal(page.DataView.currentRow, 0);
+  assert.equal(page.curDataView.currentRow, 0);
   assert.equal(selecao.linhaAnterior, 4);
   assert.equal(selecao.linhaSelecionada, 0);
 });
@@ -1068,7 +1071,7 @@ test('interrompe seleção quando a linha foi alterada desde a análise', () => 
     dataExecucao: '04/11/2026 12:12:38',
     mensagem: 'Processo concluído com sucesso.'
   };
-  const page = { DataView: { currentRow: 3 } };
+  const page = { curDataView: { name: 'forms.systextil.batch', currentRow: 3 } };
 
   assert.throws(
     () => api.selecionarRegistroProcesso(registro, page, () => [{
@@ -1077,10 +1080,10 @@ test('interrompe seleção quando a linha foi alterada desde a análise', () => 
     }]),
     /mudou desde a análise/
   );
-  assert.equal(page.DataView.currentRow, 3);
+  assert.equal(page.curDataView.currentRow, 3);
 });
 
-test('não tenta selecionar quando a API DataView.currentRow não está disponível', () => {
+test('não tenta selecionar quando curDataView.currentRow não está disponível', () => {
   const api = carregarApi();
   const registro = {
     rowIndex: 0,
@@ -1089,10 +1092,39 @@ test('não tenta selecionar quando a API DataView.currentRow não está disponí
     mensagem: 'Processo concluído com sucesso.'
   };
 
+  const page = {
+    DataView: { currentRow: 4 },
+    dataView: { currentRow: 2 }
+  };
+
   assert.throws(
-    () => api.selecionarRegistroProcesso(registro, {}, () => [registro]),
+    () => api.selecionarRegistroProcesso(registro, page, () => [registro]),
     /API de seleção da grade/
   );
+  assert.equal(page.DataView.currentRow, 4);
+  assert.equal(page.dataView.currentRow, 2);
+});
+
+test('interrompe seleção quando curDataView aponta para outra visão do Systextil', () => {
+  const api = carregarApi();
+  const registro = {
+    rowIndex: 0,
+    titulo: 'Emissão de boletos com registro',
+    dataExecucao: '04/11/2026 12:12:38',
+    mensagem: 'Processo concluído com sucesso.'
+  };
+  const page = {
+    curDataView: {
+      name: 'forms.crec.crec_f090',
+      currentRow: 3
+    }
+  };
+
+  assert.throws(
+    () => api.selecionarRegistroProcesso(registro, page, () => [registro]),
+    /não corresponde a Processos agendados/
+  );
+  assert.equal(page.curDataView.currentRow, 3);
 });
 
 test('obtém getFileUrl somente depois de selecionar e confirmar a linha correspondente', () => {
@@ -1112,9 +1144,9 @@ test('obtém getFileUrl somente depois de selecionar e confirmar a linha corresp
         }];
       }
     },
-    DataView: { currentRow: 0 },
+    curDataView: { name: 'forms.systextil.batch', currentRow: 0 },
     getFileUrl() {
-      assert.equal(this.DataView.currentRow, 2);
+      assert.equal(this.curDataView.currentRow, 2);
       return 'download/blt365332.pdf?report=blt365332.jrprint&ext=pdf&program=forms.crec.crec_e259';
     }
   };
@@ -1127,7 +1159,7 @@ test('obtém getFileUrl somente depois de selecionar e confirmar a linha corresp
   );
 
   assert.match(preparado.url, /blt365332\.pdf/);
-  assert.equal(page.DataView.currentRow, 2);
+  assert.equal(page.curDataView.currentRow, 2);
 });
 
 test('restaura a seleção anterior se getFileUrl retornar URL inválida', () => {
@@ -1139,7 +1171,7 @@ test('restaura a seleção anterior se getFileUrl retornar URL inválida', () =>
     mensagem: 'Processo concluído com sucesso.'
   };
   const page = {
-    DataView: { currentRow: 5 },
+    curDataView: { name: 'forms.systextil.batch', currentRow: 5 },
     getFileUrl() {
       return 'https://externo.exemplo/arquivo.pdf';
     }
@@ -1154,7 +1186,7 @@ test('restaura a seleção anterior se getFileUrl retornar URL inválida', () =>
     ),
     /outra origem/
   );
-  assert.equal(page.DataView.currentRow, 5);
+  assert.equal(page.curDataView.currentRow, 5);
 });
 
 test('gera a mesma chave de deduplicação para a mesma solicitação e processo', () => {
@@ -1435,7 +1467,7 @@ test('confirma que o relatório .jrprint selecionado corresponde à URL preparad
         }];
       }
     },
-    DataView: { currentRow: 0 },
+    curDataView: { name: 'forms.systextil.batch', currentRow: 0 },
     getFileUrl() {
       return 'download/blt365332.pdf?report=blt365332.jrprint&ext=pdf&program=forms.crec.crec_e259';
     }
@@ -1456,7 +1488,7 @@ test('confirma que o relatório .jrprint selecionado corresponde à URL preparad
     ),
     /não corresponde ao relatório atualmente selecionado/
   );
-  assert.equal(page.DataView.currentRow, 0);
+  assert.equal(page.curDataView.currentRow, 0);
 });
 
 test('não aceita mais de um relatório .jrprint selecionado na página', () => {

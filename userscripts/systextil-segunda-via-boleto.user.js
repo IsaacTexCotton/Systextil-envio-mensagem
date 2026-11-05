@@ -16,9 +16,10 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.4.9";
+  const VERSION = "0.5.0";
   const PANEL_ID = "st-segunda-via-boleto-panel";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
+  const DATA_VIEW_PROCESSOS = "forms.systextil.batch";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
   const COMANDOS_NXJ_CONFIRMACAO = new Set(["CLICKONFIELD", "NEXT_FIELD"]);
   let preenchimentoEmAndamento = false;
@@ -1066,25 +1067,29 @@
 
 
   function obterControladorGrade(janelaPagina) {
-    const candidatos = [
-      janelaPagina?.DataView,
-      janelaPagina?.dataView
-    ].filter((candidato, indice, lista) =>
-      candidato &&
-      (typeof candidato === "object" || typeof candidato === "function") &&
-      "currentRow" in Object(candidato) &&
-      lista.indexOf(candidato) === indice
+    // No Systextil, DataView é o construtor nativo do JavaScript.
+    // O estado real da grade está no DataViewDescriptor exposto em curDataView.
+    const controlador = janelaPagina?.curDataView;
+    const controladorValido = Boolean(
+      controlador &&
+      typeof controlador === "object" &&
+      "currentRow" in Object(controlador)
     );
 
-    if (candidatos.length !== 1) {
+    if (!controladorValido) {
       throw new Error(
-        candidatos.length === 0
-          ? "A API de seleção da grade (DataView.currentRow) não está disponível. Nenhum download foi iniciado."
-          : "Mais de um controlador de grade foi encontrado. Seleção interrompida."
+        "A API de seleção da grade (curDataView.currentRow) não está disponível. Nenhum download foi iniciado."
       );
     }
 
-    const controlador = candidatos[0];
+    const nomeVisao = String(controlador.name ?? "").trim();
+
+    if (nomeVisao !== DATA_VIEW_PROCESSOS) {
+      throw new Error(
+        "A visão ativa da grade não corresponde a Processos agendados. Nenhum download foi iniciado."
+      );
+    }
+
     const linhaAtual = controlador.currentRow;
 
     if (
