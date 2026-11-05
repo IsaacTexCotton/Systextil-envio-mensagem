@@ -12,7 +12,7 @@ Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/syste
 
 Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
 
-**Status atual:** a `main` contém o código da v0.5.0 para a seleção do processo. Foi identificada e está em correção uma divergência de metadados: o cabeçalho `@version` ainda estava em 0.4.9, embora a constante interna já estivesse em 0.5.0, impedindo o Tampermonkey de detectar a atualização. A correção está proposta na PR [#28](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/28), que sincroniza as versões e adiciona um teste de consistência. Até a integração da PR, pode ser necessário instalar manualmente a versão 0.5.0.
+**Status atual:** a `main` contém a versão **0.5.0**, que resolve a seleção da grade por `window.curDataView` e valida `forms.systextil.batch` (PR [#27](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/27)). A sincronização do metadado `@version` também está integrada pela PR [#28](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/28). A gravação direta na pasta exclusiva, usando um auxiliar PowerShell local e sem alterar Downloads do Chrome, está sendo proposta na PR [#29](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/29), versão **0.6.0**. A instalação do auxiliar, o pareamento, a execução de `npm run verify` e a validação no Windows/Chrome real ainda são pendentes.
 
 ## Script: Parâmetros da Régua de Cobrança
 
