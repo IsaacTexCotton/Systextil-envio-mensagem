@@ -16,7 +16,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.4.6";
+  const VERSION = "0.4.7";
   const PANEL_ID = "st-segunda-via-boleto-panel";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
@@ -690,6 +690,33 @@
       };
     }
 
+    // O NXJ pode redesenhar a parcela durante a mudança de foco. Só devolve
+    // o controle depois que a comunicação termina e a referência permanece atual.
+    async function focarParcelaAtualEstavel(pagina, monitor) {
+      const maxTentativas = 3;
+      let camposAtuais = obterCamposAtuais();
+
+      for (let tentativa = 1; tentativa <= maxTentativas; tentativa += 1) {
+        const parcelaFocada = camposAtuais.parcela;
+        validarCampoEditavel(parcelaFocada);
+
+        parcelaFocada.focus();
+        await pausa(atrasoAposSairCampoMs);
+        await monitor.aguardarOcioso();
+
+        validarVisaoConsultaTitulos(pagina);
+        camposAtuais = obterCamposAtuais();
+
+        if (camposAtuais.parcela === parcelaFocada) {
+          return camposAtuais;
+        }
+      }
+
+      throw new Error(
+        "O Systextil recriou repetidamente o campo da parcela durante a estabilização. A parcela não foi inserida."
+      );
+    }
+
     function validarCampoEditavel(campo) {
       if (campo.disabled || campo.readOnly) {
         throw new Error("Um dos campos do ERP está bloqueado para edição.");
@@ -762,16 +789,17 @@
         throw new Error("O Systextil não manteve o número do título após a confirmação.");
       }
 
+      // O foco pode iniciar uma atualização assíncrona do NXJ. Aguarde a
+      // comunicação terminar e confirme que o input ainda é o controle atual.
+      campos = await focarParcelaAtualEstavel(pagina, monitor);
+
+      if (String(campos.titulo.value ?? "").trim() !== titulo) {
+        throw new Error("O Systextil não manteve o número do título após estabilizar a parcela.");
+      }
+
       validarCampoEditavel(campos.parcela);
-
-      // A resposta NXJ do título pode recriar os controles do formulário.
-      // Nesse caso, a referência atual da parcela ainda não recebeu foco,
-      // embora o elemento anterior tenha sido focado antes da confirmação.
-      // Refocalize o controle recém-localizado e reproduza a pausa do teste manual.
-      campos.parcela.focus();
-      await pausa(atrasoAposSairCampoMs);
-
-      atribuirValorCampo(campos.parcela, parcela);
+      const parcelaFocada = campos.parcela;
+      atribuirValorCampo(parcelaFocada, parcela);
 
       if (String(campos.parcela.value ?? "").trim() !== parcela) {
         throw new Error("O navegador não manteve a parcela no campo.");
@@ -779,6 +807,24 @@
 
       // A mesma janela é necessária antes de abandonar o campo da parcela.
       await pausa(atrasoAntesDeSairCampoMs);
+
+      // Não abandone uma referência que o NXJ tenha substituído durante a
+      // estabilização dos eventos de entrada.
+      validarVisaoConsultaTitulos(pagina);
+      campos = obterCamposAtuais();
+
+      if (String(campos.titulo.value ?? "").trim() !== titulo) {
+        throw new Error("O Systextil alterou o número do título antes da confirmação da parcela.");
+      }
+
+      if (
+        campos.parcela !== parcelaFocada ||
+        String(campos.parcela.value ?? "").trim() !== parcela
+      ) {
+        throw new Error(
+          "O Systextil alterou ou recriou o campo da parcela antes da confirmação NXJ. Confira o campo manualmente."
+        );
+      }
 
       // Retornar ao título provoca a confirmação da parcela por ClickOnField.
       const sequenciaAntesDaParcela = monitor.obterSequencia();
