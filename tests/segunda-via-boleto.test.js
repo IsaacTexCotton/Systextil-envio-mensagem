@@ -1005,7 +1005,7 @@ test('a Fase 4 declara somente as permissões Tampermonkey necessárias', () => 
 });
 
 test('a versão do metadado Tampermonkey corresponde à versão interna do userscript', () => {
-  const versaoMetadado = source.match(/^\\/\\/ @version\\s+([^\\s]+)$/m)?.[1];
+  const versaoMetadado = source.match(/^\/\/ @version\s+([^\s]+)$/m)?.[1];
   const versaoInterna = source.match(/const VERSION = "([^"]+)";/)?.[1];
 
   assert.ok(versaoMetadado, 'metadado @version deve existir');
