@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-**Status:** v0.4.2 integrada; ajuste v0.4.3 de temporização NXJ em revisão na branch `fix/pausas-confirmacao-nxj`  
+**Status:** v0.4.3 integrada; correção v0.4.4 de foco no campo da parcela em revisão na branch `fix/parcela-sem-foco-apos-nxj`  
 **Última atualização:** 2026-11-05  
 **Escopo:** obter o PDF de um boleto já existente no Systextil e salvá-lo com nome padronizado em uma pasta de rede.
 
@@ -770,4 +770,29 @@ A confirmação do comando NXJ, a espera por HTTP 2xx e a verificação de ocios
 
 Foi acrescentado um teste de regressão que mede a distância entre o evento `change` e o foco do campo seguinte, garantindo a pausa antes de o campo ser abandonado.
 
-**Estado:** ajuste implementado na branch `fix/pausas-confirmacao-nxj`. A suíte deve ser executada no Codespace. Depois, validar no Tampermonkey com título antigo/quitado autorizado; confirmar que a mensagem de sucesso aparece e que o F7 retorna somente a parcela esperada. Não pressionar F7 em caso de falha e não clicar em Emite boleto. Não integrar à `main` antes dessa validação.
+**Estado:** v0.4.3 integrada à `main`. O operador informou 81 testes aprovados no Codespace. A validação operacional do preenchimento no Systextil real permanece pendente.
+
+## 18. Reaplicação do foco na parcela após confirmação do título (v0.4.4 — 05/11/2026)
+
+### Problema identificado no fluxo
+
+Depois de confirmar o número do título pelo NXJ, a rotina relê os controles do formulário porque a resposta do ERP pode atualizar ou recriar os elementos. Porém, a rotina escrevia a parcela no controle relocalizado sem focá-lo novamente.
+
+O foco anterior havia sido aplicado à referência do campo de parcela existente antes da resposta NXJ. Quando o ERP recria o controle, essa referência deixa de representar o elemento atualmente exibido e o novo campo pode permanecer sem foco. Isso diverge do script manual validado pelo operador, que executa `p.focus()`, aguarda 800 ms e somente então insere a parcela.
+
+### Correção
+
+A v0.4.4 refocaliza o campo `seq_duplicatas.` relocalizado após a confirmação do título e aguarda o intervalo configurado (800 ms por padrão) antes de atribuir a parcela. Depois, mantém a pausa de 500 ms antes de retornar o foco ao título e exigir a confirmação NXJ da parcela.
+
+### Regressão automatizada
+
+Foi acrescentado um cenário que simula a recriação do controle de parcela após a confirmação NXJ do título. O teste exige que o novo controle receba a parcela e que o segundo POST NXJ transporte exatamente esse valor.
+
+### Validação pendente
+
+- Executar `npm run verify` no Codespace e confirmar a nova suíte completa.
+- Instalar a v0.4.4 no Tampermonkey, desativando temporariamente a 0.4.3 para evitar execução duplicada.
+- Testar com título antigo ou quitado autorizado e confirmar que o campo de parcela recebe o valor.
+- Somente depois da mensagem de confirmação, pressionar F7 manualmente e conferir o resultado. Não clicar em **Emite boleto**.
+
+**Estado:** correção implementada na branch `fix/parcela-sem-foco-apos-nxj`. Ainda não integrada à `main`; a validação no ERP real permanece pendente.

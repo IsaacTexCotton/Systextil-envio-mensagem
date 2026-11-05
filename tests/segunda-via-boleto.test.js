@@ -43,6 +43,7 @@ function carregarApi(forms = [], propriedadesJanela = {}, propriedadesGlobais = 
 function criarAmbienteConsultaNxjFake(opcoes = {}) {
   const requisicoes = [];
   let campoAtivo = null;
+  const campos = {};
 
   class XMLHttpRequestFake {
     constructor() {
@@ -72,6 +73,22 @@ function criarAmbienteConsultaNxjFake(opcoes = {}) {
         : (opcoes.status ?? 200);
 
       setTimeout(() => {
+        const parametros = this.metodo === 'POST' && typeof body === 'string'
+          ? new URLSearchParams(body)
+          : null;
+        const valorPendente = parametros?.get('fieldValues')?.split('\f').at(-1);
+
+        // Simula o redesenho do formulário após o NXJ confirmar o título:
+        // a referência anterior da parcela deixa de ser o controle ativo.
+        if (
+          parametros &&
+          opcoes.recriarParcelaAposConfirmacaoTitulo === valorPendente
+        ) {
+          const parcelaAnterior = campos['seq_duplicatas.'];
+          campos['seq_duplicatas.'] = criarCampo('seq_duplicatas.');
+          if (campoAtivo === parcelaAnterior) campoAtivo = null;
+        }
+
         for (const callback of this.ouvintes.get('loadend') || []) {
           callback.call(this);
         }
@@ -146,10 +163,11 @@ function criarAmbienteConsultaNxjFake(opcoes = {}) {
     return campo;
   }
 
-  const campos = {
+  Object.assign(campos, {
     'num_duplicata.': criarCampo('num_duplicata.'),
     'seq_duplicatas.': criarCampo('seq_duplicatas.')
-  };
+  });
+  const camposIniciais = { ...campos };
   const formulario = {
     elements: {
       namedItem(nome) {
@@ -167,6 +185,7 @@ function criarAmbienteConsultaNxjFake(opcoes = {}) {
   return {
     api,
     campos,
+    camposIniciais,
     requisicoes,
     pagina,
     formulario,
@@ -178,13 +197,13 @@ test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
   assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.4.3');
+  assert.equal(api.version, '0.4.4');
 });
 
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
   const url = 'https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js';
 
-  assert.match(source, /^\/\/ @version\s+0\.4\.3$/m);
+  assert.match(source, /^\/\/ @version\s+0\.4\.4$/m);
   assert.ok(source.includes('// @updateURL     ' + url));
   assert.ok(source.includes('// @downloadURL   ' + url));
 });
@@ -270,6 +289,30 @@ test('preenche os campos em sequência e exige confirmação NXJ de título e pa
     ambiente.campos['seq_duplicatas.'].eventos.map(evento => evento.tipo),
     ['input', 'change']
   );
+});
+
+
+test('refocaliza a parcela quando o NXJ recria o controle após confirmar o título', async () => {
+  const ambiente = criarAmbienteConsultaNxjFake({
+    recriarParcelaAposConfirmacaoTitulo: '00936520'
+  });
+  const parcelaAnterior = ambiente.camposIniciais['seq_duplicatas.'];
+
+  const resultado = await ambiente.api.preencherCamposConsulta(
+    { titulo: '936520', parcela: '3' },
+    { limiteEsperaMs: 500, silencioMs: 0, intervaloMs: 2, atrasoFocoMs: 0 }
+  );
+
+  assert.equal(resultado.titulo, '00936520');
+  assert.equal(resultado.parcela, '3');
+  assert.notEqual(ambiente.campos['seq_duplicatas.'], parcelaAnterior);
+  assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
+
+  const confirmacoes = ambiente.requisicoes
+    .filter(requisicao => requisicao.metodo === 'POST')
+    .map(requisicao => new URLSearchParams(requisicao.body).get('fieldValues').split('\f').at(-1));
+
+  assert.deepEqual(confirmacoes, ['00936520', '3']);
 });
 
 
