@@ -32,7 +32,7 @@ function carregarApi(forms = [], propriedadesJanela = {}, propriedadesGlobais = 
 
   vm.runInNewContext(
     source,
-    { window, document, console: consoleTeste, Object, Array, String, Event, URL, ...propriedadesGlobais },
+    { window, document, console: consoleTeste, Object, Array, String, Event, URL, URLSearchParams, setTimeout, clearTimeout, ...propriedadesGlobais },
     { filename: scriptPath }
   );
 
@@ -40,11 +40,134 @@ function carregarApi(forms = [], propriedadesJanela = {}, propriedadesGlobais = 
   return window.__systextilSegundaViaBoletoDebug;
 }
 
+function criarAmbienteConsultaNxjFake(opcoes = {}) {
+  const requisicoes = [];
+  let campoAtivo = null;
+
+  class XMLHttpRequestFake {
+    constructor() {
+      this.ouvintes = new Map();
+      this.status = 200;
+    }
+
+    open(metodo, url) {
+      this.metodo = String(metodo).toUpperCase();
+      this.url = String(url);
+    }
+
+    addEventListener(tipo, callback) {
+      if (!this.ouvintes.has(tipo)) this.ouvintes.set(tipo, []);
+      this.ouvintes.get(tipo).push(callback);
+    }
+
+    send(body) {
+      requisicoes.push({
+        metodo: this.metodo,
+        url: this.url,
+        body: typeof body === 'string' ? body : ''
+      });
+
+      this.status = typeof opcoes.status === 'function'
+        ? opcoes.status(this.metodo, this.url)
+        : (opcoes.status ?? 200);
+
+      setTimeout(() => {
+        for (const callback of this.ouvintes.get('loadend') || []) {
+          callback.call(this);
+        }
+      }, opcoes.latenciaMs ?? 2);
+    }
+  }
+
+  const pagina = {
+    curDataView: {
+      name: opcoes.visao ?? 'forms.crec.crec_f090'
+    },
+    XMLHttpRequest: XMLHttpRequestFake,
+    URLSearchParams
+  };
+
+  if (opcoes.HTMLInputElement) pagina.HTMLInputElement = opcoes.HTMLInputElement;
+  if (opcoes.InputEvent) pagina.InputEvent = opcoes.InputEvent;
+  if (opcoes.Event) pagina.Event = opcoes.Event;
+
+  function enviarComandoConfirmacao(valor) {
+    const post = new pagina.XMLHttpRequest();
+    post.open('POST', '/systextil/UnifyNXJ.jsp');
+    post.send(new URLSearchParams({
+      commandName: 'ClickOnField',
+      fieldValues: '\f' + valor
+    }).toString());
+
+    const get = new pagina.XMLHttpRequest();
+    get.open('GET', '/systextil/UnifyNXJ.jsp?promptCounter=1');
+    get.send();
+  }
+
+  function criarCampo(nome) {
+    const campo = opcoes.HTMLInputElement
+      ? Object.create(opcoes.HTMLInputElement.prototype)
+      : { value: '' };
+
+    Object.assign(campo, {
+      name: nome,
+      disabled: false,
+      readOnly: false,
+      eventos: [],
+      ownerDocument: { defaultView: pagina },
+      dispatchEvent(evento) {
+        this.eventos.push({
+          tipo: evento.type,
+          inputType: evento.inputType,
+          data: evento.data
+        });
+        return true;
+      },
+      focus() {
+        if (campoAtivo && campoAtivo !== this) {
+          const ignorar = opcoes.omitirConfirmacaoCampo === campoAtivo.name;
+          if (!ignorar) enviarComandoConfirmacao(campoAtivo.value);
+        }
+        campoAtivo = this;
+      }
+    });
+
+    return campo;
+  }
+
+  const campos = {
+    'num_duplicata.': criarCampo('num_duplicata.'),
+    'seq_duplicatas.': criarCampo('seq_duplicatas.')
+  };
+  const formulario = {
+    elements: {
+      namedItem(nome) {
+        return campos[nome] || null;
+      }
+    }
+  };
+
+  const api = carregarApi(
+    [formulario],
+    {},
+    { unsafeWindow: pagina, URLSearchParams, setTimeout, clearTimeout }
+  );
+
+  return {
+    api,
+    campos,
+    requisicoes,
+    pagina,
+    formulario,
+    XMLHttpRequestFake
+  };
+}
+
 test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
   assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.4.1');
+  assert.equal(api.version, '0.4.2');
 });
 
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
@@ -109,61 +232,41 @@ test('rejeita códigos de consulta vazios ou com caracteres inesperados', () => 
   );
 });
 
-test('preenche número e parcela, dispara eventos de atualização e mantém foco no título', () => {
-  const campos = {
-    'num_duplicata.': {
-      value: '',
-      disabled: false,
-      readOnly: false,
-      eventos: [],
-      dispatchEvent(evento) {
-        this.eventos.push(evento.type);
-        return true;
-      },
-      focus() {
-        this.focado = true;
-      }
-    },
-    'seq_duplicatas.': {
-      value: '',
-      disabled: false,
-      readOnly: false,
-      eventos: [],
-      dispatchEvent(evento) {
-        this.eventos.push(evento.type);
-        return true;
-      }
-    }
-  };
-  const formulario = {
-    elements: {
-      namedItem(nome) {
-        return campos[nome] || null;
-      }
-    }
-  };
-  const api = carregarApi([formulario]);
-
-  const resultado = api.preencherCamposConsulta({
-    titulo: '936520',
-    parcela: '3'
-  });
+test('preenche os campos em sequência e exige confirmação NXJ de título e parcela', async () => {
+  const ambiente = criarAmbienteConsultaNxjFake();
+  const resultado = await ambiente.api.preencherCamposConsulta(
+    { titulo: '936520', parcela: '3' },
+    { limiteEsperaMs: 500, silencioMs: 0, intervaloMs: 2, atrasoFocoMs: 0 }
+  );
 
   assert.equal(resultado.titulo, '00936520');
   assert.equal(resultado.parcela, '3');
-  assert.equal(campos['num_duplicata.'].value, '00936520');
-  assert.equal(campos['seq_duplicatas.'].value, '3');
-  assert.deepEqual(campos['num_duplicata.'].eventos, ['input', 'change']);
-  assert.deepEqual(campos['seq_duplicatas.'].eventos, ['input', 'change']);
-  assert.equal(campos['num_duplicata.'].focado, true);
+  assert.equal(resultado.confirmacoes.titulo, 'NXJ');
+  assert.equal(resultado.confirmacoes.parcela, 'NXJ');
+  assert.equal(ambiente.campos['num_duplicata.'].value, '00936520');
+  assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
+
+  const confirmacoes = ambiente.requisicoes
+    .filter(requisicao => requisicao.metodo === 'POST')
+    .map(requisicao => new URLSearchParams(requisicao.body).get('fieldValues').split('\f').at(-1));
+
+  assert.deepEqual(confirmacoes, ['00936520', '3']);
+  assert.deepEqual(
+    ambiente.campos['num_duplicata.'].eventos.map(evento => evento.tipo),
+    ['input', 'change']
+  );
+  assert.deepEqual(
+    ambiente.campos['seq_duplicatas.'].eventos.map(evento => evento.tipo),
+    ['input', 'change']
+  );
 });
 
-test('usa o setter nativo do input e InputEvent ao preencher os campos do Systextil', () => {
+test('usa setter nativo e InputEvent sem dispensar a confirmação assíncrona NXJ', async () => {
   let chamadasSetterNativo = 0;
   let chamadasSetterDireto = 0;
 
-  function HTMLInputElement() {}
-  Object.defineProperty(HTMLInputElement.prototype, 'value', {
+  function HTMLInputElementFake() {}
+  Object.defineProperty(HTMLInputElementFake.prototype, 'value', {
     configurable: true,
     get() {
       return this.__valorReal || '';
@@ -174,7 +277,7 @@ test('usa o setter nativo do input e InputEvent ao preencher os campos do Systex
     }
   });
 
-  class InputEventTeste extends Event {
+  class InputEventFake extends Event {
     constructor(tipo, opcoes = {}) {
       super(tipo, opcoes);
       this.inputType = opcoes.inputType;
@@ -182,71 +285,32 @@ test('usa o setter nativo do input e InputEvent ao preencher os campos do Systex
     }
   }
 
-  const eventos = [];
-  function criarCampo() {
-    const campo = Object.create(HTMLInputElement.prototype);
-    Object.defineProperties(campo, {
-      value: {
-        configurable: true,
-        get() {
-          return this.__valorReal || '';
-        },
-        set(valor) {
-          chamadasSetterDireto += 1;
-          this.__valorReal = String(valor);
-        }
-      },
-      disabled: { value: false },
-      readOnly: { value: false }
-    });
-    campo.dispatchEvent = evento => {
-      eventos.push({
-        tipo: evento.type,
-        inputType: evento.inputType,
-        data: evento.data
-      });
-      return true;
-    };
-    campo.focus = () => {};
-    return campo;
-  }
-
-  const campos = {
-    'num_duplicata.': criarCampo(),
-    'seq_duplicatas.': criarCampo()
-  };
-  const formulario = {
-    elements: {
-      namedItem(nome) {
-        return campos[nome] || null;
-      }
-    }
-  };
-  const api = carregarApi([formulario], {
-    HTMLInputElement,
-    InputEvent: InputEventTeste,
+  const ambiente = criarAmbienteConsultaNxjFake({
+    HTMLInputElement: HTMLInputElementFake,
+    InputEvent: InputEventFake,
     Event
   });
 
-  const resultado = api.preencherCamposConsulta({
-    titulo: '936520',
-    parcela: '3'
-  });
+  const resultado = await ambiente.api.preencherCamposConsulta(
+    { titulo: '936520', parcela: '3' },
+    { limiteEsperaMs: 500, silencioMs: 0, intervaloMs: 2, atrasoFocoMs: 0 }
+  );
 
   assert.equal(resultado.titulo, '00936520');
   assert.equal(resultado.parcela, '3');
   assert.equal(chamadasSetterNativo, 2);
   assert.equal(chamadasSetterDireto, 0);
-  assert.equal(campos['num_duplicata.'].value, '00936520');
-  assert.equal(campos['seq_duplicatas.'].value, '3');
-  assert.equal(eventos.filter(evento => evento.tipo === 'input').length, 2);
-  assert.equal(eventos.filter(evento => evento.tipo === 'change').length, 2);
-  assert.ok(eventos.filter(evento => evento.tipo === 'input').every(evento =>
-    evento.inputType === 'insertReplacementText'
+  assert.equal(ambiente.campos['num_duplicata.'].value, '00936520');
+  assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
+  assert.ok(ambiente.campos['num_duplicata.'].eventos.some(evento =>
+    evento.tipo === 'input' && evento.inputType === 'insertReplacementText'
+  ));
+  assert.ok(ambiente.campos['seq_duplicatas.'].eventos.some(evento =>
+    evento.tipo === 'input' && evento.inputType === 'insertReplacementText'
   ));
 });
 
-test('não preenche quando há mais de um formulário compatível', () => {
+test('não preenche quando há mais de um formulário compatível', async () => {
   function criarFormulario() {
     const campos = {
       'num_duplicata.': { value: '', disabled: false, readOnly: false, dispatchEvent() {} },
@@ -262,46 +326,84 @@ test('não preenche quando há mais de um formulário compatível', () => {
   }
 
   const api = carregarApi([criarFormulario(), criarFormulario()]);
-  assert.throws(
-    () => api.preencherCamposConsulta({ titulo: '123', parcela: '01' }),
+  await assert.rejects(
+    api.preencherCamposConsulta({ titulo: '123', parcela: '01' }),
     /Mais de um formulário/
   );
 });
 
-test('restaura os dois valores anteriores se o preenchimento parcial falhar', () => {
-  const campoTitulo = {
-    value: 'TITULO-ANTERIOR',
-    disabled: false,
-    readOnly: false,
-    dispatchEvent() {
-      return true;
-    }
-  };
-  const campoParcela = {
-    value: 'PARCELA-ANTERIOR',
-    disabled: false,
-    readOnly: false,
-    dispatchEvent() {
-      throw new Error('falha simulada');
-    }
-  };
-  const formulario = {
-    elements: {
-      namedItem(nome) {
-        if (nome === 'num_duplicata.') return campoTitulo;
-        if (nome === 'seq_duplicatas.') return campoParcela;
-        return null;
-      }
-    }
-  };
-  const api = carregarApi([formulario]);
+test('interrompe sem sucesso quando o NXJ não confirma o número do título', async () => {
+  const ambiente = criarAmbienteConsultaNxjFake({
+    omitirConfirmacaoCampo: 'num_duplicata.'
+  });
 
-  assert.throws(
-    () => api.preencherCamposConsulta({ titulo: '123', parcela: '02' }),
-    /valores anteriores foram restaurados/
+  await assert.rejects(
+    ambiente.api.preencherCamposConsulta(
+      { titulo: '936520', parcela: '3' },
+      { limiteEsperaMs: 40, silencioMs: 0, intervaloMs: 2, atrasoFocoMs: 0 }
+    ),
+    /NÃO pressione F7.*não confirmou o campo número do título/
   );
-  assert.equal(campoTitulo.value, 'TITULO-ANTERIOR');
-  assert.equal(campoParcela.value, 'PARCELA-ANTERIOR');
+
+  assert.equal(ambiente.campos['num_duplicata.'].value, '00936520');
+  assert.equal(ambiente.campos['seq_duplicatas.'].value, '');
+});
+
+test('interrompe e orienta não pressionar F7 quando a parcela não é confirmada', async () => {
+  const ambiente = criarAmbienteConsultaNxjFake({
+    omitirConfirmacaoCampo: 'seq_duplicatas.'
+  });
+  const abrirOriginal = ambiente.XMLHttpRequestFake.prototype.open;
+  const enviarOriginal = ambiente.XMLHttpRequestFake.prototype.send;
+
+  await assert.rejects(
+    ambiente.api.preencherCamposConsulta(
+      { titulo: '936520', parcela: '3' },
+      { limiteEsperaMs: 40, silencioMs: 0, intervaloMs: 2, atrasoFocoMs: 0 }
+    ),
+    /NÃO pressione F7.*não confirmou o campo parcela/
+  );
+
+  assert.equal(ambiente.campos['num_duplicata.'].value, '00936520');
+  assert.equal(ambiente.campos['seq_duplicatas.'].value, '3');
+  assert.equal(ambiente.XMLHttpRequestFake.prototype.open, abrirOriginal);
+  assert.equal(ambiente.XMLHttpRequestFake.prototype.send, enviarOriginal);
+});
+
+test('bloqueia uma segunda execução enquanto o preenchimento assíncrono está ativo', async () => {
+  const ambiente = criarAmbienteConsultaNxjFake({ latenciaMs: 10 });
+  const primeira = ambiente.api.preencherCamposConsulta(
+    { titulo: '936520', parcela: '3' },
+    { limiteEsperaMs: 500, silencioMs: 0, intervaloMs: 2, atrasoFocoMs: 0 }
+  );
+
+  await assert.rejects(
+    ambiente.api.preencherCamposConsulta(
+      { titulo: '123456', parcela: '1' },
+      { limiteEsperaMs: 50, silencioMs: 0, intervaloMs: 2, atrasoFocoMs: 0 }
+    ),
+    /Já existe um preenchimento em andamento/
+  );
+
+  await primeira;
+});
+
+test('interrompe antes de alterar campos quando a visão ativa não é Consulta de Títulos', async () => {
+  const ambiente = criarAmbienteConsultaNxjFake({
+    visao: 'forms.crec.crec_f095'
+  });
+
+  await assert.rejects(
+    ambiente.api.preencherCamposConsulta(
+      { titulo: '936520', parcela: '3' },
+      { limiteEsperaMs: 40, silencioMs: 0, intervaloMs: 2, atrasoFocoMs: 0 }
+    ),
+    /visão ativa não é Consulta de Títulos/
+  );
+
+  assert.equal(ambiente.campos['num_duplicata.'].value, '');
+  assert.equal(ambiente.campos['seq_duplicatas.'].value, '');
+  assert.equal(ambiente.requisicoes.length, 0);
 });
 
 test('não envia F7 nem submete o formulário automaticamente', () => {
