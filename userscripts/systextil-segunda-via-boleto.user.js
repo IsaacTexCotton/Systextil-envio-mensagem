@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via de Boleto (conferência)
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.4.8
+// @version      0.4.9
 // @updateURL     https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @downloadURL   https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js
 // @description  Consulta, identifica e baixa a segunda via de boleto sem recarregar a página.
@@ -16,7 +16,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "0.4.8";
+  const VERSION = "0.4.9";
   const PANEL_ID = "st-segunda-via-boleto-panel";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
@@ -764,11 +764,9 @@
         );
       }
 
-      campoTitulo = obterCampoAtual(CAMPOS.titulo);
-      if (String(campoTitulo.value ?? "").trim() !== titulo) {
-        throw new Error("O Systextil não manteve o número do título após a mudança de foco.");
-      }
-
+      // O Systextil pode limpar ou redesenhar o input do título ao processar
+      // a saída do campo. Não interrompa aqui: a sequência funcional precisa
+      // preencher a parcela e retornar o foco ao título antes da confirmação.
       validarCampoEditavel(campoParcela);
       atribuirValorCampo(campoParcela, parcela);
 
@@ -786,11 +784,6 @@
         throw new Error(
           "O Systextil alterou ou recriou o campo da parcela antes da confirmação. Confira o campo manualmente."
         );
-      }
-
-      campoTitulo = obterCampoAtual(CAMPOS.titulo);
-      if (String(campoTitulo.value ?? "").trim() !== titulo) {
-        throw new Error("O Systextil alterou o número do título antes da confirmação da parcela.");
       }
 
       const sequenciaAntesDaParcela = monitor.obterSequencia();
@@ -814,12 +807,19 @@
       campoTitulo = obterCampoAtual(CAMPOS.titulo);
       campoParcela = obterCampoAtual(CAMPOS.parcela);
 
-      if (
-        String(campoTitulo.value ?? "").trim() !== titulo ||
-        String(campoParcela.value ?? "").trim() !== parcela
-      ) {
+      // A confirmação NXJ exata é a fonte de verdade para o título: o ERP
+      // pode deixar o input vazio após processar o blur, embora tenha recebido
+      // o valor no comando. Um valor divergente (não vazio) continua sendo erro.
+      const tituloVisivel = String(campoTitulo.value ?? "").trim();
+      if (tituloVisivel && tituloVisivel !== titulo) {
         throw new Error(
-          "Os valores visíveis mudaram após a sequência de preenchimento e confirmação."
+          "O valor exibido no campo do título diverge do valor confirmado pelo NXJ."
+        );
+      }
+
+      if (String(campoParcela.value ?? "").trim() !== parcela) {
+        throw new Error(
+          "O valor visível da parcela mudou após a confirmação NXJ."
         );
       }
 
