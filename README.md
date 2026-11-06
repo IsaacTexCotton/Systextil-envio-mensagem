@@ -2,6 +2,10 @@
 
 Userscripts pequenos e explícitos para reduzir trabalho repetitivo no Systextil. O código não deve executar consultas, enviar mensagens nem gravar dados sem ação explícita do operador.
 
+## Integração SmartTable → Systextil
+
+Ponte para transferir o número e a parcela de um título selecionado no CRM ao painel de segunda via: [documentação da transferência](docs/transferencia-crm-systextil.md) e [userscript da ponte](userscripts/systextil-crm-bridge.user.js). É um userscript independente, instalado nos dois domínios. Não aciona F7, emissão nem download; esses passos continuam no fluxo manual do automatizador.
+
 ## Desenvolvimento: segunda via de boleto
 
 Guia transversal para novas automações e agentes de IA: [docs/guia-automacao-tampermonkey-systextil.md](docs/guia-automacao-tampermonkey-systextil.md). Ele complementa o `AGENTS.md` com padrões de DOM, contexto da página, integração com o ERP, segurança, testes e critérios de validação.
@@ -12,9 +16,9 @@ Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/syste
 
 Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
 
-**Status atual:** a `main` contém a versão **0.5.0**, que resolve a seleção da grade por `window.curDataView` e valida `forms.systextil.batch` (PR [#27](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/27)). A sincronização do metadado `@version` também está integrada pela PR [#28](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/28). A gravação direta na pasta exclusiva, usando um auxiliar PowerShell local e sem alterar Downloads do Chrome, está sendo proposta na PR [#29](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/29), versão **0.6.0**. A instalação do auxiliar, o pareamento, a execução de `npm run verify` e a validação no Windows/Chrome real ainda são pendentes.
+**Status atual:** o arquivo do automatizador em `main` declara a versão **0.6.0**. Essa versão inclui o fluxo do auxiliar PowerShell local para gravar o PDF na pasta configurada sem alterar a pasta padrão de Downloads do Chrome. A existência do código e do metadado não comprova, por si só, que o auxiliar esteja instalado e pareado em cada estação; siga as instruções específicas abaixo e valide no Windows/Chrome usado na operação.
 
-**Auxiliar local:** instruções de instalação e pareamento estão em [tools/boleto-helper/README.md](tools/boleto-helper/README.md). A versão v0.6.0 ainda está em revisão na PR #29.
+**Auxiliar local:** instruções de instalação e pareamento estão em [tools/boleto-helper/README.md](tools/boleto-helper/README.md).
 
 ## Script: Parâmetros da Régua de Cobrança
 
