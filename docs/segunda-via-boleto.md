@@ -1199,7 +1199,7 @@ O clique explícito em **Enviar ao Systextil** no SmartTable continua sendo a ú
 
 Instalar somente `userscripts/systextil-segunda-via.user.js` no Tampermonkey, habilitado nas páginas CRM e Systextil. Desativar/remover as três entradas antigas `systextil-crm-bridge.user.js`, `systextil-segunda-via-automatica.user.js` e `systextil-segunda-via-boleto.user.js`; elas foram aposentadas por metadados e não devem coexistir com a versão unificada.
 
-Use Tampermonkey 5.4.6226 ou superior, que oferece suporte a Blob/File em `GM_download`. No modo Browser API do Tampermonkey, conceda a permissão de Downloads; nesse modo, `saveAs: false` seleciona o destino padrão e `conflictAction: "uniquify"` evita sobrescrita. Confira as preferências de download do Chrome para que não exista uma confirmação por arquivo. Os arquivos são gravados na pasta Downloads configurada no navegador.
+Use Tampermonkey 5.4.6226 ou superior, que oferece suporte a Blob/File em `GM_download`. No modo Browser API do Tampermonkey, conceda a permissão de Downloads e permita a extensão `.pdf` na lista de extensões autorizadas; nesse modo, `saveAs: false` seleciona o destino padrão e `conflictAction: "uniquify"` evita sobrescrita. Confira as preferências de download do Chrome para que não exista uma confirmação por arquivo. Os arquivos são gravados na pasta Downloads configurada no navegador.
 
 ### Limites operacionais
 
