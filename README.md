@@ -17,7 +17,7 @@ O mesmo userscript funciona no CRM e no Systextil. O clique em **Enviar ao Syste
 
 Não são criados painéis flutuantes, campos auxiliares, janelas de conferência ou etapas de F7 manual. O código antigo da ponte, do orquestrador e do helper foi consolidado no userscript único.
 
-**Download:** usa `GM_xmlhttpRequest` para obter o PDF com a sessão do Systextil e `GM_download` para salvar com `saveAs: false`. Não exige PowerShell, serviço local, chave de pareamento ou pasta especial. O destino é a pasta padrão de Downloads configurada no navegador; para não abrir o diálogo de local, desative no Chrome a opção **Perguntar onde salvar cada arquivo**. O nome é preservado e conflitos recebem sufixos para não sobrescrever arquivos.
+**Download:** usa `GM_xmlhttpRequest` para obter o PDF com a sessão do Systextil e `GM_download` para salvar com `saveAs: false`. Não exige PowerShell, serviço local, chave de pareamento ou pasta especial. O destino é a pasta padrão de Downloads configurada no navegador. Requer Tampermonkey 5.4.6226 ou superior para baixar Blob/File. No modo Browser API do Tampermonkey, conceda a permissão de Downloads e autorize a extensão `.pdf`; esse modo aplica `saveAs: false` e `conflictAction: "uniquify"`. O nome é preservado e conflitos recebem sufixos para não sobrescrever arquivos.
 
 **Instalação e atualização:** instale somente `systextil-segunda-via.user.js` no Tampermonkey e habilite-o no CRM e no Systextil. Os três userscripts antigos foram desativados por metadados e não devem ser reativados. Depois de instalar o novo, remova ou desative as entradas antigas no Tampermonkey para evitar confusão.
 
