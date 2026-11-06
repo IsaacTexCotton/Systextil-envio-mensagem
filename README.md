@@ -14,7 +14,7 @@ Levantamento técnico, evidências, decisões, riscos e pendências estão em [d
 
 Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/systextil-segunda-via-boleto.user.js).
 
-Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
+Testes: [preenchimento NXJ, processo e download](tests/segunda-via-boleto.test.js), [orquestração completa e bloqueio da parcela](tests/segunda-via-automatica.test.js) e [contrato da ponte](tests/systextil-crm-bridge.test.js).
 
 **Base da `main`:** o helper-base declara a versão **0.6.0**. Esta branch propõe a versão **0.6.1**, que inicia o painel automaticamente nas telas suportadas para permitir a continuidade do fluxo CRM → Systextil. A proposta ainda não foi integrada à `main`. A existência do código e do metadado não comprova, por si só, que o auxiliar esteja instalado e pareado em cada estação; siga as instruções específicas abaixo e valide no Windows/Chrome usado na operação.
 
