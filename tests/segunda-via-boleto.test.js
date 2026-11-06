@@ -251,17 +251,17 @@ function criarAmbienteConsultaNxjFake(opcoes = {}) {
   };
 }
 
-test('userscript usa execução sob demanda pelo menu do Tampermonkey', () => {
-  assert.match(source, /^\/\/ @run-at\s+context-menu$/m);
+test('userscript inicializa o painel automaticamente após a tela ficar pronta', () => {
+  assert.match(source, /^\/\/ @run-at\s+document-idle$/m);
 
   const api = carregarApi();
-  assert.equal(api.version, '0.4.9');
+  assert.equal(api.version, '0.6.1');
 });
 
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
   const url = 'https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js';
 
-  assert.match(source, /^\/\/ @version\s+0\.4\.9$/m);
+  assert.match(source, /^\/\/ @version\s+0\.6\.1$/m);
   assert.ok(source.includes('// @updateURL     ' + url));
   assert.ok(source.includes('// @downloadURL   ' + url));
 });
