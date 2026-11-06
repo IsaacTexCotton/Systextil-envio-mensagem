@@ -16,7 +16,7 @@ Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/syste
 
 Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
 
-**Status atual:** o arquivo do automatizador em `main` declara a versão **0.6.0**. Essa versão inclui o fluxo do auxiliar PowerShell local para gravar o PDF na pasta configurada sem alterar a pasta padrão de Downloads do Chrome. A existência do código e do metadado não comprova, por si só, que o auxiliar esteja instalado e pareado em cada estação; siga as instruções específicas abaixo e valide no Windows/Chrome usado na operação.
+**Base da `main`:** o helper-base declara a versão **0.6.0**. Esta branch propõe a versão **0.6.1**, que inicia o painel automaticamente nas telas suportadas para permitir a continuidade do fluxo CRM → Systextil. A proposta ainda não foi integrada à `main`. A existência do código e do metadado não comprova, por si só, que o auxiliar esteja instalado e pareado em cada estação; siga as instruções específicas abaixo e valide no Windows/Chrome usado na operação.
 
 **Auxiliar local:** instruções de instalação e pareamento estão em [tools/boleto-helper/README.md](tools/boleto-helper/README.md).
 
