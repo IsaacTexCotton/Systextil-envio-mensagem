@@ -356,6 +356,18 @@
     }
   }
 
+  function extrairValoresPendentesNxj(fieldValues) {
+    if (typeof fieldValues !== "string") return [];
+
+    // O NXJ pode serializar mais de um valor no mesmo POST.
+    // Conferimos todos os segmentos, sem pressupor que o valor pendente
+    // seja sempre o último segmento do payload.
+    return fieldValues
+      .split("\f")
+      .map(valor => valor.trim())
+      .filter(Boolean);
+  }
+
   /**
    * Monitora temporariamente o protocolo real do NXJ.
    * Guarda somente metadados mínimos do comando e o valor pendente em memória,
@@ -433,18 +445,6 @@
       }
     }
 
-    function extrairValoresPendentes(fieldValues) {
-      if (typeof fieldValues !== "string") return [];
-
-      // O NXJ pode serializar mais de um valor no mesmo POST.
-      // Conferimos todos os segmentos, sem pressupor que o valor pendente
-      // seja sempre o último segmento do payload.
-      return fieldValues
-        .split("\f")
-        .map(valor => valor.trim())
-        .filter(Boolean);
-    }
-
     function abrirInterceptado(metodo, url) {
       metadadosXhr.set(this, {
         metodo: String(metodo ?? "GET").toUpperCase(),
@@ -469,7 +469,7 @@
         sequencia: ++estado.sequencia,
         metodo: metadados.metodo,
         comando: dadosComando.comando,
-        valoresPendentes: extrairValoresPendentes(dadosComando.fieldValues),
+        valoresPendentes: extrairValoresPendentesNxj(dadosComando.fieldValues),
         finalizado: false,
         monitoramentoFalhou: false,
         status: 0
@@ -2693,6 +2693,8 @@
     module.exports = Object.freeze({
       VERSION,
       validarPedido,
+      extrairValoresPendentesNxj,
+      pressionarF7,
       analisarProcessos,
       interpretarDataHoraProcesso,
       normalizarCodigoComparacao,
