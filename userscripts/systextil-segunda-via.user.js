@@ -433,17 +433,16 @@
       }
     }
 
-    function extrairValorPendente(fieldValues) {
-      if (typeof fieldValues !== "string") return null;
+    function extrairValoresPendentes(fieldValues) {
+      if (typeof fieldValues !== "string") return [];
 
-      const partes = fieldValues.split("\f");
-
-      for (let indice = partes.length - 1; indice >= 0; indice -= 1) {
-        const valor = partes[indice].trim();
-        if (valor) return valor;
-      }
-
-      return "";
+      // O NXJ pode serializar mais de um valor no mesmo POST.
+      // Conferimos todos os segmentos, sem pressupor que o valor pendente
+      // seja sempre o último segmento do payload.
+      return fieldValues
+        .split("\f")
+        .map(valor => valor.trim())
+        .filter(Boolean);
     }
 
     function abrirInterceptado(metodo, url) {
@@ -470,7 +469,7 @@
         sequencia: ++estado.sequencia,
         metodo: metadados.metodo,
         comando: dadosComando.comando,
-        valorPendente: extrairValorPendente(dadosComando.fieldValues),
+        valoresPendentes: extrairValoresPendentes(dadosComando.fieldValues),
         finalizado: false,
         monitoramentoFalhou: false,
         status: 0
@@ -585,7 +584,7 @@
           requisicao.sequencia > sequenciaMinima &&
           requisicao.metodo === "POST" &&
           COMANDOS_NXJ_CONFIRMACAO.has(requisicao.comando) &&
-          requisicao.valorPendente === valorEsperado
+          requisicao.valoresPendentes.includes(valorEsperado)
         ) || null;
 
         if (registro) break;
@@ -601,7 +600,7 @@
             COMANDOS_NXJ_CONFIRMACAO.has(requisicao.comando)
           );
           const valoresCorrespondentes = comandosDeSaida.filter(requisicao =>
-            requisicao.valorPendente === valorEsperado
+            requisicao.valoresPendentes.includes(valorEsperado)
           );
 
           throw new Error(
@@ -2106,9 +2105,40 @@
     };
   }
 
+  function pressionarF7(pagina) {
+    const documento = pagina?.document;
+    const campoTitulo = documento?.getElementsByName?.(CAMPOS.titulo)?.[0];
+    if (!campoTitulo || typeof campoTitulo.focus !== "function") {
+      throw new Error("Não foi possível localizar o campo do título para executar F7.");
+    }
+
+    // A sequência NXJ termina devolvendo o foco ao campo do título.
+    if (documento.activeElement !== campoTitulo) campoTitulo.focus();
+    if (documento.activeElement !== campoTitulo) {
+      throw new Error("O Systextil não manteve o foco no campo do título. F7 não foi enviado.");
+    }
+
+    const ConstrutorTeclado = pagina.KeyboardEvent || window.KeyboardEvent;
+    if (typeof ConstrutorTeclado !== "function") {
+      throw new Error("O navegador não disponibilizou KeyboardEvent para executar F7.");
+    }
+
+    const opcoes = {
+      key: "F7",
+      code: "F7",
+      keyCode: 118,
+      which: 118,
+      bubbles: true,
+      cancelable: true,
+      composed: true
+    };
+    campoTitulo.dispatchEvent(new ConstrutorTeclado("keydown", opcoes));
+    campoTitulo.dispatchEvent(new ConstrutorTeclado("keyup", opcoes));
+    statusOperacional("Tecla F7 enviada ao formulário do Systextil.");
+  }
+
   function clicarBarraConsulta(chave) {
     const ids = {
-      buscar: "btnFind.",
       limpar: "btnClearToFind.",
       processos: "procAgendados"
     };
@@ -2237,8 +2267,13 @@
         throw new Error("O título exibido no Systextil diverge do título recebido do CRM. A consulta foi bloqueada.");
       }
 
-      statusOperacional("Consultando o título no ERP.");
-      clicarBarraConsulta("buscar");
+      const estadoAntesF7 = lerEstadoSystextil(pagina);
+      if (!estadoAntesF7?.busca) {
+        throw new Error("O Systextil não está em modo de consulta. F7 não foi enviado.");
+      }
+
+      statusOperacional("Executando F7 para consultar o título no ERP.");
+      pressionarF7(pagina);
       await aguardarOcioso(monitor, 20000);
       const resultadoFind = await aguardarResultadoFind(pagina, 20000);
 
