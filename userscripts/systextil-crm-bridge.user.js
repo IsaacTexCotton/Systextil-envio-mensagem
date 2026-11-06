@@ -35,11 +35,11 @@
   const MAX_TITULO = 40;
   const MAX_PARCELA = 20;
   const ABA_ID = criarIdLocal();
-  const URL = new URL(window.location.href);
-  const NA_PAGINA_CRM = URL.hostname === 'texhub.texcotton.com.br' && URL.pathname.startsWith('/crm/');
+  const urlAtual = new URL(window.location.href);
+  const NA_PAGINA_CRM = urlAtual.hostname === 'texhub.texcotton.com.br' && urlAtual.pathname.startsWith('/crm/');
   const NA_PAGINA_SYSTEXTIL =
-    URL.hostname === 'systextil.texcotton.com.br' &&
-    URL.pathname.startsWith('/systextil/');
+    urlAtual.hostname === 'systextil.texcotton.com.br' &&
+    urlAtual.pathname.startsWith('/systextil/');
 
   if (!NA_PAGINA_CRM && !NA_PAGINA_SYSTEXTIL) return;
 
