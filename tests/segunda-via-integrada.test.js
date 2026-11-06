@@ -63,6 +63,47 @@ test('rejeita solicitação expirada, CNPJ inválido e códigos com caracteres n
   );
 });
 
+test('encontra o valor exato do campo NXJ mesmo quando outros segmentos vêm depois', () => {
+  const segmentos = api.extrairValoresPendentesNxj('\\f936520\\fMETADADO\\fOUTRO');
+  assert.deepEqual(segmentos, ['936520', 'METADADO', 'OUTRO']);
+  assert.ok(segmentos.includes('936520'));
+  assert.equal(segmentos.includes('93652'), false);
+});
+
+test('envia keydown e keyup de F7 ao campo real do título com foco', () => {
+  const eventos = [];
+  let documento;
+  const campoTitulo = {
+    focus() {
+      documento.activeElement = this;
+    },
+    dispatchEvent(evento) {
+      eventos.push(evento);
+      return true;
+    }
+  };
+  documento = {
+    activeElement: null,
+    getElementsByName(nome) {
+      assert.equal(nome, 'num_duplicata.');
+      return [campoTitulo];
+    }
+  };
+  class KeyboardEventFake {
+    constructor(tipo, opcoes) {
+      this.type = tipo;
+      Object.assign(this, opcoes);
+    }
+  }
+
+  api.pressionarF7({ document: documento, KeyboardEvent: KeyboardEventFake });
+
+  assert.equal(documento.activeElement, campoTitulo);
+  assert.deepEqual(eventos.map(evento => evento.type), ['keydown', 'keyup']);
+  assert.ok(eventos.every(evento => evento.key === 'F7' && evento.code === 'F7'));
+  assert.ok(eventos.every(evento => evento.keyCode === 118 && evento.which === 118));
+});
+
 test('normaliza somente zeros à esquerda para comparar o título, sem alterar a parcela', () => {
   assert.equal(api.normalizarCodigoComparacao('00012345'), '12345');
   assert.equal(api.normalizarCodigoComparacao('12345'), '12345');
@@ -139,7 +180,7 @@ test('valida assinatura e marcador final do PDF antes de salvar', () => {
 test('entrega um único userscript, sem painéis auxiliares nem serviço Windows', () => {
   assert.match(SOURCE, /@match\s+https:\/\/texhub\.texcotton\.com\.br\/crm\//);
   assert.match(SOURCE, /@match\s+https:\/\/systextil\.texcotton\.com\.br\/systextil\//);
-  assert.match(SOURCE, /GM_download/);
+  assert.match(SOURCE, /GM_download/);\n  assert.match(SOURCE, /key:\s*\"F7\"/);\n  assert.match(SOURCE, /pressionarF7\(pagina\)/);
   assert.match(SOURCE, /saveAs:\s*false/);
   assert.match(SOURCE, /titulo:\s*"num_duplicata\."/);
   assert.match(SOURCE, /parcela:\s*"seq_duplicatas\."/);
