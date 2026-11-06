@@ -10,7 +10,7 @@ O mesmo userscript funciona no CRM e no Systextil. O clique em **Enviar ao Syste
 
 1. Recebe e valida o título e a parcela transferidos pelo SmartTable.
 2. Preenche os campos reais `num_duplicata.` e `seq_duplicatas.` diretamente no Systextil, usando a sequência de comandos NXJ.
-3. Confirma os valores, executa Find e exige exatamente um registro correspondente.
+3. Confirma os valores nos comandos NXJ, envia F7 ao campo do título e exige exatamente um registro correspondente.
 4. Confere título, parcela e cliente antes de acionar **Emite boleto** uma única vez.
 5. Abre **Processos agendados**, acompanha a execução e identifica o processo correto.
 6. Obtém o PDF autenticado, valida a origem e o conteúdo binário e inicia o download para a pasta padrão do navegador.
