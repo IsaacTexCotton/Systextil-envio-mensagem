@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-**Status atual:** v0.4.9 integrada à `main` e validada operacionalmente pelo usuário no Systextil real. PR [#25](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/25), commit `ed39d7da0bb535367bc5533559402494eacb9676`.  
+**Base histórica:** a rotina NXJ v0.4.9 foi validada no Systextil real e evoluiu até o helper-base v0.6.0 na `main`. Esta branch propõe o helper-base v0.6.1, a ponte v0.2.0 e o orquestrador v0.2.0 para automatizar a cadeia completa. Ainda não integrada nem homologada operacionalmente.  
 **Última atualização:** 2026-11-05
 
 > Esta documentação preserva o histórico das fases anteriores. O estado de produção e as correções posteriores prevalecem sobre descrições históricas que indiquem versões anteriores como atuais. Para padrões transversais de automação e instruções para agentes de IA, consulte [guia-automacao-tampermonkey-systextil.md](guia-automacao-tampermonkey-systextil.md).  
@@ -1122,3 +1122,50 @@ A implementação de código e os testes de contrato não comprovam a execução
 7. Confirmar no Chrome 156 que GM_xmlhttpRequest consegue acessar loopback a partir do Tampermonkey instalado. Se a política Local Network Access bloquear a requisição, não desabilitar as proteções: investigar a política corporativa/HTTPS ou adotar outro transporte autorizado.
 
 **Estado da v0.6.0:** proposta em branch própria. Testes automatizados e validação operacional ainda pendentes. A v0.5.0 permanece como versão da main até revisão e integração.
+
+
+## 26. Orquestração completa a partir do CRM (proposta v0.2.0 — 06/11/2026)
+
+### Objetivo e gatilho
+
+O clique explícito em **Enviar ao Systextil** no SmartTable é o gatilho humano para iniciar uma operação completa sobre um título selecionado. A ponte continua responsável por transportar os dados e só publica o evento `smarttable:systextil:pedido-aplicado` depois de reler os dois campos auxiliares e confirmar correspondência exata.
+
+O novo userscript `userscripts/systextil-segunda-via-automatica.user.js` recebe o evento e orquestra o helper-base. Não usa o texto do painel como única evidência do preenchimento.
+
+### Correção da parcela
+
+A correção tem duas barreiras independentes:
+
+1. Depois da confirmação NXJ pelo helper-base, o orquestrador relê o formulário identificado e exige que `seq_duplicatas.` esteja preenchido e seja exatamente igual à parcela recebida do CRM. Um título visual vazio é tolerado somente quando o helper-base já confirmou o valor exato pelo NXJ, conforme comportamento validado do ERP.
+2. Depois do Find, o orquestrador volta a ler título, parcela e cliente. Parcela vazia tem mensagem específica; parcela divergente bloqueia a emissão. A busca precisa retornar exatamente um registro.
+
+Isso evita que a ausência do campo de parcela seja mascarada como divergência do título e impede que o comando de emissão aconteça com parcela não conferida.
+
+### Cadeia automatizada
+
+- O helper-base v0.6.1 inicializa em `document-idle` e monta o painel adequado na Consulta de títulos ou Processos agendados.
+- A ponte v0.2.0 emite o evento com id, título, parcela e razão social depois da transferência validada.
+- O orquestrador v0.2.0 confirma o evento contra o marcador da ponte e os campos auxiliares atuais.
+- O helper-base executa o preenchimento pelos comandos NXJ, com a sequência e as confirmações exatas já cobertas nos testes anteriores.
+- O orquestrador aciona Find, exige um resultado único, título/parcela/clientes conferidos, registra trava de cinco minutos e aciona Emite boleto uma única vez.
+- Depois da emissão registrada, aciona `procAgendados`. Na mesma aba, aguarda a troca de visão; em nova aba, recupera a solicitação da sessão de origem.
+- A análise dos processos é repetida por até três minutos, com atualização da grade configurada. Só uma linha única e concluída com sucesso segue para o download.
+- O helper-base mantém seleção validada, reserva contra duplicidade, validação do PDF e envio ao auxiliar local. O sucesso depende da confirmação do auxiliar.
+
+### Limites e riscos
+
+- A emissão passa a ser automática após a ação explícita do usuário no CRM. Portanto, o primeiro teste precisa ser feito com um título de uma operação real já prevista; não executar uma emissão extra exclusivamente para homologação.
+- O clique em `procAgendados` depende do controle do ERP já documentado. A abertura em mesma aba ou nova aba precisa ser confirmada na homologação real.
+- A recuperação entre abas usa `window.opener.sessionStorage`; se o ERP abrir a visão sem preservar o vínculo de origem, a automação para e não tenta emitir novamente.
+- O auxiliar local continua obrigatório e precisa estar configurado/testado antes do fluxo.
+- Timeout após o clique de emissão não comprova que a emissão falhou. O script preserva a trava e orienta conferir Processos agendados.
+- Timeout de download mantém a reserva em estado indeterminado. É obrigatória a conferência manual da pasta antes de liberar outra tentativa.
+- Esc interrompe o orquestrador, mas não cancela uma emissão já enviada ao ERP.
+- A mudança de `@run-at` do helper-base para `document-idle` faz o painel abrir automaticamente nas telas suportadas. Isso é requisito da integração e deve ser considerado no uso diário.
+
+### Validação
+
+- Núcleo isolado do orquestrador: 8 testes executados localmente com sucesso (06/11/2026): parcela vazia/divergente antes e depois do Find; bloqueio da emissão; sucesso único; trava de repetição; caminho de processo/download; e normalização de zeros à esquerda no título.
+- Ainda pendente nesta branch: execução da suíte completa `npm run verify` (inclui todos os testes do repositório), execução dos novos testes de integração dentro do repositório e homologação no Chrome/Tampermonkey/Systextil real. Os oito testes acima foram executados contra uma cópia local do núcleo do orquestrador, não contra o runner completo da branch remota.
+- A homologação deve verificar especificamente se `procAgendados` abre no mesmo contexto ou nova aba, se o evento chega depois da confirmação dos campos auxiliares e se o processo correspondente pode ser identificado sem ambiguidade.
+- Não fazer merge nem publicar os userscripts até a validação operacional e revisão humana.

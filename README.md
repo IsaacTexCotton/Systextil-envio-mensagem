@@ -4,7 +4,7 @@ Userscripts pequenos e explícitos para reduzir trabalho repetitivo no Systextil
 
 ## Integração SmartTable → Systextil
 
-Ponte para transferir o número e a parcela de um título selecionado no CRM ao painel de segunda via: [documentação da transferência](docs/transferencia-crm-systextil.md) e [userscript da ponte](userscripts/systextil-crm-bridge.user.js). É um userscript independente, instalado nos dois domínios. Não aciona F7, emissão nem download; esses passos continuam no fluxo manual do automatizador.
+Integração entre o SmartTable, a ponte CRM e o orquestrador Systextil: após o usuário selecionar e enviar explicitamente um título no CRM, a automação preenche os campos por NXJ, valida título/parcela, executa Find, exige correspondência única, solicita a emissão, abre Processos agendados e baixa o PDF após sucesso confirmado. Componentes e instalação estão em [documentação da transferência](docs/transferencia-crm-systextil.md), [userscript da ponte](userscripts/systextil-crm-bridge.user.js), [orquestrador](userscripts/systextil-segunda-via-automatica.user.js) e [helper-base](userscripts/systextil-segunda-via-boleto.user.js). A ação explícita de envio no CRM é o gatilho de negócio; sem ela, nenhuma consulta ou emissão é iniciada.
 
 ## Desenvolvimento: segunda via de boleto
 
@@ -14,9 +14,9 @@ Levantamento técnico, evidências, decisões, riscos e pendências estão em [d
 
 Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/systextil-segunda-via-boleto.user.js).
 
-Testes: [tests/segunda-via-boleto.test.js](tests/segunda-via-boleto.test.js).
+Testes: [preenchimento NXJ, processo e download](tests/segunda-via-boleto.test.js), [orquestração completa e bloqueio da parcela](tests/segunda-via-automatica.test.js) e [contrato da ponte](tests/systextil-crm-bridge.test.js).
 
-**Status atual:** o arquivo do automatizador em `main` declara a versão **0.6.0**. Essa versão inclui o fluxo do auxiliar PowerShell local para gravar o PDF na pasta configurada sem alterar a pasta padrão de Downloads do Chrome. A existência do código e do metadado não comprova, por si só, que o auxiliar esteja instalado e pareado em cada estação; siga as instruções específicas abaixo e valide no Windows/Chrome usado na operação.
+**Base da `main`:** o helper-base declara a versão **0.6.0**. Esta branch propõe a versão **0.6.1**, que inicia o painel automaticamente nas telas suportadas para permitir a continuidade do fluxo CRM → Systextil. A proposta ainda não foi integrada à `main`. A existência do código e do metadado não comprova, por si só, que o auxiliar esteja instalado e pareado em cada estação; siga as instruções específicas abaixo e valide no Windows/Chrome usado na operação.
 
 **Auxiliar local:** instruções de instalação e pareamento estão em [tools/boleto-helper/README.md](tools/boleto-helper/README.md).
 

@@ -276,7 +276,7 @@ test('a aba do CRM guarda o pedido e publica somente confirmação sem dados pes
   assert.equal(resultadoEvento.status, 'aguardando');
 });
 
-test('a aba do Systextil consome o pedido pendente e limpa o armazenamento após inserir', async () => {
+test('a aba do Systextil publica evento somente após confirmar título e parcela nos campos auxiliares', async () => {
   const fake = criarPainel();
   const pedido = pedidoValido();
   const ambiente = criarAmbiente({
@@ -285,6 +285,10 @@ test('a aba do Systextil consome o pedido pendente e limpa o armazenamento após
       'smarttable.systextil.title-transfer.v1.pedido': pedido,
     },
   });
+  let pedidoAplicado = null;
+  ambiente.document.addEventListener('smarttable:systextil:pedido-aplicado', (evento) => {
+    pedidoAplicado = JSON.parse(evento.detail);
+  });
 
   await new Promise((resolver) => setTimeout(resolver, 250));
 
@@ -292,4 +296,13 @@ test('a aba do Systextil consome o pedido pendente e limpa o armazenamento após
   assert.equal(fake.parcela.value, '03');
   assert.equal(ambiente.armazenamento.get(ambiente.api.CHAVES.pedido), null);
   assert.equal(ambiente.armazenamento.get(ambiente.api.CHAVES.resultado).status, 'preenchido');
+  assert.deepEqual(pedidoAplicado, {
+    id: 'pedido-12345678',
+    titulo: '00001234',
+    parcela: '03',
+    razaoSocial: 'EMPRESA TESTE LTDA',
+  });
+  assert.equal(fake.painel.children[0].dataset.pedidoId, 'pedido-12345678');
+  assert.equal(fake.painel.children[0].dataset.titulo, '00001234');
+  assert.equal(fake.painel.children[0].dataset.parcela, '03');
 });

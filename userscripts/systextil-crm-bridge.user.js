@@ -18,9 +18,10 @@
 (function () {
   'use strict';
 
-  const VERSAO = '0.1.0';
+  const VERSAO = '0.2.0';
   const EVENTO_ENVIAR = 'smarttable:systextil:enviar-titulo';
   const EVENTO_RESULTADO = 'smarttable:systextil:resultado';
+  const EVENTO_PEDIDO_APLICADO = 'smarttable:systextil:pedido-aplicado';
   const CHAVES = Object.freeze({
     pedido: 'smarttable.systextil.title-transfer.v1.pedido',
     resultado: 'smarttable.systextil.title-transfer.v1.resultado',
@@ -180,6 +181,10 @@
       Number.isInteger(pedido.diasAtraso) ? pedido.diasAtraso + ' dias de atraso' : '',
       pedido.situacao ? 'Situação ' + pedido.situacao : '',
     ].filter(Boolean);
+    referencia.dataset.pedidoId = pedido.id;
+    referencia.dataset.razaoSocial = pedido.razaoSocial;
+    referencia.dataset.titulo = pedido.titulo;
+    referencia.dataset.parcela = pedido.parcela;
     referencia.textContent = partes.join(' · ');
   }
 
@@ -338,14 +343,24 @@
           return;
         }
 
-        aplicarPedidoNoPainel(pedido);
+        const aplicado = aplicarPedidoNoPainel(pedido);
         await gravarChave(CHAVES.pedido, null);
         await publicarResultado(
           pedido,
           'preenchido',
           true,
-          'Dados inseridos nos campos auxiliares do painel. Confira a referência e clique no botão de preenchimento para obter a confirmação NXJ.'
+          'Dados inseridos e conferidos nos campos auxiliares. A automação iniciará a confirmação NXJ e o fluxo da segunda via.'
         );
+
+        const ConstrutorEvento = document.defaultView?.CustomEvent || window.CustomEvent || CustomEvent;
+        document.dispatchEvent(new ConstrutorEvento(EVENTO_PEDIDO_APLICADO, {
+          detail: JSON.stringify({
+            id: aplicado.id,
+            titulo: aplicado.titulo,
+            parcela: aplicado.parcela,
+            razaoSocial: pedido.razaoSocial
+          })
+        }));
       } catch (erro) {
         // Uma falha no armazenamento também precisa encerrar a espera. A
         // limpeza/publicação são best effort para não deixar a aba travada.
