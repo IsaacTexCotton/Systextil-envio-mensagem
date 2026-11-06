@@ -337,18 +337,20 @@
         }
 
         aplicarPedidoNoPainel(pedido);
+        await gravarChave(CHAVES.pedido, null);
+        await liberarConsumidor(pedido);
         await publicarResultado(
           pedido,
           'preenchido',
           true,
           'Dados inseridos nos campos auxiliares do painel. Confira a referência e clique no botão de preenchimento para obter a confirmação NXJ.'
         );
-        await gravarChave(CHAVES.pedido, null);
         encerrarEspera();
       } catch (erro) {
-        await publicarResultado(pedido, 'erro', false, erro?.message || 'Não foi possível inserir os dados no painel.');
         const atual = await lerChave(CHAVES.pedido);
         if (atual?.id === pedido.id) await gravarChave(CHAVES.pedido, null);
+        await liberarConsumidor(pedido);
+        await publicarResultado(pedido, 'erro', false, erro?.message || 'Não foi possível inserir os dados no painel.');
         encerrarEspera();
       } finally {
         await liberarConsumidor(pedido);
