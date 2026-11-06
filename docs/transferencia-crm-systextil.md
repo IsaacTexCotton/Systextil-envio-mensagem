@@ -1,14 +1,16 @@
 # Ponte SmartTable → Systextil
 
 **Userscript:** `userscripts/systextil-crm-bridge.user.js`  
-**Versão da ponte:** 0.1.0  
-**Status:** integrada à `main` em 06/11/2026. A suíte automatizada completa e a homologação no Chrome/Tampermonkey com CRM e Systextil reais continuam como validações pendentes.
+**Versão da ponte:** 0.2.0  
+**Orquestrador:** `userscripts/systextil-segunda-via-automatica.user.js` v0.2.0  
+**Helper-base:** `userscripts/systextil-segunda-via-boleto.user.js` v0.6.1  
+**Status desta branch:** implementação proposta em `feat/segunda-via-automatica-crm`. Não integrada à `main`. Os testes automatizados desta alteração e a homologação operacional no Chrome/Tampermonkey com CRM e Systextil reais ainda precisam ser executados.
 
 ## Objetivo
 
 Transferir um título selecionado na tela do cliente do SmartTable para os campos auxiliares do painel de segunda via do Systextil. O operador escolhe um título por vez.
 
-A ponte não substitui a validação do automatizador de segunda via. Ela apenas prepara os campos de entrada que já existem no painel.
+A ponte transporta os dados e emite um evento local somente depois de confirmar que os dois campos auxiliares foram preenchidos. O orquestrador consome esse evento e conduz as etapas seguintes.
 
 ## Dependências e instalação
 
@@ -20,21 +22,21 @@ A ponte não substitui a validação do automatizador de segunda via. Ela apenas
 
 Não é necessário configurar chave de serviço, servidor externo, endpoint HTTP, extensão adicional ou pasta de destino para a transferência dos campos.
 
-## Fluxo operacional
+## Fluxo automatizado
 
 1. Abra o cadastro da empresa no CRM.
 2. Clique em **Enviar título ao Systextil**.
-3. O SmartTable executa o classificador existente e apresenta os títulos que passaram pelas regras de elegibilidade.
-4. Escolha um único título e clique em **Enviar ao Systextil**.
-5. A ponte guarda o pedido no armazenamento local do Tampermonkey, compartilhado entre as abas desse userscript.
-6. No Systextil, quando o painel de segunda via estiver aberto, a ponte preenche os campos auxiliares:
-   - `st-segunda-via-numero-titulo`
-   - `st-segunda-via-parcela`
-7. A ponte apresenta a razão social, CNPJ, vencimento, saldo e atraso recebidos do CRM como referência visual.
-8. Confira a referência com os dados retornados pelo ERP. Clique manualmente em **Preencher campos no Systextil**.
-9. O automatizador existente executa sua sequência de foco e aguarda as confirmações NXJ. Só depois dessa confirmação o operador confere os campos do ERP e pressiona **F7 manualmente**.
+3. O SmartTable apresenta os títulos elegíveis; escolha um título e clique em **Enviar ao Systextil**. Esse clique explícito é a autorização para iniciar uma consulta/emissão daquele título.
+4. A ponte envia a solicitação pelo armazenamento compartilhado do Tampermonkey. No Systextil, o helper-base e o orquestrador iniciam automaticamente quando a tela suportada termina de carregar.
+5. A ponte preenche os campos auxiliares e confirma por leitura que o título e a parcela correspondem ao pedido. Somente então publica o evento local `smarttable:systextil:pedido-aplicado`.
+6. O orquestrador confere novamente o identificador do pedido, a referência visual e os valores reais dos campos auxiliares. Em seguida, aciona **Preencher campos no Systextil**, que executa a sequência validada de foco e exige confirmação NXJ exata para título e parcela.
+7. Antes de clicar em **Find**, o orquestrador relê o formulário do ERP. Parcela vazia ou divergente bloqueia a consulta. Após o Find, verifica novamente título, parcela, cliente e quantidade de registros; somente uma correspondência única e exata pode avançar.
+8. O orquestrador registra a proteção contra repetição e aciona **Emite boleto** uma única vez. Se o registro do horário de emissão não puder ser confirmado, não tenta emitir novamente.
+9. Após a emissão, aciona o botão de navegação observado `procAgendados`. O orquestrador acompanha a abertura da visão `forms.systextil.batch`. Se o ERP abrir outra aba, o userscript da nova aba recupera a solicitação da sessão de origem; não é feita uma nova emissão.
+10. Em Processos agendados, o helper-base analisa a grade e exige uma correspondência única pelo tipo de processo e horário. O orquestrador aguarda até três minutos, atualizando a grade a cada tentativa, e só continua com sucesso explicitamente confirmado.
+11. O helper-base seleciona o registro correspondente, verifica a integridade dos dados, prepara a URL autenticada do PDF e encaminha o arquivo ao auxiliar local. A conclusão só é exibida quando o auxiliar confirma a gravação.
 
-Depois disso, o fluxo normal do automatizador permanece inalterado: leitura do título após F7, clique manual em Emite boleto, identificação do processo e download conforme a versão instalada.
+A automação não simula a tecla F7 nem submete o formulário. Ela usa o comando **Find** observado na barra do Systextil e os controles identificados do próprio ERP. A emissão, porém, é uma ação de negócio automatizada: é iniciada pelo clique explícito do usuário em **Enviar ao Systextil** no CRM e só ocorre após as validações acima.
 
 ## Dados transferidos
 
@@ -75,6 +77,30 @@ Se a ponte não responder no CRM:
 Se os campos não forem encontrados, se o painel estiver em outra tela ou se os dados expirarem, a solicitação é recusada. Não tente completar o fluxo usando valores parciais: confira a origem e envie novamente pelo CRM.
 
 Se houver erro durante a confirmação NXJ no automatizador atual, siga a orientação já exibida por ele: **não pressione F7** e confira/limpe manualmente os campos antes de uma nova tentativa.
+
+
+
+
+## Salvaguardas da automação completa
+
+- O helper-base passa a iniciar em `document-idle` e abre automaticamente o painel correspondente à Consulta de títulos ou a Processos agendados. Isso evita depender da execução manual do menu Tampermonkey em cada aba.
+- O orquestrador também inicia em `document-idle`. Ele só aceita a solicitação se o marcador da ponte e os valores auxiliares do formulário coincidirem exatamente com o evento recebido.
+- O monitoramento da parcela é independente do texto de sucesso do painel. A ausência ou divergência no campo `seq_duplicatas.` é identificada antes de Find e, novamente, após a consulta. Em qualquer dessas condições, a emissão não acontece.
+- A janela de proteção contra emissão repetida é de cinco minutos por título/parcela. Um timeout depois do clique de emissão é tratado como estado incerto; o script não clica novamente.
+- A identificação do processo não usa apenas a primeira/última linha. Exige correspondência única do tipo de processo e horário, prioriza o segundo exato e interrompe se houver ambiguidade, data inválida ou mensagem de falha.
+- O download conserva a proteção do helper-base: reserva de duplicidade, validação do PDF, pareamento com o auxiliar local, estado indeterminado em timeout e bloqueio de repetição até conferência manual.
+- A chave do auxiliar local precisa estar previamente salva/testada no painel de Processos agendados. Sem o auxiliar pareado e acessível, a emissão ainda pode ser solicitada, mas o PDF não será salvo automaticamente. Configure isso antes do uso operacional.
+- Pressionar **Esc** interrompe a execução do orquestrador. Se a emissão já tiver sido solicitada, interromper a automação não cancela o processo no ERP.
+
+## Instalação para testar a branch
+
+1. Atualize o userscript da ponte para v0.2.0 no Tampermonkey e mantenha-o habilitado no CRM e no Systextil.
+2. Atualize o helper-base para v0.6.1. Ele agora inicializa automaticamente o painel nas telas suportadas.
+3. Instale o novo userscript `userscripts/systextil-segunda-via-automatica.user.js` v0.2.0 no Tampermonkey, habilitado no Systextil.
+4. Configure e teste o auxiliar local pelo helper-base antes de iniciar uma emissão real.
+5. Mantenha uma única sessão/aba de consulta durante a homologação. Se `procAgendados` abrir outra aba, não feche a aba de origem até o processo ser identificado.
+6. Faça a primeira homologação somente com título que já esteja previsto para uma operação real. Não gere um boleto extra apenas para testar.
+
 
 ## Testes
 
