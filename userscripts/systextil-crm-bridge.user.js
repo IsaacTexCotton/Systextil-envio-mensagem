@@ -325,35 +325,49 @@
       if (!painel || !campoTitulo || !campoParcela) return;
 
       consumoEmAndamento = true;
+      let consumidorAdquirido = false;
       try {
         const atual = await lerChave(CHAVES.pedido);
         if (!atual || atual.id !== pedido.id) {
           encerrarEspera();
           return;
         }
-        if (!(await adquirirConsumidor(pedido))) {
+        consumidorAdquirido = await adquirirConsumidor(pedido);
+        if (!consumidorAdquirido) {
           encerrarEspera();
           return;
         }
 
         aplicarPedidoNoPainel(pedido);
         await gravarChave(CHAVES.pedido, null);
-        await liberarConsumidor(pedido);
         await publicarResultado(
           pedido,
           'preenchido',
           true,
           'Dados inseridos nos campos auxiliares do painel. Confira a referência e clique no botão de preenchimento para obter a confirmação NXJ.'
         );
-        encerrarEspera();
       } catch (erro) {
-        const atual = await lerChave(CHAVES.pedido);
-        if (atual?.id === pedido.id) await gravarChave(CHAVES.pedido, null);
-        await liberarConsumidor(pedido);
-        await publicarResultado(pedido, 'erro', false, erro?.message || 'Não foi possível inserir os dados no painel.');
-        encerrarEspera();
+        // Uma falha no armazenamento também precisa encerrar a espera. A
+        // limpeza/publicação são best effort para não deixar a aba travada.
+        try {
+          const atual = await lerChave(CHAVES.pedido);
+          if (atual?.id === pedido.id) await gravarChave(CHAVES.pedido, null);
+        } catch (_) {
+          // O pedido expirará pelo TTL se o armazenamento estiver indisponível.
+        }
+        try {
+          await publicarResultado(
+            pedido,
+            'erro',
+            false,
+            erro?.message || 'Não foi possível inserir os dados no painel.'
+          );
+        } catch (_) {
+          // A falha de comunicação não deve manter o observador ativo.
+        }
       } finally {
-        await liberarConsumidor(pedido);
+        if (consumidorAdquirido) await liberarConsumidor(pedido);
+        if (pedidoEmEspera?.id === pedido.id) encerrarEspera();
       }
     };
 
