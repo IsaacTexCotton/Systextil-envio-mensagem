@@ -4,13 +4,13 @@ Userscripts para reduzir trabalho repetitivo no Systextil, mantendo uma autoriza
 
 ## Segunda via automática — SmartTable → Systextil
 
-**Instalação única:** [userscripts/systextil-segunda-via.user.js](userscripts/systextil-segunda-via.user.js) · v1.0.0.
+**Instalação única:** [userscripts/systextil-segunda-via.user.js](userscripts/systextil-segunda-via.user.js) · v1.0.1.
 
 O mesmo userscript funciona no CRM e no Systextil. O clique em **Enviar ao Systextil** no SmartTable é a única autorização humana necessária. Depois disso, o script:
 
 1. Recebe e valida o título e a parcela transferidos pelo SmartTable.
 2. Preenche os campos reais `num_duplicata.` e `seq_duplicatas.` diretamente no Systextil, usando a sequência de comandos NXJ.
-3. Confirma os valores, executa Find e exige exatamente um registro correspondente.
+3. Confirma os valores nos comandos NXJ, envia F7 ao campo do título e exige exatamente um registro correspondente.
 4. Confere título, parcela e cliente antes de acionar **Emite boleto** uma única vez.
 5. Abre **Processos agendados**, acompanha a execução e identifica o processo correto.
 6. Obtém o PDF autenticado, valida a origem e o conteúdo binário e inicia o download para a pasta padrão do navegador.
@@ -25,7 +25,7 @@ Não são criados painéis flutuantes, campos auxiliares, janelas de conferênci
 
 Documentação da integração: [docs/transferencia-crm-systextil.md](docs/transferencia-crm-systextil.md). Histórico técnico e riscos: [docs/segunda-via-boleto.md](docs/segunda-via-boleto.md).
 
-**Estado da versão 1.0.0:** implementada em branch de revisão. A execução de `npm run verify` e a homologação com Chrome, Tampermonkey e Systextil reais ainda precisam ser concluídas antes de integrar à `main`. Não use uma emissão extra apenas para testar; a primeira homologação deve aproveitar um título de uma operação real já prevista.
+**Estado da versão 1.0.1:** implementada em branch de revisão. A execução de `npm run verify` e a homologação com Chrome, Tampermonkey e Systextil reais ainda precisam ser concluídas antes de integrar à `main`. Não use uma emissão extra apenas para testar; a primeira homologação deve aproveitar um título de uma operação real já prevista.
 
 ## Desenvolvimento e testes
 
