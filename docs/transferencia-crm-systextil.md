@@ -1,125 +1,97 @@
-# Ponte SmartTable → Systextil
+# Segunda via automática — SmartTable → Systextil
 
-**Userscript:** `userscripts/systextil-crm-bridge.user.js`  
-**Versão da ponte:** 0.2.0  
-**Orquestrador:** `userscripts/systextil-segunda-via-automatica.user.js` v0.2.0  
-**Helper-base:** `userscripts/systextil-segunda-via-boleto.user.js` v0.6.1  
-**Status desta branch:** implementação proposta em `feat/segunda-via-automatica-crm`. Não integrada à `main`. Os testes automatizados desta alteração e a homologação operacional no Chrome/Tampermonkey com CRM e Systextil reais ainda precisam ser executados.
+**Userscript único:** `userscripts/systextil-segunda-via.user.js`  
+**Versão:** 1.0.0  
+**Status:** implementação em branch de revisão; a homologação operacional ainda está pendente.
 
-## Objetivo
+## Objetivo e autorização
 
-Transferir um título selecionado na tela do cliente do SmartTable para os campos auxiliares do painel de segunda via do Systextil. O operador escolhe um título por vez.
+O operador seleciona um título no cadastro do cliente do SmartTable e clica em **Enviar ao Systextil**. Esse clique é a única autorização humana para iniciar a consulta e a emissão daquele título.
 
-A ponte transporta os dados e emite um evento local somente depois de confirmar que os dois campos auxiliares foram preenchidos. O orquestrador consome esse evento e conduz as etapas seguintes.
+Depois da autorização, o mesmo userscript conduz todo o processo no Systextil. Não abre painéis flutuantes, não cria campos auxiliares de título/parcela e não solicita F7 manual.
 
-## Dependências e instalação
+## Instalação
 
-1. No SmartTable, o Módulo 39 e o wrapper v1.123.0 já estão integrados à `main` privada. A instalação padrão usa o espelho público `IsaacTexCotton/SmartTable-publico`; confirme que o commit validado foi publicado nele pelo workflow **Espelho público** antes de habilitar a funcionalidade para uso operacional.
-2. Instale o userscript `userscripts/systextil-crm-bridge.user.js` no Tampermonkey. O mesmo userscript precisa estar habilitado nas páginas do CRM e do Systextil, pois o armazenamento GM é compartilhado entre as abas da mesma instalação do script.
-3. Mantenha instalado o userscript existente `userscripts/systextil-segunda-via-boleto.user.js`.
-4. Mantenha uma única aba Systextil ativa durante a transferência. A trava entre abas é cooperativa e reduz disputas, mas não oferece exclusão mútua transacional.
-5. No Systextil, abra a tela Consulta de títulos e ative o painel de segunda via pelo menu do Tampermonkey/atalho já oferecido pelo automatizador (`Ctrl+Alt+B`, depois da primeira ativação contextual).
+1. No Tampermonkey, instale somente `userscripts/systextil-segunda-via.user.js`.
+2. Mantenha o userscript habilitado nos dois domínios: CRM (`texhub.texcotton.com.br/crm/*`) e Systextil (`systextil.texcotton.com.br/systextil/*`).
+3. Aceite as permissões `GM_getValue`, `GM_setValue`, `GM_addValueChangeListener`, `GM_xmlhttpRequest` e `GM_download) solicitadas pelo Tampermonkey.
+4. Confirme que o Chrome permite downloads automáticos para a pasta padrão. Para não abrir o diálogo de destino a cada PDF, desative **Perguntar onde salvar cada arquivo** nas configurações de Downloads do Chrome.
+5. Desative ou remova as antigas entradas `systextil-crm-bridge.user.js`, `systextil-segunda-via-automatica.user.js` e `systextil-segunda-via-boleto.user.js`. Elas foram aposentadas e não devem ser usadas em conjunto com o novo arquivo.
 
-Não é necessário configurar chave de serviço, servidor externo ou endpoint HTTP para a transferência dos campos. Para concluir o download do PDF, o auxiliar local Windows e sua chave de pareamento precisam estar instalados, configurados e testados no painel-base antes de iniciar o fluxo.
+O SmartTable continua responsável por apresentar os títulos elegíveis e emitir o evento de transferência. A ponte, a lógica de orquestração, o preenchimento NXJ e as rotinas de processo/download agora estão no mesmo userscript.
 
-## Fluxo automatizado
+## Fluxo automático
 
-1. Abra o cadastro da empresa no CRM.
-2. Clique em **Enviar título ao Systextil**.
-3. O SmartTable apresenta os títulos elegíveis; escolha um título e clique em **Enviar ao Systextil**. Esse clique explícito é a autorização para iniciar uma consulta/emissão daquele título.
-4. A ponte envia a solicitação pelo armazenamento compartilhado do Tampermonkey. No Systextil, o helper-base e o orquestrador iniciam automaticamente quando a tela suportada termina de carregar.
-5. A ponte preenche os campos auxiliares e confirma por leitura que o título e a parcela correspondem ao pedido. Somente então publica o evento local `smarttable:systextil:pedido-aplicado`.
-6. O orquestrador confere novamente o identificador do pedido, a referência visual e os valores reais dos campos auxiliares. Em seguida, aciona **Preencher campos no Systextil**, que executa a sequência validada de foco e exige confirmação NXJ exata para título e parcela.
-7. Antes de clicar em **Find**, o orquestrador relê o formulário do ERP. Parcela vazia ou divergente bloqueia a consulta. Após o Find, verifica novamente título, parcela, cliente e quantidade de registros; somente uma correspondência única e exata pode avançar.
-8. O orquestrador registra a proteção contra repetição e aciona **Emite boleto** uma única vez. Se o registro do horário de emissão não puder ser confirmado, não tenta emitir novamente.
-9. Após a emissão, aciona o botão de navegação observado `procAgendados`. O orquestrador acompanha a abertura da visão `forms.systextil.batch`. Se o ERP abrir outra aba, o userscript da nova aba recupera a solicitação da sessão de origem; não é feita uma nova emissão.
-10. Em Processos agendados, o helper-base analisa a grade e exige uma correspondência única pelo tipo de processo e horário. O orquestrador aguarda até três minutos, atualizando a grade a cada tentativa, e só continua com sucesso explicitamente confirmado.
-11. O helper-base seleciona o registro correspondente, verifica a integridade dos dados, prepara a URL autenticada do PDF e encaminha o arquivo ao auxiliar local. A conclusão só é exibida quando o auxiliar confirma a gravação.
+1. Abra o cadastro do cliente no SmartTable.
+2. Clique em **Enviar título ao Systextil**, selecione o título e confirme em **Enviar ao Systextil**.
+3. O userscript valida o contrato da transferência, preservando o título e a parcela como texto e os zeros à esquerda.
+4. No Systextil, aguarda a tela **Consulta de títulos** e preenche diretamente os campos reais `num_duplicata.` e `seq_duplicatas.`.
+5. A rotina mantém a sequência de foco, edição, eventos `input/change` e confirmação dos comandos NXJ observada no procedimento funcional. Se o ERP não confirmar exatamente título e parcela, interrompe sem executar Find.
+6. Executa **Find** e espera o Systextil concluir a consulta. Exige exatamente um registro e confere novamente título, parcela e cliente. A parcela é comparada literalmente; apenas zeros à esquerda no título são tolerados na comparação.
+7. Registra a proteção contra repetição e aciona **Emite boleto** uma única vez.
+8. Aciona `procAgendados`. Se o ERP mudar a visão na mesma aba, o userscript acompanha a transição; se abrir outra aba, a aba que receber a visão de processos recupera o estado compartilhado pelo Tampermonkey.
+9. Atualiza a grade automaticamente, procura o processo de emissão pela descrição e pelo horário da solicitação e só continua quando existe uma correspondência única com mensagem de sucesso.
+10. Seleciona a linha identificada, revalida os dados da grade e confere a URL e o relatório PDF fornecidos pelo próprio Systextil.
+11. Obtém o PDF autenticado, confere origem, caminho, relatório, assinatura `%PDF-`, marcador `%%EOF` e limite de tamanho. Só então envia o Blob validado ao download do Tampermonkey.
+12. O navegador salva o arquivo na pasta padrão de Downloads, usando nome baseado na razão social, título e parcela. Em caso de nome já existente, o Tampermonkey usa um nome alternativo em vez de sobrescrever.
 
-A automação não simula a tecla F7 nem submete o formulário. Ela usa o comando **Find** observado na barra do Systextil e os controles identificados do próprio ERP. A emissão, porém, é uma ação de negócio automatizada: é iniciada pelo clique explícito do usuário em **Enviar ao Systextil** no CRM e só ocorre após as validações acima.
+## Download sem auxiliar Windows
+
+A versão 1.0.0 não usa mais:
+
+- Windows PowerShell ou serviço local;
+- listener em `127.0.0.1:17834`;
+- chave/tokens de pareamento;
+- pasta especial configurada pelo auxiliar;
+- upload do PDF para um endpoint local.
+
+O userscript declara `GM_xmlhttpRequest` apenas para obter o PDF do domínio do Systextil, com a sessão autenticada. Após validar a resposta binária, usa `GM_download` com `saveAs: false` e `conflictAction: "uniquify"`. O destino efetivo é a pasta Downloads configurada no navegador.
+
+O download silencioso depende das preferências e permissões do navegador/Tampermonkey. Uma política corporativa pode bloquear downloads automáticos ou solicitar confirmação; o script informa a falha e não deve ser considerado homologado até esse comportamento ser verificado na estação de trabalho.
 
 ## Dados transferidos
 
-O pedido contém:
-- identificador e versão do contrato;
-- data/hora da solicitação;
-- CNPJ completo da empresa de origem;
-- razão social;
-- número do título e parcela/sequência;
-- vencimento, saldo, dias de atraso, situação e fluxo como referências.
+A solicitação inclui identificador, data/hora, CNPJ de referência, razão social, título, parcela/sequência, vencimento, saldo, dias de atraso, situação e fluxo.
 
-O título e a parcela são mantidos como texto, preservando zeros à esquerda. Não são convertidos para números nem truncados. O destino valida novamente o formato e o comprimento efetivo dos campos auxiliares.
+Título e parcela permanecem como strings. O script não converte identificadores em números nem completa/trunca códigos silenciosamente. O campo real do ERP é conferido antes e depois do Find.
 
-Para grupo econômico, o SmartTable consulta os dados pelo leitor já existente e mantém o CNPJ individual de cada razão social. Se a leitura do grupo estiver incompleta, a transferência inteira é bloqueada.
+Os dados de referência do CRM são usados para conduzir a operação e nomear o arquivo. O script não grava observação, contato, negociação ou outros dados comerciais no CRM.
 
-## Limites de segurança
+## Salvaguardas e comportamento em falhas
 
-- A ponte isolada apenas transfere os dados e publica o evento após validar os dois campos auxiliares. O orquestrador é o componente que executa as etapas seguintes.
-- O fluxo completo não simula a tecla F7 nem submete o formulário. Usa o comando Find identificado na barra do Systextil.
-- O clique explícito em **Enviar ao Systextil** no CRM autoriza a consulta e a solicitação de emissão daquele título. A emissão só acontece depois da confirmação NXJ, conferência literal da parcela, correspondência do título e cliente, e retorno de exatamente um registro.
-- A emissão é acionada uma única vez. Em caso de timeout ou confirmação incompleta, o script não repete a ação; o operador deve conferir Processos agendados.
-- A navegação para Processos agendados, a identificação por horário/tipo e o download são conduzidos pelo orquestrador e pelo helper-base. O PDF só é considerado salvo após confirmação do auxiliar local.
-- Não grava observação, contato, negociação ou qualquer outro dado comercial no CRM.
-- Não escreve diretamente nos campos NXJ a partir da ponte. O helper-base usa a sequência de foco e comandos NXJ validada pelo projeto.
-- Não envia dados a serviços externos; o transporte usa o armazenamento GM do próprio Tampermonkey.
-- A solicitação expira após cinco minutos.
-- Só uma solicitação pode ficar pendente por vez.
-- Uma trava cooperativa reduz a chance de duas abas do Systextil consumirem o mesmo pedido. A trava é best effort, não uma transação atômica garantida.
-- A razão social e o CNPJ são referências para conferência humana. A ponte não prova automaticamente que o cadastro retornado pelo ERP pertence à empresa do CRM.
-- Se o título ou a parcela excederem o tamanho do campo auxiliar no Systextil, a ponte interrompe a inserção sem truncar o valor.
+- O clique em **Enviar ao Systextil** é a autorização explícita; nenhuma emissão é iniciada sem ele.
+- Uma solicitação pendente é consumida por uma única aba com trava cooperativa no armazenamento GM. A trava reduz concorrência, mas não é uma transação distribuída.
+- Título e parcela precisam ser confirmados pelos comandos NXJ antes do Find.
+- O Find precisa retornar uma única correspondência; título, parcela e cliente são conferidos antes da emissão.
+- A emissão recebe uma trava de cinco minutos por título/parcela. Se houver timeout depois do clique, o script não clica novamente: o resultado é tratado como incerto.
+- O processo precisa ser identificado sem ambiguidade e informar conclusão com sucesso. Linhas ambíguas, horários ilegíveis ou mensagens de falha bloqueiam o download.
+- O PDF só é baixado após revalidar o processo, a seleção da grade e a URL/relatório.
+- Existe reserva contra download duplicado. Se o navegador não confirmar se o download terminou, a reserva fica indeterminada; confira manualmente a pasta Downloads antes de tentar novamente.
+- `Esc` interrompe a automação local. Não cancela uma emissão já enviada ao ERP.
+- O script não simula F7 e não submete o formulário por teclado; utiliza os controles identificados do ERP.
 
-## Falhas e recuperação
+Se a tela não for **Consulta de títulos** quando a solicitação chegar, o userscript informa a falha ao CRM e não emite. Abra a tela correta e envie o título novamente. Não repita uma solicitação quando o resultado da emissão ou do download estiver indeterminado sem antes conferir Processos agendados e a pasta Downloads.
 
-Se a ponte não responder no CRM:
-- confirme que o userscript de transferência está habilitado nos dois domínios;
-- confira se a página do Systextil está aberta;
-- ative o painel de segunda via e reenvie o título pelo CRM.
+## Testes e homologação
 
-Se os campos não forem encontrados, se o painel estiver em outra tela ou se os dados expirarem, a solicitação é recusada. Se a parcela estiver vazia ou diferente antes ou depois do Find, o orquestrador bloqueia a emissão. Não tente completar o fluxo usando valores parciais nem reenvie o mesmo título antes de conferir o estado da emissão; confira a origem, Processos agendados e a proteção de duplicidade.
+O arquivo `tests/segunda-via-integrada.test.js` cobre contrato de transferência, validação de pedido, preservação de zeros, identificação única de processo, validação de URL/PDF e ausência de painéis/serviço Windows. As suítes existentes continuam cobrindo a sequência NXJ e os contratos legados.
 
-Se houver erro durante a confirmação NXJ no automatizador atual, siga a orientação já exibida por ele: **não pressione F7** e confira/limpe manualmente os campos antes de uma nova tentativa.
-
-
-
-
-## Salvaguardas da automação completa
-
-- O helper-base passa a iniciar em `document-idle` e abre automaticamente o painel correspondente à Consulta de títulos ou a Processos agendados. Isso evita depender da execução manual do menu Tampermonkey em cada aba.
-- O orquestrador também inicia em `document-idle`. Ele só aceita a solicitação se o marcador da ponte e os valores auxiliares do formulário coincidirem exatamente com o evento recebido.
-- O monitoramento da parcela é independente do texto de sucesso do painel. A ausência ou divergência no campo `seq_duplicatas.` é identificada antes de Find e, novamente, após a consulta. Em qualquer dessas condições, a emissão não acontece.
-- A janela de proteção contra emissão repetida é de cinco minutos por título/parcela. Um timeout depois do clique de emissão é tratado como estado incerto; o script não clica novamente.
-- A identificação do processo não usa apenas a primeira/última linha. Exige correspondência única do tipo de processo e horário, prioriza o segundo exato e interrompe se houver ambiguidade, data inválida ou mensagem de falha.
-- O download conserva a proteção do helper-base: reserva de duplicidade, validação do PDF, pareamento com o auxiliar local, estado indeterminado em timeout e bloqueio de repetição até conferência manual.
-- A chave do auxiliar local precisa estar previamente salva/testada no painel de Processos agendados. Sem o auxiliar pareado e acessível, a emissão ainda pode ser solicitada, mas o PDF não será salvo automaticamente. Configure isso antes do uso operacional.
-- Pressionar **Esc** interrompe a execução do orquestrador. Se a emissão já tiver sido solicitada, interromper a automação não cancela o processo no ERP.
-
-## Instalação para testar a branch
-
-1. Atualize o userscript da ponte para v0.2.0 no Tampermonkey e mantenha-o habilitado no CRM e no Systextil.
-2. Atualize o helper-base para v0.6.1. Ele agora inicializa automaticamente o painel nas telas suportadas.
-3. Instale o novo userscript `userscripts/systextil-segunda-via-automatica.user.js` v0.2.0 no Tampermonkey, habilitado no Systextil.
-4. Configure e teste o auxiliar local pelo helper-base antes de iniciar uma emissão real.
-5. Mantenha uma única sessão/aba de consulta durante a homologação. Se `procAgendados` abrir outra aba, não feche a aba de origem até o processo ser identificado.
-6. Faça a primeira homologação somente com título que já esteja previsto para uma operação real. Não gere um boleto extra apenas para testar.
-
-
-## Testes
-
-A suíte `tests/systextil-crm-bridge.test.js` cobre:
-- validação do contrato e preservação de zeros;
-- rejeição de pedido expirado e identificadores inválidos;
-- preenchimento dos campos auxiliares e publicação do evento serializado de pedido aplicado;
-- limite de comprimento;
-- ausência do painel ou dos campos;
-- ausência de clique automático nos controles de negócio pela ponte isolada;
-- publicação do evento serializado somente após conferência dos dois campos auxiliares.
-
-A suíte adicional `tests/segunda-via-automatica.test.js` cobre bloqueio da parcela ausente/divergente antes e depois do Find, correspondência do título com zeros normalizados, bloqueio de repetição de emissão e avanço para download somente após sucesso confirmado.
-
-Execute no repositório com Node.js 18 ou superior:
+Com Node.js 18 ou superior, execute na raiz:
 
 ```powershell
 npm run verify
 ```
 
-A suíte automatizada não substitui a validação operacional no Chrome/Tampermonkey e no Systextil real. A homologação final precisa confirmar a transferência entre duas abas reais e a continuidade do fluxo manual.
+A execução dos testes não comprova a integração operacional. Antes de integrar a `main`, homologar no Chrome/Tampermonkey e Systextil reais, aproveitando um título que já esteja previsto em uma operação real; não gerar uma emissão extra apenas para testar.
+
+A homologação precisa confirmar:
+
+1. A transferência do SmartTable para a aba Systextil.
+2. O preenchimento NXJ nos campos reais e a confirmação de título/parcela.
+3. O Find, a identificação do único registro e a emissão.
+4. A navegação para Processos agendados, tanto na mesma aba quanto em nova aba.
+5. A identificação do processo correto e a confirmação de sucesso.
+6. O download validado do PDF para a pasta Downloads sem janela de destino, incluindo o comportamento de nome duplicado.
+7. O retorno do resultado ao SmartTable e o bloqueio seguro em timeout/falha.
+
+**Não integrar nem distribuir a versão 1.0.0 antes de concluir a revisão e a homologação operacional.**
