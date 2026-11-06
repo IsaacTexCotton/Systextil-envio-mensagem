@@ -47,7 +47,7 @@ A versão 1.0.0 não usa mais:
 
 O userscript declara `GM_xmlhttpRequest` apenas para obter o PDF do domínio do Systextil, com a sessão autenticada. Após validar a resposta binária, usa `GM_download` com `saveAs: false` e `conflictAction: "uniquify"`. O destino efetivo é a pasta Downloads configurada no navegador.
 
-O download silencioso depende das preferências e permissões do navegador/Tampermonkey. Uma política corporativa pode bloquear downloads automáticos ou solicitar confirmação; o script informa a falha e não deve ser considerado homologado até esse comportamento ser verificado na estação de trabalho.
+O download de Blob/File exige Tampermonkey 5.4.6226 ou superior. No modo Browser API do Tampermonkey, conceda a permissão de Downloads e autorize a extensão `.pdf` na lista de extensões permitidas; nesse modo, `saveAs: false` usa o destino padrão e `conflictAction: "uniquify"` evita sobrescrita. Uma política corporativa pode bloquear downloads automáticos ou solicitar confirmação; o script informa a falha e não deve ser considerado homologado até esse comportamento ser verificado na estação de trabalho.
 
 ## Dados transferidos
 
