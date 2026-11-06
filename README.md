@@ -4,7 +4,7 @@ Userscripts pequenos e explícitos para reduzir trabalho repetitivo no Systextil
 
 ## Integração SmartTable → Systextil
 
-Ponte para transferir o número e a parcela de um título selecionado no CRM ao painel de segunda via: [documentação da transferência](docs/transferencia-crm-systextil.md) e [userscript da ponte](userscripts/systextil-crm-bridge.user.js). É um userscript independente, instalado nos dois domínios. Não aciona F7, emissão nem download; esses passos continuam no fluxo manual do automatizador.
+Integração entre o SmartTable, a ponte CRM e o orquestrador Systextil: após o usuário selecionar e enviar explicitamente um título no CRM, a automação preenche os campos por NXJ, valida título/parcela, executa Find, exige correspondência única, solicita a emissão, abre Processos agendados e baixa o PDF após sucesso confirmado. Componentes e instalação estão em [documentação da transferência](docs/transferencia-crm-systextil.md), [userscript da ponte](userscripts/systextil-crm-bridge.user.js), [orquestrador](userscripts/systextil-segunda-via-automatica.user.js) e [helper-base](userscripts/systextil-segunda-via-boleto.user.js). A ação explícita de envio no CRM é o gatilho de negócio; sem ela, nenhuma consulta ou emissão é iniciada.
 
 ## Desenvolvimento: segunda via de boleto
 
