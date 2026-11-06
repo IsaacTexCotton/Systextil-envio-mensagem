@@ -1017,9 +1017,9 @@ A limpeza visual do campo, isoladamente, não é usada como prova de falha nem c
 
 ### Limites operacionais preservados
 
-- O userscript não pressiona F7.
+- O userscript envia os eventos `keydown`/`keyup` de F7 ao campo real do título após confirmar título e parcela pelo NXJ.
 - O userscript não submete o formulário.
-- O usuário deve conferir título e parcela antes de executar a consulta manualmente.
+- A consulta só avança após o Systextil sair do modo de busca e devolver um resultado verificável.
 - O monitoramento de XHR é temporário e restrito à etapa de preenchimento; não deve ser transformado em captura geral de tráfego.
 - Diagnósticos não devem registrar valores de cliente, cookies, tokens, parâmetros de sessão ou payloads completos.
 
@@ -1187,6 +1187,7 @@ O clique explícito em **Enviar ao Systextil** no SmartTable continua sendo a ú
 ### Mudanças em relação às versões 0.x
 
 - Integra no mesmo userscript as funções anteriormente distribuídas entre bridge, orquestrador e helper-base.
+- A confirmação NXJ procura o valor exato em todos os segmentos separados por `\\f` no `fieldValues`, pois o ERP pode incluir outros valores no mesmo POST. Em seguida, o userscript envia F7 ao campo do título e espera a confirmação da consulta.
 - Preenche diretamente `num_duplicata.` e `seq_duplicatas.` no formulário real do Systextil; remove os campos duplicados e os painéis flutuantes.
 - Mantém a sequência NXJ de foco, edição e confirmação, além das validações independentes da parcela antes e depois do Find.
 - Exige um único registro de Find e confere título, parcela e cliente antes de clicar uma única vez em **Emite boleto**.
