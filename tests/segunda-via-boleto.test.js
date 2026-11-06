@@ -32,7 +32,12 @@ function carregarApi(forms = [], propriedadesJanela = {}, propriedadesGlobais = 
     error() {},
     log() {}
   };
-  const window = { document, console: consoleTeste, ...propriedadesJanela };
+  const window = {
+    document,
+    console: consoleTeste,
+    addEventListener() {},
+    ...propriedadesJanela
+  };
   window.top = window;
   if (propriedadesGlobais.unsafeWindow) propriedadesGlobais.unsafeWindow.document = document;
 
