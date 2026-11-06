@@ -354,12 +354,12 @@
 
         const ConstrutorEvento = document.defaultView?.CustomEvent || window.CustomEvent || CustomEvent;
         document.dispatchEvent(new ConstrutorEvento(EVENTO_PEDIDO_APLICADO, {
-          detail: {
+          detail: JSON.stringify({
             id: aplicado.id,
             titulo: aplicado.titulo,
             parcela: aplicado.parcela,
             razaoSocial: pedido.razaoSocial
-          }
+          })
         }));
       } catch (erro) {
         // Uma falha no armazenamento também precisa encerrar a espera. A
