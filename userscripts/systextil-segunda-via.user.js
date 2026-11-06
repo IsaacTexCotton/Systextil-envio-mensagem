@@ -2081,6 +2081,8 @@
     }
   }
 
+  const pausa = ms => new Promise(resolve => setTimeout(resolve, ms));
+
   let cancelado = false;
   let consumoEmAndamento = false;
   let processamentoEmAndamento = false;
@@ -2391,7 +2393,7 @@
       lerRegistrosProcessos
     );
     const nomeArquivo = montarNomeArquivo({
-      cliente: execucao.razaoSocial || execucao.cliente,
+      cliente: execucao.cliente || execucao.razaoSocial,
       titulo: execucao.titulo,
       parcela: execucao.parcela
     });
