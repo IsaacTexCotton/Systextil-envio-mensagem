@@ -13,6 +13,8 @@
 // @grant        GM_setValue
 // @grant        GM_addValueChangeListener
 // @grant        GM_download
+// @grant        GM_xmlhttpRequest
+// @connect      systextil.texcotton.com.br
 // @updateURL    https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via.user.js
 // @downloadURL  https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via.user.js
 // ==/UserScript==
@@ -45,6 +47,7 @@
   const TEMPO_RESERVA_DOWNLOAD_MS = 15 * 60 * 1000;
   const PROGRAMA_RELATORIO_BOLETO = "forms.crec.crec_e259";
   const CHAVE_DOWNLOAD_PREFIXO = "st-segunda-via-boleto:download:";
+  const TAMANHO_MAXIMO_PDF = 25 * 1024 * 1024;
 
   const EM_NODE = typeof module === "object" && module.exports;
   const URL_ATUAL = EM_NODE ? null : new URL(window.location.href);
@@ -1469,7 +1472,41 @@
     return true;
   }
 
+  function validarBytesPdf(bytesRecebidos) {
+    let buffer;
+    if (Object.prototype.toString.call(bytesRecebidos) === "[object ArrayBuffer]") {
+      buffer = bytesRecebidos;
+    } else if (ArrayBuffer.isView(bytesRecebidos)) {
+      buffer = bytesRecebidos.buffer.slice(
+        bytesRecebidos.byteOffset,
+        bytesRecebidos.byteOffset + bytesRecebidos.byteLength
+      );
+    } else {
+      throw new Error("O Systextil não retornou o PDF em formato binário verificável.");
+    }
+
+    if (buffer.byteLength < 8 || buffer.byteLength > TAMANHO_MAXIMO_PDF) {
+      throw new Error("O PDF está vazio ou excede o limite de 25 MB.");
+    }
+
+    const bytes = new Uint8Array(buffer);
+    const assinatura = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3], bytes[4]);
+    if (assinatura !== "%PDF-") {
+      throw new Error("A resposta do Systextil não contém a assinatura de um PDF.");
+    }
+
+    const inicioCauda = Math.max(0, bytes.length - 2048);
+    const cauda = String.fromCharCode(...bytes.subarray(inicioCauda));
+    if (!cauda.includes("%%EOF")) {
+      throw new Error("O PDF recebido não contém o marcador final esperado.");
+    }
+    return buffer;
+  }
+
   function iniciarDownloadPdf(url, nomeArquivo, callbacks) {
+    if (typeof GM_xmlhttpRequest !== "function") {
+      throw new Error("GM_xmlhttpRequest não está disponível. Verifique as permissões do Tampermonkey.");
+    }
     if (typeof GM_download !== "function") {
       throw new Error("GM_download não está disponível. Verifique se o Tampermonkey permite downloads.");
     }
@@ -1481,17 +1518,111 @@
       throw new Error("O nome do PDF é inválido.");
     }
 
-    return GM_download({
-      url,
-      name: nomeArquivo,
-      saveAs: false,
-      conflictAction: "uniquify",
-      anonymous: false,
-      onload: detalhe => callbacks?.onload?.(detalhe),
-      onerror: erro => callbacks?.onerror?.(erro),
-      ontimeout: erro => callbacks?.ontimeout?.(erro),
-      onabort: erro => callbacks?.onabort?.(erro)
-    });
+    let finalizado = false;
+    let requisicaoPdf = null;
+    let requisicaoDownload = null;
+
+    const finalizar = (tipo, detalhe) => {
+      if (finalizado) return;
+      finalizado = true;
+      if (tipo === "sucesso") callbacks?.onload?.(detalhe);
+      else if (tipo === "timeout") callbacks?.ontimeout?.(detalhe);
+      else if (tipo === "abort") callbacks?.onabort?.(detalhe);
+      else callbacks?.onerror?.(detalhe);
+    };
+
+    try {
+      requisicaoPdf = GM_xmlhttpRequest({
+        method: "GET",
+        url,
+        responseType: "arraybuffer",
+        timeout: 60000,
+        anonymous: false,
+        onload(response) {
+          try {
+            if (Number(response.status) !== 200) {
+              throw new Error("O Systextil não entregou o PDF (HTTP " + Number(response.status) + ").");
+            }
+
+            const urlSolicitada = new URL(url);
+            const urlFinal = new URL(response.finalUrl || url);
+            if (
+              urlFinal.origin !== urlSolicitada.origin ||
+              urlFinal.pathname !== urlSolicitada.pathname ||
+              urlFinal.searchParams.get("report") !== urlSolicitada.searchParams.get("report")
+            ) {
+              throw new Error("A resposta do Systextil foi redirecionada para outro recurso. Download interrompido.");
+            }
+
+            const pdf = validarBytesPdf(response.response);
+            const blob = new Blob([pdf], { type: "application/pdf" });
+
+            requisicaoDownload = GM_download({
+              url: blob,
+              name: nomeArquivo,
+              saveAs: false,
+              conflictAction: "uniquify",
+              onload: detalhe => finalizar("sucesso", detalhe),
+              onerror: erro => finalizar("erro", {
+                error: erro?.error || "not_succeeded",
+                stage: "download",
+                message: erro?.details || erro?.error || "O navegador não concluiu o download."
+              }),
+              ontimeout: erro => finalizar("timeout", {
+                error: "timeout",
+                stage: "download",
+                message: erro?.details || "O navegador excedeu o tempo para baixar o PDF."
+              }),
+              onabort: erro => finalizar("abort", {
+                error: "abort",
+                stage: "download",
+                message: erro?.details || "O download foi cancelado."
+              })
+            });
+          } catch (erro) {
+            finalizar("erro", {
+              error: "fetch_failed",
+              stage: "fetch",
+              message: erro?.message || "Não foi possível validar o PDF recebido."
+            });
+          }
+        },
+        onerror(response) {
+          finalizar("erro", {
+            error: "fetch_failed",
+            stage: "fetch",
+            message: "Não foi possível obter o PDF autenticado do Systextil (HTTP " + (Number(response?.status) || 0) + ")."
+          });
+        },
+        ontimeout() {
+          finalizar("erro", {
+            error: "fetch_timeout",
+            stage: "fetch",
+            message: "O Systextil excedeu o tempo para entregar o PDF. O download local não foi iniciado."
+          });
+        },
+        onabort() {
+          finalizar("abort", {
+            error: "fetch_aborted",
+            stage: "fetch",
+            message: "A obtenção do PDF foi interrompida antes de iniciar o download."
+          });
+        }
+      });
+    } catch (erro) {
+      finalizar("erro", {
+        error: "fetch_failed",
+        stage: "fetch",
+        message: erro?.message || "Não foi possível iniciar a obtenção do PDF."
+      });
+    }
+
+    return {
+      abort() {
+        try { requisicaoPdf?.abort?.(); } catch (_) {}
+        try { requisicaoDownload?.abort?.(); } catch (_) {}
+      }
+    };
   }
 
   function localizarJanelaPagina(documentoAlvo) {
@@ -1998,6 +2129,16 @@
     return null;
   }
 
+  async function aguardarVisaoInicial(pagina, limiteMs = 25000) {
+    const inicio = Date.now();
+    while (Date.now() - inicio < limiteMs) {
+      const estado = lerEstadoSystextil(pagina);
+      if (estado && [VISAO_CONSULTA, VISAO_PROCESSOS].includes(estado.visao)) return estado;
+      await pausa(150);
+    }
+    return lerEstadoSystextil(pagina);
+  }
+
   async function aguardarResultadoFind(pagina, limiteMs = 20000) {
     const inicio = Date.now();
     while (Date.now() - inicio < limiteMs) {
@@ -2094,7 +2235,6 @@
         throw new Error("O título exibido no Systextil diverge do título recebido do CRM. A consulta foi bloqueada.");
       }
 
-      const totalAntesFind = monitor.total;
       statusOperacional("Consultando o título no ERP.");
       clicarBarraConsulta("buscar");
       await aguardarOcioso(monitor, 20000);
@@ -2283,7 +2423,7 @@
         }
 
         const codigoErro = String(erro?.error ?? "").toLowerCase();
-        const falhaAntesDeIniciar = ["not_enabled", "not_whitelisted", "not_permitted", "not_supported"].includes(codigoErro);
+        const falhaAntesDeIniciar = erro?.stage === "fetch" || ["not_enabled", "not_whitelisted", "not_permitted", "not_supported"].includes(codigoErro);
 
         if (falhaAntesDeIniciar) {
           liberarDownload(armazenamento, chaveDownload);
@@ -2470,8 +2610,7 @@
       });
     }
 
-    const estadoInicial = await aguardarVisao(pagina, VISAO_CONSULTA, 25000)
-      || lerEstadoSystextil(pagina);
+    const estadoInicial = await aguardarVisaoInicial(pagina, 25000);
 
     if (estadoInicial?.visao === VISAO_PROCESSOS) {
       const execucao = await lerChave(CHAVES.execucao);
@@ -2499,6 +2638,12 @@
         if (execucao?.status === "emissao-solicitada" || execucao?.status === "processando") {
           cancelado = false;
           void executarProcessosAutomaticamente(pagina, execucao);
+        }
+      } else if (atual.visao === VISAO_CONSULTA && !consumoEmAndamento) {
+        const pedido = await lerChave(CHAVES.pedido).catch(() => null);
+        if (pedido) {
+          cancelado = false;
+          void consumirPedido(pedido, pagina);
         }
       }
     }, 500);
