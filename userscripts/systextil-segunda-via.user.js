@@ -2657,6 +2657,7 @@
       interpretarDataHoraProcesso,
       normalizarCodigoComparacao,
       validarUrlPdf,
+      validarBytesPdf,
       montarNomeArquivo,
       montarChaveDownload,
       reservarDownload,
