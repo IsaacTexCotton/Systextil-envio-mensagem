@@ -15,7 +15,8 @@ A ponte não substitui a validação do automatizador de segunda via. Ela apenas
 1. No SmartTable, a funcionalidade depende do Módulo 39 e do wrapper atualizado para a versão 1.123.0. A versão precisa estar publicada no canal `main` antes de ser usada na instalação normal.
 2. Instale o userscript `userscripts/systextil-crm-bridge.user.js` no Tampermonkey. O mesmo userscript precisa estar habilitado nas páginas do CRM e do Systextil, pois o armazenamento GM é compartilhado entre as abas da mesma instalação do script.
 3. Mantenha instalado o userscript existente `userscripts/systextil-segunda-via-boleto.user.js`.
-4. No Systextil, abra a tela Consulta de títulos e ative o painel de segunda via pelo menu do Tampermonkey/atalho já oferecido pelo automatizador (`Ctrl+Alt+B`, depois da primeira ativação contextual).
+4. Mantenha uma única aba Systextil ativa durante a transferência. A trava entre abas é cooperativa e reduz disputas, mas não oferece exclusão mútua transacional.
+5. No Systextil, abra a tela Consulta de títulos e ative o painel de segunda via pelo menu do Tampermonkey/atalho já oferecido pelo automatizador (`Ctrl+Alt+B`, depois da primeira ativação contextual).
 
 Não é necessário configurar chave de serviço, servidor externo, endpoint HTTP, extensão adicional ou pasta de destino para a transferência dos campos.
 
