@@ -2927,50 +2927,62 @@
     }
   }
 
-  // O popup do Tampermonkey injeta esta rotina na aba ativa sem reload.
-  // O script reconhece Consulta de títulos e Processos agendados.
-  if (!ehTelaSuportada()) {
-    console.warn(
-      "[Systextil Segunda Via] Abra Consulta de títulos ou Processos agendados antes de executar este atalho."
-    );
-    return;
+  function inicializarPainelNaTelaAtual() {
+    if (!ehTelaSuportada()) return false;
+
+    if (ehTelaConsultaTitulo()) {
+      instalarCapturaCliqueEmissao();
+    }
+
+    // Listener no window permite substituir em memória listeners antigos
+    // que versões anteriores registraram diretamente no document.
+    if (window.__systextilSegundaViaBoletoShortcutVersion !== VERSION) {
+      window.addEventListener("keydown", function (event) {
+        const atalho =
+          event.ctrlKey &&
+          event.altKey &&
+          !event.shiftKey &&
+          String(event.key || "").toLowerCase() === "b";
+
+        if (!atalho || event.repeat) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        alternarPainel();
+      }, true);
+
+      window.__systextilSegundaViaBoletoShortcutVersion = VERSION;
+    }
+
+    // Substitui painel de versão antiga e monta o painel correspondente
+    // à tela que já estiver ativa.
+    const painelAtual = document.getElementById(PANEL_ID);
+    if (painelAtual && painelAtual.dataset.scriptVersion !== VERSION) {
+      painelAtual.remove();
+      window.__systextilSegundaViaBoletoLoaded = false;
+    }
+
+    alternarPainel();
+    return true;
   }
 
-  if (ehTelaConsultaTitulo()) {
-    instalarCapturaCliqueEmissao();
+  // Com document-idle, o Systextil ainda pode estar construindo o formulário.
+  // Observamos apenas inserções no documento e encerramos o observer assim
+  // que uma das duas telas suportadas aparecer.
+  if (!inicializarPainelNaTelaAtual()) {
+    if (typeof MutationObserver === "function" && document.documentElement) {
+      const observer = new MutationObserver(() => {
+        if (!inicializarPainelNaTelaAtual()) return;
+        observer.disconnect();
+        window.__systextilSegundaViaBoletoObserver = null;
+      });
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+      window.__systextilSegundaViaBoletoObserver = observer;
+    } else {
+      console.warn(
+        "[Systextil Segunda Via] A tela suportada ainda não está disponível neste documento."
+      );
+    }
   }
-
-  // Listener no window permite substituir em memória listeners antigos
-  // que versões anteriores registraram diretamente no document.
-  if (window.__systextilSegundaViaBoletoShortcutVersion !== VERSION) {
-    window.addEventListener("keydown", function (event) {
-      const atalho =
-        event.ctrlKey &&
-        event.altKey &&
-        !event.shiftKey &&
-        String(event.key || "").toLowerCase() === "b";
-
-      if (!atalho || event.repeat) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-      alternarPainel();
-    }, true);
-
-    window.__systextilSegundaViaBoletoShortcutVersion = VERSION;
-  }
-
-  // Ao executar uma versão nova pelo popup, substitui o painel antigo
-  // na própria aba sem exigir recarga da página.
-  const painelAtual = document.getElementById(PANEL_ID);
-
-  if (painelAtual && painelAtual.dataset.scriptVersion !== VERSION) {
-    painelAtual.remove();
-    window.__systextilSegundaViaBoletoLoaded = false;
-  }
-
-  // Reavalia a tela atual para montar o painel correto, inclusive em
-  // Processos agendados após atualizar uma versão antiga já aberta.
-  alternarPainel();
 })();
