@@ -1165,7 +1165,7 @@ Isso evita que a ausência do campo de parcela seja mascarada como divergência 
 
 ### Validação
 
-- Núcleo isolado do orquestrador: 7 testes locais aprovados (6/11/2026): parcela vazia/divergente antes e depois do Find; bloqueio de emissão; sucesso único; trava de repetição; e caminho de processo/download.
-- Ainda pendente nesta branch: suíte completa `npm run verify`, testes de contrato da ponte/orquestrador e homologação no Chrome/Tampermonkey/Systextil real.
+- Núcleo isolado do orquestrador: 8 testes executados localmente com sucesso (06/11/2026): parcela vazia/divergente antes e depois do Find; bloqueio da emissão; sucesso único; trava de repetição; caminho de processo/download; e normalização de zeros à esquerda no título.
+- Ainda pendente nesta branch: execução da suíte completa `npm run verify` (inclui todos os testes do repositório), execução dos novos testes de integração dentro do repositório e homologação no Chrome/Tampermonkey/Systextil real. Os oito testes acima foram executados contra uma cópia local do núcleo do orquestrador, não contra o runner completo da branch remota.
 - A homologação deve verificar especificamente se `procAgendados` abre no mesmo contexto ou nova aba, se o evento chega depois da confirmação dos campos auxiliares e se o processo correspondente pode ser identificado sem ambiguidade.
 - Não fazer merge nem publicar os userscripts até a validação operacional e revisão humana.
