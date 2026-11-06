@@ -2,6 +2,10 @@
 
 Userscripts pequenos e explícitos para reduzir trabalho repetitivo no Systextil. O código não deve executar consultas, enviar mensagens nem gravar dados sem ação explícita do operador.
 
+## Integração SmartTable → Systextil
+
+Ponte para transferir o número e a parcela de um título selecionado no CRM ao painel de segunda via: [documentação da transferência](docs/transferencia-crm-systextil.md) e [userscript da ponte](userscripts/systextil-crm-bridge.user.js). É um userscript independente, instalado nos dois domínios. Não aciona F7, emissão nem download; esses passos continuam no fluxo manual do automatizador.
+
 ## Desenvolvimento: segunda via de boleto
 
 Guia transversal para novas automações e agentes de IA: [docs/guia-automacao-tampermonkey-systextil.md](docs/guia-automacao-tampermonkey-systextil.md). Ele complementa o `AGENTS.md` com padrões de DOM, contexto da página, integração com o ERP, segurança, testes e critérios de validação.
