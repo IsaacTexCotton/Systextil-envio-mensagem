@@ -20,7 +20,7 @@ A ponte transporta os dados e emite um evento local somente depois de confirmar 
 4. Mantenha uma única aba Systextil ativa durante a transferência. A trava entre abas é cooperativa e reduz disputas, mas não oferece exclusão mútua transacional.
 5. No Systextil, abra a tela Consulta de títulos e ative o painel de segunda via pelo menu do Tampermonkey/atalho já oferecido pelo automatizador (`Ctrl+Alt+B`, depois da primeira ativação contextual).
 
-Não é necessário configurar chave de serviço, servidor externo, endpoint HTTP, extensão adicional ou pasta de destino para a transferência dos campos.
+Não é necessário configurar chave de serviço, servidor externo ou endpoint HTTP para a transferência dos campos. Para concluir o download do PDF, o auxiliar local Windows e sua chave de pareamento precisam estar instalados, configurados e testados no painel-base antes de iniciar o fluxo.
 
 ## Fluxo automatizado
 
@@ -54,12 +54,13 @@ Para grupo econômico, o SmartTable consulta os dados pelo leitor já existente 
 
 ## Limites de segurança
 
-- A transferência não executa F7.
-- Não aciona Emite boleto.
-- Não seleciona processo de emissão.
-- Não baixa nem salva PDF.
-- Não grava observação, contato, negociação ou qualquer dado no CRM.
-- Não escreve diretamente nos campos do formulário NXJ do ERP. Preenche somente os dois campos auxiliares do painel de segunda via.
+- A ponte isolada apenas transfere os dados e publica o evento após validar os dois campos auxiliares. O orquestrador é o componente que executa as etapas seguintes.
+- O fluxo completo não simula a tecla F7 nem submete o formulário. Usa o comando Find identificado na barra do Systextil.
+- O clique explícito em **Enviar ao Systextil** no CRM autoriza a consulta e a solicitação de emissão daquele título. A emissão só acontece depois da confirmação NXJ, conferência literal da parcela, correspondência do título e cliente, e retorno de exatamente um registro.
+- A emissão é acionada uma única vez. Em caso de timeout ou confirmação incompleta, o script não repete a ação; o operador deve conferir Processos agendados.
+- A navegação para Processos agendados, a identificação por horário/tipo e o download são conduzidos pelo orquestrador e pelo helper-base. O PDF só é considerado salvo após confirmação do auxiliar local.
+- Não grava observação, contato, negociação ou qualquer outro dado comercial no CRM.
+- Não escreve diretamente nos campos NXJ a partir da ponte. O helper-base usa a sequência de foco e comandos NXJ validada pelo projeto.
 - Não envia dados a serviços externos; o transporte usa o armazenamento GM do próprio Tampermonkey.
 - A solicitação expira após cinco minutos.
 - Só uma solicitação pode ficar pendente por vez.
@@ -74,7 +75,7 @@ Se a ponte não responder no CRM:
 - confira se a página do Systextil está aberta;
 - ative o painel de segunda via e reenvie o título pelo CRM.
 
-Se os campos não forem encontrados, se o painel estiver em outra tela ou se os dados expirarem, a solicitação é recusada. Não tente completar o fluxo usando valores parciais: confira a origem e envie novamente pelo CRM.
+Se os campos não forem encontrados, se o painel estiver em outra tela ou se os dados expirarem, a solicitação é recusada. Se a parcela estiver vazia ou diferente antes ou depois do Find, o orquestrador bloqueia a emissão. Não tente completar o fluxo usando valores parciais nem reenvie o mesmo título antes de conferir o estado da emissão; confira a origem, Processos agendados e a proteção de duplicidade.
 
 Se houver erro durante a confirmação NXJ no automatizador atual, siga a orientação já exibida por ele: **não pressione F7** e confira/limpe manualmente os campos antes de uma nova tentativa.
 
@@ -110,7 +111,10 @@ A suíte `tests/systextil-crm-bridge.test.js` cobre:
 - preenchimento dos campos auxiliares e publicação do evento serializado de pedido aplicado;
 - limite de comprimento;
 - ausência do painel ou dos campos;
-- ausência de clique automático em controles do ERP.
+- ausência de clique automático nos controles de negócio pela ponte isolada;
+- publicação do evento serializado somente após conferência dos dois campos auxiliares.
+
+A suíte adicional `tests/segunda-via-automatica.test.js` cobre bloqueio da parcela ausente/divergente antes e depois do Find, correspondência do título com zeros normalizados, bloqueio de repetição de emissão e avanço para download somente após sucesso confirmado.
 
 Execute no repositório com Node.js 18 ou superior:
 
