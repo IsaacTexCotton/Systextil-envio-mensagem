@@ -1,5 +1,8 @@
 # Segunda via de boleto — levantamento técnico
 
+> **Atualização da arquitetura (v1.0.0):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. Elas não são mais instruções de instalação/operação. A implementação vigente em revisão é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte `docs/transferencia-crm-systextil.md` para as instruções atuais.
+
+
 **Base histórica:** a rotina NXJ v0.4.9 foi validada no Systextil real e evoluiu até o helper-base v0.6.0 na `main`. Esta branch propõe o helper-base v0.6.1, a ponte v0.2.0 e o orquestrador v0.2.0 para automatizar a cadeia completa. Ainda não integrada nem homologada operacionalmente.  
 **Última atualização:** 2026-11-05
 
@@ -1169,3 +1172,48 @@ Isso evita que a ausência do campo de parcela seja mascarada como divergência 
 - Ainda pendente nesta branch: execução da suíte completa `npm run verify` (inclui todos os testes do repositório), execução dos novos testes de integração dentro do repositório e homologação no Chrome/Tampermonkey/Systextil real. Os oito testes acima foram executados contra uma cópia local do núcleo do orquestrador, não contra o runner completo da branch remota.
 - A homologação deve verificar especificamente se `procAgendados` abre no mesmo contexto ou nova aba, se o evento chega depois da confirmação dos campos auxiliares e se o processo correspondente pode ser identificado sem ambiguidade.
 - Não fazer merge nem publicar os userscripts até a validação operacional e revisão humana.
+
+
+## 27. Userscript único e download para Downloads (v1.0.0 — 06/11/2026)
+
+### Objetivo
+
+Consolidar a transferência CRM, o preenchimento NXJ, a consulta, a emissão, o acompanhamento de Processos agendados e o download em um único arquivo instalável no Tampermonkey:
+
+`userscripts/systextil-segunda-via.user.js`
+
+O clique explícito em **Enviar ao Systextil** no SmartTable continua sendo a única autorização humana. Nenhuma emissão acontece sem esse evento.
+
+### Mudanças em relação às versões 0.x
+
+- Integra no mesmo userscript as funções anteriormente distribuídas entre bridge, orquestrador e helper-base.
+- Preenche diretamente `num_duplicata.` e `seq_duplicatas.` no formulário real do Systextil; remove os campos duplicados e os painéis flutuantes.
+- Mantém a sequência NXJ de foco, edição e confirmação, além das validações independentes da parcela antes e depois do Find.
+- Exige um único registro de Find e confere título, parcela e cliente antes de clicar uma única vez em **Emite boleto**.
+- Acompanha Processos agendados, identifica uma correspondência única por tipo de processo e horário, seleciona a linha conferida e valida a URL/relatório.
+- Substitui o serviço Windows por download no navegador. O userscript obtém o PDF autenticado com `GM_xmlhttpRequest`, valida origem, caminho, relatório, assinatura `%PDF-`, marcador `%%EOF` e limite de 25 MB, e só então chama `GM_download` com `saveAs: false` e `conflictAction: "uniquify"`.
+- Remove a dependência de PowerShell, listener loopback, chave de pareamento e pasta local exclusiva.
+- Mantém trava de emissão e reserva de download para evitar repetição em estados confirmados ou indeterminados.
+
+### Instalação
+
+Instalar somente `userscripts/systextil-segunda-via.user.js` no Tampermonkey, habilitado nas páginas CRM e Systextil. Desativar/remover as três entradas antigas `systextil-crm-bridge.user.js`, `systextil-segunda-via-automatica.user.js` e `systextil-segunda-via-boleto.user.js`; elas foram aposentadas por metadados e não devem coexistir com a versão unificada.
+
+O navegador precisa permitir os downloads automáticos do Tampermonkey. Para evitar o diálogo de escolha de pasta, desative no Chrome **Perguntar onde salvar cada arquivo**. Os arquivos são gravados na pasta Downloads configurada no navegador.
+
+### Limites operacionais
+
+- `GM_download` não permite ao userscript escolher um caminho absoluto do Windows. O destino é a pasta padrão definida pelo navegador.
+- Uma política corporativa do Chrome/Tampermonkey pode bloquear downloads ou solicitar confirmação. Homologar esse comportamento na estação operacional.
+- Timeout depois do clique em **Emite boleto** não comprova falha da emissão; o código não repete automaticamente.
+- Quando o resultado de `GM_download` é indeterminado, conferir a pasta Downloads antes de qualquer nova tentativa.
+- `Esc` interrompe a automação local, mas não cancela uma emissão já submetida ao ERP.
+- O mecanismo de lock entre abas é cooperativo no armazenamento GM; reduz disputas, mas não oferece exclusão mútua transacional.
+
+### Testes e validação
+
+Foi adicionada a suíte `tests/segunda-via-integrada.test.js` para contrato CRM, validação dos dados, comparação de códigos, identificação de processo, ambiguidade, URL/PDF e ausência de painéis/serviço Windows. Permanecem as suítes anteriores de NXJ e regressão de regras.
+
+Executar `npm run verify` com Node.js 18 ou superior. A suíte automatizada não substitui a homologação operacional.
+
+**Estado:** implementação em branch de revisão. A suíte completa e a validação no Chrome/Tampermonkey/Systextil reais ainda não foram confirmadas. Não integrar à `main` até verificar a transferência do CRM, a troca de visão para Processos agendados, a identificação do processo e o download real para Downloads. A primeira homologação deve utilizar um título já previsto para operação, sem criar uma emissão exclusivamente para teste.
