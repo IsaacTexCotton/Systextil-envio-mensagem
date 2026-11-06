@@ -110,7 +110,7 @@ A escolha de `@run-at` depende do fluxo:
 - `document-end` / `document-idle`: quando a tarefa depende da estrutura da página.
 - `context-menu`: execução sob demanda pelo menu do Tampermonkey.
 
-Neste repositório, `context-menu` foi adotado para a segunda via porque permite ativar o script na aba autenticada sem exigir recarga da tela. Essa é uma decisão validada para o fluxo documentado, não uma regra universal para todos os userscripts.
+O helper-base histórico usava `context-menu` para ativação manual. No fluxo integrado de automação completa, o helper-base v0.6.1 e o orquestrador v0.2.0 usam `document-idle` para inicializar os painéis nas telas suportadas; a ponte só inicia uma operação de negócio após o clique explícito do usuário em **Enviar ao Systextil** no CRM. Essa exceção é específica desta integração e não é uma autorização genérica para outros userscripts.
 
 ### 4.3 Permissões e APIs
 
@@ -221,7 +221,7 @@ Consulte o código e os testes atuais antes de reaproveitar essa rotina. Não si
 
 ### 7.4 Limite da automação
 
-O preenchimento assistido não autoriza a execução da consulta. No fluxo atual, o operador deve conferir o título e a parcela e pressionar F7 manualmente. Não envie F7, não submeta o formulário e não acione ações de emissão sem requisito explícito e autorização inequívoca.
+No fluxo assistido histórico, o operador executava F7 manualmente. Na automação completa SmartTable → Systextil, o clique explícito em **Enviar ao Systextil** é a autorização para executar a consulta e solicitar a emissão do título escolhido. O orquestrador usa o comando **Find** observado na barra do ERP, não simula F7 nem submete o formulário. Antes da emissão, exige confirmação NXJ exata de título e parcela, valor de parcela presente e idêntico, uma única linha retornada e identificação do cliente. Não estenda essa autorização a outras ações ou fluxos.
 
 ## 8. Interceptação e monitoramento de requisições
 
