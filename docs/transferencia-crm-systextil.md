@@ -107,7 +107,7 @@ Se houver erro durante a confirmação NXJ no automatizador atual, siga a orient
 A suíte `tests/systextil-crm-bridge.test.js` cobre:
 - validação do contrato e preservação de zeros;
 - rejeição de pedido expirado e identificadores inválidos;
-- preenchimento dos campos auxiliares;
+- preenchimento dos campos auxiliares e publicação do evento serializado de pedido aplicado;
 - limite de comprimento;
 - ausência do painel ou dos campos;
 - ausência de clique automático em controles do ERP.
