@@ -2,7 +2,7 @@
 
 **Userscript:** `userscripts/systextil-crm-bridge.user.js`  
 **Versão da ponte:** 0.1.0  
-**Status:** implementação em desenvolvimento na branch `feat/crm-to-systextil-title-transfer`.
+**Status:** integrada à `main` em 06/11/2026. A suíte automatizada completa e a homologação no Chrome/Tampermonkey com CRM e Systextil reais continuam como validações pendentes.
 
 ## Objetivo
 
