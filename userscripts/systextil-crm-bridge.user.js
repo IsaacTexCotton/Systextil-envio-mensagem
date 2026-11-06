@@ -309,9 +309,9 @@
       const pedidoSeguro = pedidoInformado && typeof pedidoInformado.id === 'string'
         ? pedidoInformado
         : { id: '' };
-      await publicarResultado(pedidoSeguro, 'erro', false, erro.message);
       const atual = await lerChave(CHAVES.pedido);
       if (atual?.id === pedidoSeguro.id) await gravarChave(CHAVES.pedido, null);
+      await publicarResultado(pedidoSeguro, 'erro', false, erro.message);
       encerrarEspera();
       return;
     }
