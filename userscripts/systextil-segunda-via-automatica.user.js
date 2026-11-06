@@ -402,7 +402,7 @@
     };
   }
 
-  // ---------- painel do script base ----------  // ---------- painel do script base ----------
+  // ---------- painel do script base ----------
   function versaoBaseAceita(texto) {
     const partes = String(texto ?? "").split(".").map((n) => parseInt(n, 10));
     if (partes.length < 3 || partes.some((n) => !Number.isFinite(n))) return false;
@@ -445,7 +445,7 @@
     return painel;
   }
 
-    function acharBotaoPorTexto(raiz, texto) {
+  function acharBotaoPorTexto(raiz, texto) {
     return Array.from(raiz.querySelectorAll("button")).find((b) => b.textContent.trim() === texto) || null;
   }
 
@@ -624,6 +624,7 @@
   }
 
   async function rodarProcessos() {
+    if (execucao.ativa) return;
     execucao.ativa = true;
     execucao.cancelado = false;
     atualizarControles();
@@ -667,7 +668,7 @@
     return true;
   }
 
-    async function acaoGerar() {
+  async function acaoGerar() {
     if (execucao.ativa) return;
     const estado = lerEstado();
     if (estado && estado.visao === VISAO_PROCESSOS) {
