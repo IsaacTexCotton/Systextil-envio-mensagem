@@ -1,10 +1,8 @@
 // ==UserScript==
 // @name         Systextil - Segunda Via Automática CRM
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.2.0
-// @description  Recebe o título da ponte SmartTable e automatiza consulta, emissão, identificação do processo e download.
-// @match        http://systextil.texcotton.com.br/systextil/*
-// @match        https://systextil.texcotton.com.br/systextil/*
+// @version      1.0.0
+// @description  Descontinuado. Atualize para o userscript unificado systextil-segunda-via.user.js.
 // @run-at       document-idle
 // @noframes
 // @grant        unsafeWindow

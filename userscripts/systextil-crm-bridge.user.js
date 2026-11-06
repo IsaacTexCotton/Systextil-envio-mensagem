@@ -1,11 +1,8 @@
 // ==UserScript==
 // @name         SmartTable → Systextil — Transferência de títulos
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      0.1.0
-// @description  Transfere um título escolhido no CRM para o painel de segunda via do Systextil.
-// @match        https://texhub.texcotton.com.br/crm/*
-// @match        http://systextil.texcotton.com.br/systextil/*
-// @match        https://systextil.texcotton.com.br/systextil/*
+// @version      1.0.0
+// @description  Descontinuado. A transferência agora integra o userscript unificado systextil-segunda-via.user.js.
 // @run-at       document-idle
 // @noframes
 // @grant        GM_getValue
