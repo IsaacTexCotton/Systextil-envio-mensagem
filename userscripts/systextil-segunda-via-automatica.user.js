@@ -147,7 +147,7 @@
         throw new Error("A parcela exibida no Systextil diverge da parcela recebida do CRM. A consulta e a emissão foram bloqueadas.");
       }
       const tituloAntesBusca = String(camposAntesBusca?.titulo ?? "").trim();
-      if (tituloAntesBusca && tituloAntesBusca !== titulo) {
+      if (tituloAntesBusca && norm(tituloAntesBusca) !== norm(titulo)) {
         throw new Error("O número do título exibido no Systextil diverge do valor recebido do CRM. A consulta e a emissão foram bloqueadas.");
       }
 
@@ -179,7 +179,7 @@
       if (!tituloRetornado) {
         throw new Error("A consulta terminou, mas o número do título não está disponível para conferência. Nada foi emitido.");
       }
-      if (tituloRetornado !== titulo) {
+      if (norm(tituloRetornado) !== norm(titulo)) {
         throw new Error("O número do título retornado pelo Systextil não corresponde ao solicitado. Nada foi emitido.");
       }
       if (!String(campos.cliente ?? "").trim()) {
@@ -199,7 +199,7 @@
       }
 
       const solicitacao = typeof d.recuperarSolicitacao === "function" ? d.recuperarSolicitacao() : null;
-      if (!solicitacao || String(solicitacao.titulo ?? "").trim() !== titulo || String(solicitacao.parcela ?? "").trim() !== parcela) {
+      if (!solicitacao || norm(solicitacao.titulo) !== norm(titulo) || String(solicitacao.parcela ?? "").trim() !== parcela) {
         throw new Error("O clique de emissão ocorreu, mas o registro de controle da solicitação não corresponde ao título e à parcela. Confira Processos agendados antes de qualquer nova tentativa.");
       }
       return { titulo, parcela, cliente: String(campos.cliente).trim(), solicitadoEm: Number(solicitacao.solicitadoEm) || d.agora() };
