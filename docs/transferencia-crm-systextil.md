@@ -1,7 +1,7 @@
 # Segunda via automática — SmartTable → Systextil
 
 **Userscript único:** `userscripts/systextil-segunda-via.user.js`  
-**Versão:** 1.0.0  
+**Versão:** 1.0.1  
 **Status:** implementação em branch de revisão; a homologação operacional ainda está pendente.
 
 ## Objetivo e autorização
@@ -27,7 +27,7 @@ O SmartTable continua responsável por apresentar os títulos elegíveis e emiti
 3. O userscript valida o contrato da transferência, preservando o título e a parcela como texto e os zeros à esquerda.
 4. No Systextil, aguarda a tela **Consulta de títulos** e preenche diretamente os campos reais `num_duplicata.` e `seq_duplicatas.`.
 5. A rotina mantém a sequência de foco, edição, eventos `input/change` e confirmação dos comandos NXJ observada no procedimento funcional. Se o ERP não confirmar exatamente título e parcela, interrompe sem executar Find.
-6. Executa **Find** e espera o Systextil concluir a consulta. Exige exatamente um registro e confere novamente título, parcela e cliente. A parcela é comparada literalmente; apenas zeros à esquerda no título são tolerados na comparação.
+6. Com o foco confirmado no campo do título, envia os eventos de teclado F7 ao formulário. Aguarda o Systextil concluir a consulta, exige exatamente um registro e confere novamente título, parcela e cliente. A parcela é comparada literalmente; apenas zeros à esquerda no título são tolerados na comparação.
 7. Registra a proteção contra repetição e aciona **Emite boleto** uma única vez.
 8. Aciona `procAgendados`. Se o ERP mudar a visão na mesma aba, o userscript acompanha a transição; se abrir outra aba, a aba que receber a visão de processos recupera o estado compartilhado pelo Tampermonkey.
 9. Atualiza a grade automaticamente, procura o processo de emissão pela descrição e pelo horário da solicitação e só continua quando existe uma correspondência única com mensagem de sucesso.
@@ -61,14 +61,14 @@ Os dados de referência do CRM são usados para conduzir a operação e nomear o
 
 - O clique em **Enviar ao Systextil** é a autorização explícita; nenhuma emissão é iniciada sem ele.
 - Uma solicitação pendente é consumida por uma única aba com trava cooperativa no armazenamento GM. A trava reduz concorrência, mas não é uma transação distribuída.
-- Título e parcela precisam ser confirmados pelos comandos NXJ antes do Find.
+- Título e parcela precisam ser confirmados pelos comandos NXJ antes do F7. O monitor inspeciona todos os segmentos de `fieldValues` no POST de saída, não apenas o último.
 - O Find precisa retornar uma única correspondência; título, parcela e cliente são conferidos antes da emissão.
 - A emissão recebe uma trava de cinco minutos por título/parcela. Se houver timeout depois do clique, o script não clica novamente: o resultado é tratado como incerto.
 - O processo precisa ser identificado sem ambiguidade e informar conclusão com sucesso. Linhas ambíguas, horários ilegíveis ou mensagens de falha bloqueiam o download.
 - O PDF só é baixado após revalidar o processo, a seleção da grade e a URL/relatório.
 - Existe reserva contra download duplicado. Se o navegador não confirmar se o download terminou, a reserva fica indeterminada; confira manualmente a pasta Downloads antes de tentar novamente.
 - `Esc` interrompe a automação local. Não cancela uma emissão já enviada ao ERP.
-- O script não simula F7 e não submete o formulário por teclado; utiliza os controles identificados do ERP.
+- O script envia eventos de teclado `keydown`/`keyup` com `key=F7` e `keyCode=118` ao campo do título. Não usa `.submit()` nem clica no botão Find. O sucesso depende de o Systextil tratar o evento e confirmar o estado final da consulta.
 
 Se a tela não for **Consulta de títulos** quando a solicitação chegar, o userscript informa a falha ao CRM e não emite. Abra a tela correta e envie o título novamente. Não repita uma solicitação quando o resultado da emissão ou do download estiver indeterminado sem antes conferir Processos agendados e a pasta Downloads.
 
