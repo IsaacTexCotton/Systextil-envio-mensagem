@@ -102,6 +102,19 @@ test('só consulta e emite com título, parcela e cliente conferidos', async () 
   assert.deepEqual(env.contagens(), { emissaoCount: 1, findCount: 1, preenchimentoCount: 1 });
 });
 
+test('aceita zeros à esquerda normalizados pelo ERP sem relaxar a conferência da parcela', async () => {
+  const env = criarAmbiente({
+    onPreencher: (_titulo, _parcela, campos) => { campos.titulo = '00012345'; },
+    deps: {
+      lerCampos: () => ({ titulo: '00012345', parcela: '03', cliente: 'CLIENTE TESTE LTDA' }),
+      recuperarSolicitacao: () => ({ titulo: '00012345', parcela: '03', solicitadoEm: 1_800_000_000_000 }),
+    },
+  });
+  const result = await env.orquestrador.executarConsulta({ titulo: '12345', parcela: '03' });
+  assert.equal(result.titulo, '12345');
+  assert.equal(env.contagens().emissaoCount, 1);
+});
+
 test('bloqueia nova emissão na janela de cinco minutos', async () => {
   const env = criarAmbiente();
   env.storage.set('st-auto-segunda-via:emissao:12345.3', '1800000000000');
