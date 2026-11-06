@@ -1,24 +1,49 @@
-# Systextil — automação assistida por Tampermonkey
+# Systextil — automações Tampermonkey
 
-Userscripts pequenos e explícitos para reduzir trabalho repetitivo no Systextil. O código não deve executar consultas, enviar mensagens nem gravar dados sem ação explícita do operador.
+Userscripts para reduzir trabalho repetitivo no Systextil, mantendo uma autorização explícita para ações comerciais.
 
-## Integração SmartTable → Systextil
+## Segunda via automática — SmartTable → Systextil
 
-Integração entre o SmartTable, a ponte CRM e o orquestrador Systextil: após o usuário selecionar e enviar explicitamente um título no CRM, a automação preenche os campos por NXJ, valida título/parcela, executa Find, exige correspondência única, solicita a emissão, abre Processos agendados e baixa o PDF após sucesso confirmado. Componentes e instalação estão em [documentação da transferência](docs/transferencia-crm-systextil.md), [userscript da ponte](userscripts/systextil-crm-bridge.user.js), [orquestrador](userscripts/systextil-segunda-via-automatica.user.js) e [helper-base](userscripts/systextil-segunda-via-boleto.user.js). A ação explícita de envio no CRM é o gatilho de negócio; sem ela, nenhuma consulta ou emissão é iniciada.
+**Instalação única:** [userscripts/systextil-segunda-via.user.js](userscripts/systextil-segunda-via.user.js) · v1.0.0.
 
-## Desenvolvimento: segunda via de boleto
+O mesmo userscript funciona no CRM e no Systextil. O clique em **Enviar ao Systextil** no SmartTable é a única autorização humana necessária. Depois disso, o script:
+
+1. Recebe e valida o título e a parcela transferidos pelo SmartTable.
+2. Preenche os campos reais `num_duplicata.` e `seq_duplicatas.` diretamente no Systextil, usando a sequência de comandos NXJ.
+3. Confirma os valores, executa Find e exige exatamente um registro correspondente.
+4. Confere título, parcela e cliente antes de acionar **Emite boleto** uma única vez.
+5. Abre **Processos agendados**, acompanha a execução e identifica o processo correto.
+6. Obtém o PDF autenticado, valida a origem e o conteúdo binário e inicia o download para a pasta padrão do navegador.
+
+Não são criados painéis flutuantes, campos auxiliares, janelas de conferência ou etapas de F7 manual. O código antigo da ponte, do orquestrador e do helper foi consolidado no userscript único.
+
+**Download:** usa `GM_xmlhttpRequest` para obter o PDF com a sessão do Systextil e `GM_download` para salvar com `saveAs: false`. Não exige PowerShell, serviço local, chave de pareamento ou pasta especial. O destino é a pasta padrão de Downloads configurada no navegador; para não abrir o diálogo de local, desative no Chrome a opção **Perguntar onde salvar cada arquivo**. O nome é preservado e conflitos recebem sufixos para não sobrescrever arquivos.
+
+**Instalação e atualização:** instale somente `systextil-segunda-via.user.js` no Tampermonkey e habilite-o no CRM e no Systextil. Os três userscripts antigos foram desativados por metadados e não devem ser reativados. Depois de instalar o novo, remova ou desative as entradas antigas no Tampermonkey para evitar confusão.
+
+**Proteções operacionais:** validação NXJ dos dois campos, correspondência única no Find, comparação literal da parcela, trava contra emissão repetida, identificação inequívoca do processo, validação do PDF e bloqueio de repetição quando o resultado do download é indeterminado. Um timeout após clicar em **Emite boleto** não prova que a emissão falhou; nesses casos o fluxo não emite novamente. Um resultado de download indeterminado exige conferir a pasta Downloads antes de uma nova tentativa.
+
+Documentação da integração: [docs/transferencia-crm-systextil.md](docs/transferencia-crm-systextil.md). Histórico técnico e riscos: [docs/segunda-via-boleto.md](docs/segunda-via-boleto.md).
+
+**Estado da versão 1.0.0:** implementada em branch de revisão. A execução de `npm run verify` e a homologação com Chrome, Tampermonkey e Systextil reais ainda precisam ser concluídas antes de integrar à `main`. Não use uma emissão extra apenas para testar; a primeira homologação deve aproveitar um título de uma operação real já prevista.
+
+## Desenvolvimento e testes
 
 Guia transversal para novas automações e agentes de IA: [docs/guia-automacao-tampermonkey-systextil.md](docs/guia-automacao-tampermonkey-systextil.md). Ele complementa o `AGENTS.md` com padrões de DOM, contexto da página, integração com o ERP, segurança, testes e critérios de validação.
 
-Levantamento técnico, evidências, decisões, riscos e pendências estão em [docs/segunda-via-boleto.md](docs/segunda-via-boleto.md).
+Com Node.js 18 ou superior, na raiz do repositório:
 
-Userscript: [userscripts/systextil-segunda-via-boleto.user.js](userscripts/systextil-segunda-via-boleto.user.js).
+```powershell
+npm run verify
+```
 
-Testes: [preenchimento NXJ, processo e download](tests/segunda-via-boleto.test.js), [orquestração completa e bloqueio da parcela](tests/segunda-via-automatica.test.js) e [contrato da ponte](tests/systextil-crm-bridge.test.js).
+O comando verifica a sintaxe de todos os userscripts e executa a suíte nativa do Node.js. Não instala dependências. Para executar somente os testes:
 
-**Base da `main`:** o helper-base declara a versão **0.6.0**. Esta branch propõe a versão **0.6.1**, que inicia o painel automaticamente nas telas suportadas para permitir a continuidade do fluxo CRM → Systextil. A proposta ainda não foi integrada à `main`. A existência do código e do metadado não comprova, por si só, que o auxiliar esteja instalado e pareado em cada estação; siga as instruções específicas abaixo e valide no Windows/Chrome usado na operação.
+```powershell
+npm test
+```
 
-**Auxiliar local:** instruções de instalação e pareamento estão em [tools/boleto-helper/README.md](tools/boleto-helper/README.md).
+**Não há CI/CD neste repositório.** A verificação deve ser executada localmente antes de integrar alterações.
 
 ## Script: Parâmetros da Régua de Cobrança
 
