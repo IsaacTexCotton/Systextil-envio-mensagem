@@ -2493,7 +2493,10 @@
         try {
           registros = lerRegistrosProcessos();
         } catch (erro) {
-          if (!/grade não contém registros legíveis/i.test(String(erro?.message || ""))) throw erro;
+          const telaAindaCarregando =
+            /grade não contém registros legíveis|Formulário de Processos agendados não identificado/i
+              .test(String(erro?.message || ""));
+          if (!telaAindaCarregando) throw erro;
           registros = [];
         }
 
