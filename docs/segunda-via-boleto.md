@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-> **Atualização da arquitetura (v1.0.0):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. Elas não são mais instruções de instalação/operação. A implementação vigente em revisão é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte `docs/transferencia-crm-systextil.md` para as instruções atuais.
+> **Atualização da arquitetura (v1.0.1):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. Elas não são mais instruções de instalação/operação. A implementação vigente em revisão é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte `docs/transferencia-crm-systextil.md` para as instruções atuais.
 
 
 **Base histórica:** a rotina NXJ v0.4.9 foi validada no Systextil real e evoluiu até o helper-base v0.6.0 na `main`. Esta branch propõe o helper-base v0.6.1, a ponte v0.2.0 e o orquestrador v0.2.0 para automatizar a cadeia completa. Ainda não integrada nem homologada operacionalmente.  
@@ -1017,9 +1017,9 @@ A limpeza visual do campo, isoladamente, não é usada como prova de falha nem c
 
 ### Limites operacionais preservados
 
-- O userscript não pressiona F7.
+- O userscript envia os eventos `keydown`/`keyup` de F7 ao campo real do título após confirmar título e parcela pelo NXJ.
 - O userscript não submete o formulário.
-- O usuário deve conferir título e parcela antes de executar a consulta manualmente.
+- A consulta só avança após o Systextil sair do modo de busca e devolver um resultado verificável.
 - O monitoramento de XHR é temporário e restrito à etapa de preenchimento; não deve ser transformado em captura geral de tráfego.
 - Diagnósticos não devem registrar valores de cliente, cookies, tokens, parâmetros de sessão ou payloads completos.
 
@@ -1174,7 +1174,7 @@ Isso evita que a ausência do campo de parcela seja mascarada como divergência 
 - Não fazer merge nem publicar os userscripts até a validação operacional e revisão humana.
 
 
-## 27. Userscript único e download para Downloads (v1.0.0 — 06/11/2026)
+## 27. Userscript único e download para Downloads (v1.0.1 — 06/11/2026)
 
 ### Objetivo
 
@@ -1187,6 +1187,7 @@ O clique explícito em **Enviar ao Systextil** no SmartTable continua sendo a ú
 ### Mudanças em relação às versões 0.x
 
 - Integra no mesmo userscript as funções anteriormente distribuídas entre bridge, orquestrador e helper-base.
+- A confirmação NXJ procura o valor exato em todos os segmentos separados por `\\f` no `fieldValues`, pois o ERP pode incluir outros valores no mesmo POST. Em seguida, o userscript envia F7 ao campo do título e espera a confirmação da consulta.
 - Preenche diretamente `num_duplicata.` e `seq_duplicatas.` no formulário real do Systextil; remove os campos duplicados e os painéis flutuantes.
 - Mantém a sequência NXJ de foco, edição e confirmação, além das validações independentes da parcela antes e depois do Find.
 - Exige um único registro de Find e confere título, parcela e cliente antes de clicar uma única vez em **Emite boleto**.
