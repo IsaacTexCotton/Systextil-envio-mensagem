@@ -56,8 +56,8 @@ class ObserverFake {
   disconnect() {}
 }
 
-function criarAmbiente({ href = 'https://systextil.texcotton.com.br/systextil/forms.crec.crec_f090', elementos = {} } = {}) {
-  const armazenamento = new Map();
+function criarAmbiente({ href = 'https://systextil.texcotton.com.br/systextil/forms.crec.crec_f090', elementos = {}, valoresIniciais = {} } = {}) {
+  const armazenamento = new Map(Object.entries(valoresIniciais));
   const listeners = new Map();
   const documento = {
     body: new ElementFake('body'),
@@ -248,4 +248,48 @@ test('não altera o ERP quando o painel ou um dos campos auxiliares não existe'
     () => parcial.api.aplicarPedidoNoPainel(pedidoValido()),
     /campos auxiliares/
   );
+});
+
+test('a aba do CRM guarda o pedido e publica somente confirmação sem dados pessoais', async () => {
+  const ambiente = criarAmbiente({
+    href: 'https://texhub.texcotton.com.br/crm/clientes?cnpj=12345678000190'
+  });
+  let resultadoEvento = null;
+  ambiente.document.addEventListener('smarttable:systextil:resultado', (evento) => {
+    resultadoEvento = JSON.parse(evento.detail);
+  });
+
+  ambiente.document.dispatchEvent(new ambiente.window.CustomEvent(
+    'smarttable:systextil:enviar-titulo',
+    { detail: JSON.stringify(pedidoValido()) }
+  ));
+  await new Promise((resolver) => setTimeout(resolver, 10));
+
+  const pedidoSalvo = ambiente.armazenamento.get(ambiente.api.CHAVES.pedido);
+  const resultado = ambiente.armazenamento.get(ambiente.api.CHAVES.resultado);
+  assert.equal(pedidoSalvo.titulo, '00001234');
+  assert.equal(pedidoSalvo.parcela, '03');
+  assert.equal(resultado.status, 'aguardando');
+  assert.equal(Object.hasOwn(resultado, 'cnpj'), false);
+  assert.equal(Object.hasOwn(resultado, 'titulo'), false);
+  assert.equal(resultadoEvento.id, 'pedido-12345678');
+  assert.equal(resultadoEvento.status, 'aguardando');
+});
+
+test('a aba do Systextil consome o pedido pendente e limpa o armazenamento após inserir', async () => {
+  const fake = criarPainel();
+  const pedido = pedidoValido();
+  const ambiente = criarAmbiente({
+    elementos: fake.elementos,
+    valoresIniciais: {
+      'smarttable.systextil.title-transfer.v1.pedido': pedido,
+    },
+  });
+
+  await new Promise((resolver) => setTimeout(resolver, 250));
+
+  assert.equal(fake.titulo.value, '00001234');
+  assert.equal(fake.parcela.value, '03');
+  assert.equal(ambiente.armazenamento.get(ambiente.api.CHAVES.pedido), null);
+  assert.equal(ambiente.armazenamento.get(ambiente.api.CHAVES.resultado).status, 'preenchido');
 });
