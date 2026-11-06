@@ -287,7 +287,7 @@ test('a aba do Systextil publica evento somente após confirmar título e parcel
   });
   let pedidoAplicado = null;
   ambiente.document.addEventListener('smarttable:systextil:pedido-aplicado', (evento) => {
-    pedidoAplicado = evento.detail;
+    pedidoAplicado = JSON.parse(evento.detail);
   });
 
   await new Promise((resolver) => setTimeout(resolver, 250));
