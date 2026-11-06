@@ -14,7 +14,7 @@ Depois da autorização, o mesmo userscript conduz todo o processo no Systextil.
 
 1. No Tampermonkey, instale somente `userscripts/systextil-segunda-via.user.js`.
 2. Mantenha o userscript habilitado nos dois domínios: CRM (`texhub.texcotton.com.br/crm/*`) e Systextil (`systextil.texcotton.com.br/systextil/*`).
-3. Aceite as permissões `GM_getValue`, `GM_setValue`, `GM_addValueChangeListener`, `GM_xmlhttpRequest` e `GM_download) solicitadas pelo Tampermonkey.
+3. Aceite as permissões `GM_getValue`, `GM_setValue`, `GM_addValueChangeListener`, `GM_xmlhttpRequest` e `GM_download` solicitadas pelo Tampermonkey.
 4. Confirme que o Chrome permite downloads automáticos para a pasta padrão. Para não abrir o diálogo de destino a cada PDF, desative **Perguntar onde salvar cada arquivo** nas configurações de Downloads do Chrome.
 5. Desative ou remova as antigas entradas `systextil-crm-bridge.user.js`, `systextil-segunda-via-automatica.user.js` e `systextil-segunda-via-boleto.user.js`. Elas foram aposentadas e não devem ser usadas em conjunto com o novo arquivo.
 
