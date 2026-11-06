@@ -2361,8 +2361,8 @@
       await publicarResultado(seguro, "erro", false, erro?.message || "Não foi possível iniciar a segunda via.");
       statusOperacional(erro?.message || "Falha não identificada.", "erro");
     } finally {
-      if (pedido) {
-        if (lockAdquirido) await liberarLock(CHAVES.consumidor, pedido.id);
+      if (pedido && lockAdquirido) {
+        await liberarLock(CHAVES.consumidor, pedido.id);
         const execucaoAtual = await lerChave(CHAVES.execucao).catch(() => null);
         if (!obterExecucaoAtiva(execucaoAtual)) {
           const pendente = await lerChave(CHAVES.pedido).catch(() => null);
