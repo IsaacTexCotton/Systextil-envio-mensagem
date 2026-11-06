@@ -141,7 +141,7 @@ test('entrega um único userscript, sem painéis auxiliares nem serviço Windows
   assert.match(SOURCE, /@match\s+https:\/\/systextil\.texcotton\.com\.br\/systextil\//);
   assert.match(SOURCE, /GM_download/);
   assert.match(SOURCE, /saveAs:\s*false/);
-  assert.match(SOURCE, /name:\s*"num_duplicata\."/);
+  assert.match(SOURCE, /titulo:\s*"num_duplicata\."/);
   assert.match(SOURCE, /parcela:\s*"seq_duplicatas\."/);
   assert.doesNotMatch(SOURCE, /st-auto-segunda-via-panel|st-segunda-via-boleto-panel|st-crm-systextil-reference/);
   assert.doesNotMatch(SOURCE, /127\.0\.0\.1:17834|BoletoHelper\.ps1|PowerShell/);
