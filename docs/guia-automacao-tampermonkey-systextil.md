@@ -207,17 +207,19 @@ Portanto:
 - não confunda o valor apagado do DOM com falha quando houver uma confirmação autoritativa do ERP;
 - não trate uma confirmação de rede como suficiente se o valor confirmado não for exatamente o valor esperado.
 
-### 7.3 Regra específica validada na segunda via — v0.4.9
+### 7.3 Regra de confirmação NXJ na rotina unificada
 
-A versão 0.4.9 corrigiu o caso em que o Systextil limpa o input do título após a mudança de foco. A rotina não exige mais que o título permaneça visível no DOM depois do blur. Ela exige que o monitor temporário confirme pelo protocolo NXJ o valor exato enviado e que a etapa de preenchimento seja concluída antes de seguir para a parcela.
+A versão histórica 0.4.9 exigia a confirmação literal do valor no payload NXJ. Na rotina unificada 1.0.2, o monitor continua aguardando a conclusão das requisições e inspecionando os segmentos de `fieldValues`, mas a comparação literal é diagnóstica: máscaras, zeros à esquerda e prefixos de campo podem alterar a representação enviada.
 
-Essa distinção é essencial:
+A ausência de correspondência literal no payload não libera a emissão. A confirmação autoritativa é feita em uma etapa independente:
 
-- **Aceitável:** DOM limpo após o blur, com confirmação NXJ exata e finalizada.
-- **Não aceitável:** ausência de confirmação, valor diferente, resposta não verificável, timeout ou mudança de visão.
-- **Não aceitável:** preencher a parcela apenas porque o valor foi exibido visualmente no campo.
+- o controle **Find** precisa disparar uma requisição NXJ;
+- o ERP precisa concluir a busca e retornar exatamente um registro;
+- título e parcela devem corresponder aos códigos solicitados após normalização de zeros à esquerda apenas para comparação;
+- o cliente precisa estar identificado;
+- qualquer ausência, divergência, ambiguidade ou timeout bloqueia a emissão.
 
-Consulte o código e os testes atuais antes de reaproveitar essa rotina. Não simplifique removendo a confirmação para fazer um teste passar.
+A sequência de foco, edição, setter nativo e eventos `input/change` permanece preservada. O monitor temporário deve aguardar a ociosidade e ser removido ao final do preenchimento. Mensagens de diagnóstico podem exibir somente nomes de comandos e comprimentos dos segmentos, nunca os valores.
 
 ### 7.4 Limite da automação
 
