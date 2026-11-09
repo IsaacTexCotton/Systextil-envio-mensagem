@@ -217,6 +217,65 @@ test('continua aceitando o valor quando o próprio ADD_UPDATE o contém', () => 
   );
 });
 
+test('mapeia Tab para o código de tecla 9 sem alterar atalhos existentes', () => {
+  assert.equal(api.obterCodigoTecla('Tab'), 9);
+  assert.equal(api.obterCodigoTecla('F1'), 112);
+  assert.equal(api.obterCodigoTecla('F2'), 113);
+  assert.equal(api.obterCodigoTecla('F9'), 120);
+  assert.throws(() => api.obterCodigoTecla('F7'), /não autorizado/);
+});
+
+test('gera resumo NXJ com comando, status e correspondência sem expor valores', async () => {
+  function criarClasseFakeXHR() {
+    return class FakeXHR {
+      constructor() {
+        this.listeners = {};
+        this.status = 0;
+      }
+      open(metodo, url) {
+        this.metodo = metodo;
+        this.url = url;
+      }
+      addEventListener(nome, callback) {
+        this.listeners[nome] = callback;
+      }
+      send(body) {
+        this.body = body;
+        this.status = 200;
+        this.listeners.loadend?.();
+      }
+    };
+  }
+
+  const janela = {
+    document: {},
+    frames: [],
+    URLSearchParams,
+    XMLHttpRequest: criarClasseFakeXHR()
+  };
+  const monitor = api.criarMonitorNxj(janela);
+  const valorPrivado = 'HISTORICO-FAKE-QUE-NAO-DEVE-APARECER';
+
+  try {
+    const sequenciaInicial = monitor.obterSequencia();
+    const parametros = new URLSearchParams();
+    parametros.append('commandName', 'NEXT_FIELD');
+    parametros.append('fieldValues', valorPrivado);
+
+    const xhr = new janela.XMLHttpRequest();
+    xhr.open('POST', '/systextil/UnifyNXJ.jsp');
+    xhr.send(parametros);
+    await monitor.aguardarOcioso(3000);
+
+    const resumo = monitor.obterResumo(sequenciaInicial, valorPrivado);
+    assert.ok(resumo.includes('NEXT_FIELD[1:'));
+    assert.ok(resumo.includes(';HTTP 200;valor=sim'));
+    assert.ok(!resumo.includes(valorPrivado));
+  } finally {
+    monitor.remover();
+  }
+});
+
 test('usa largura comprovada da sonda quando maxLength é -1', () => {
   assert.equal(api.obterLimiteCampo(-1, 9), 9);
   assert.equal(api.obterLimiteCampo(-1, 2), 2);
