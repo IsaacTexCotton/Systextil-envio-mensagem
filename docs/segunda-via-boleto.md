@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-> **Atualização da arquitetura (v1.0.2):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. Elas não são mais instruções de instalação/operação. A implementação vigente em revisão é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte `docs/transferencia-crm-systextil.md` para as instruções atuais.
+> **Atualização da arquitetura (v1.0.3):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. Elas não são mais instruções de instalação/operação. A implementação vigente em revisão é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte `docs/transferencia-crm-systextil.md` para as instruções atuais.
 
 
 **Base histórica:** a rotina NXJ v0.4.9 foi validada no Systextil real e evoluiu até o helper-base v0.6.0 na `main`. Esta branch propõe o helper-base v0.6.1, a ponte v0.2.0 e o orquestrador v0.2.0 para automatizar a cadeia completa. Ainda não integrada nem homologada operacionalmente.  
@@ -1219,3 +1219,31 @@ Foi adicionada a suíte `tests/segunda-via-integrada.test.js` para contrato CRM,
 Executar `npm run verify` com Node.js 18 ou superior. A suíte automatizada não substitui a homologação operacional; a nova cobertura inclui payload NXJ com máscara/prefixo, uso do controle Find e preservação de estados indeterminados.
 
 **Estado:** implementação em branch de revisão. A suíte completa e a validação no Chrome/Tampermonkey/Systextil reais ainda não foram confirmadas. Não integrar à `main` até verificar a transferência do CRM, a troca de visão para Processos agendados, a identificação do processo e o download real para Downloads. A primeira homologação deve utilizar um título já previsto para operação, sem criar uma emissão exclusivamente para teste.
+
+## 28. Bloqueio do Find sem confirmação NXJ de título e parcela (v1.0.3 — 09/11/2026)
+
+### Causa da consulta ampla
+
+Na v1.0.2, a confirmação literal dos valores nos comandos NXJ passou a ser apenas diagnóstica. O fluxo permitia acionar Find mesmo quando o monitor não havia confirmado o número do título. Como o ERP pode limpar visualmente o campo após o blur, essa combinação permitia que a consulta fosse enviada sem o filtro de título e retornasse vários títulos.
+
+### Correção
+
+- A rotina volta a exigir confirmação NXJ dos valores exatos de título e parcela em comandos de confirmação concluídos com HTTP 2xx.
+- A comparação continua aceitando zeros à esquerda e prefixos explícitos de campo, sem aceitar correspondências parciais.
+- O campo de título visualmente vazio só é tolerado quando seu valor foi confirmado pelo NXJ.
+- A automação valida novamente as duas confirmações no orquestrador antes da etapa Find.
+- Se qualquer confirmação estiver ausente, a operação termina antes do Find. Não ocorre consulta ampla, emissão ou navegação para Processos agendados.
+- Os diagnósticos exibem somente nomes de comandos e comprimentos de segmentos, sem registrar valores de título/parcela, dados do cliente, cookies ou tokens.
+
+### Testes
+
+A suíte de integração verifica confirmação completa, título pendente, parcela pendente e ambos pendentes; também verifica que a barreira NXJ está antes do acionamento do Find.
+
+### Validação pendente
+
+- Executar npm run verify localmente, sem workflow de CI/CD.
+- Instalar a versão 1.0.3 em uma única entrada do Tampermonkey.
+- Homologar com um título já previsto para uma operação legítima, sem gerar emissão apenas para teste. Confirmar no diagnóstico que ambos os campos geraram comandos NXJ reconhecidos antes de permitir o Find.
+- Se a confirmação NXJ não ocorrer, o fluxo deve parar e não se deve executar a consulta manualmente até conferir/limpar os campos.
+
+**Estado:** correção preparada em branch de revisão. A suíte completa e a homologação operacional no ERP real ainda não foram executadas.

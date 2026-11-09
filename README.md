@@ -4,13 +4,13 @@ Userscripts para reduzir trabalho repetitivo no Systextil, mantendo uma autoriza
 
 ## Segunda via automática — SmartTable → Systextil
 
-**Instalação única:** [userscripts/systextil-segunda-via.user.js](userscripts/systextil-segunda-via.user.js) · v1.0.1.
+**Instalação única:** [userscripts/systextil-segunda-via.user.js](userscripts/systextil-segunda-via.user.js) · v1.0.3.
 
 O mesmo userscript funciona no CRM e no Systextil. O clique em **Enviar ao Systextil** no SmartTable é a única autorização humana necessária. Depois disso, o script:
 
 1. Recebe e valida o título e a parcela transferidos pelo SmartTable.
 2. Preenche os campos reais `num_duplicata.` e `seq_duplicatas.` diretamente no Systextil, usando a sequência de comandos NXJ.
-3. Confirma os valores nos comandos NXJ, envia F7 ao campo do título e exige exatamente um registro correspondente.
+3. Exige a confirmação NXJ do título e da parcela antes de acionar Find; sem os dois filtros confirmados, interrompe sem consultar.
 4. Confere título, parcela e cliente antes de acionar **Emite boleto** uma única vez.
 5. Abre **Processos agendados**, acompanha a execução e identifica o processo correto.
 6. Obtém o PDF autenticado, valida a origem e o conteúdo binário e inicia o download para a pasta padrão do navegador.
@@ -21,11 +21,11 @@ Não são criados painéis flutuantes, campos auxiliares, janelas de conferênci
 
 **Instalação e atualização:** instale somente `systextil-segunda-via.user.js` no Tampermonkey e habilite-o no CRM e no Systextil. Os três userscripts antigos foram desativados por metadados e não devem ser reativados. Depois de instalar o novo, remova ou desative as entradas antigas no Tampermonkey para evitar confusão.
 
-**Proteções operacionais:** validação NXJ dos dois campos, correspondência única no Find, comparação literal da parcela, trava contra emissão repetida, identificação inequívoca do processo, validação do PDF e bloqueio de repetição quando o resultado do download é indeterminado. Um timeout após clicar em **Emite boleto** não prova que a emissão falhou; nesses casos o fluxo não emite novamente. Um resultado de download indeterminado exige conferir a pasta Downloads antes de uma nova tentativa.
+**Proteções operacionais:** confirmação NXJ obrigatória dos dois campos antes do Find, correspondência única, conferência de título/parcela/cliente, trava contra emissão repetida, identificação inequívoca do processo, validação do PDF e bloqueio de repetição quando o resultado do download é indeterminado. Um timeout após clicar em **Emite boleto** não prova que a emissão falhou; nesses casos o fluxo não emite novamente. Um resultado de download indeterminado exige conferir a pasta Downloads antes de uma nova tentativa.
 
 Documentação da integração: [docs/transferencia-crm-systextil.md](docs/transferencia-crm-systextil.md). Histórico técnico e riscos: [docs/segunda-via-boleto.md](docs/segunda-via-boleto.md).
 
-**Estado da versão 1.0.1:** implementada em branch de revisão. A execução de `npm run verify` e a homologação com Chrome, Tampermonkey e Systextil reais ainda precisam ser concluídas antes de integrar à `main`. Não use uma emissão extra apenas para testar; a primeira homologação deve aproveitar um título de uma operação real já prevista.
+**Estado da versão 1.0.3:** correção em branch de revisão. `npm run verify` e homologação no Chrome/Tampermonkey/Systextil reais ainda precisam ser executados antes de integrar à `main`. Não use uma emissão extra apenas para testar; a primeira homologação deve aproveitar um título de uma operação real já prevista.
 
 ## Desenvolvimento e testes
 

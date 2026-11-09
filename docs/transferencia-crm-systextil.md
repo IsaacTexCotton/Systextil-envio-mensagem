@@ -1,7 +1,7 @@
 # Segunda via automática — SmartTable → Systextil
 
 **Userscript único:** `userscripts/systextil-segunda-via.user.js`  
-**Versão:** 1.0.2  
+**Versão:** 1.0.3  
 **Status:** implementação em branch de revisão; a homologação operacional ainda está pendente.
 
 ## Objetivo e autorização
@@ -26,8 +26,8 @@ O SmartTable continua responsável por apresentar os títulos elegíveis e emiti
 2. Clique em **Enviar título ao Systextil**, selecione o título e confirme em **Enviar ao Systextil**.
 3. O userscript valida o contrato da transferência, preservando o título e a parcela como texto e os zeros à esquerda.
 4. No Systextil, aguarda a tela **Consulta de títulos** e preenche diretamente os campos reais `num_duplicata.` e `seq_duplicatas.`.
-5. A rotina mantém a sequência de foco, edição e eventos `input/change`. O monitor NXJ aguarda o término das requisições e registra a confirmação literal como diagnóstico; diferenças de máscara, zeros à esquerda ou prefixos no `fieldValues` não interrompem sozinhas o fluxo.
-6. O userscript aciona o controle **Find** do ERP, confirma que uma requisição NXJ foi disparada e aguarda o resultado. Exige exatamente um registro e confere título, parcela e cliente. A comparação tolera zeros à esquerda apenas durante a conferência; os identificadores originais continuam armazenados como texto.
+5. A rotina mantém a sequência de foco, edição e eventos `input/change`. O monitor NXJ precisa confirmar, em comandos concluídos com HTTP 2xx, o valor do título e da parcela. Diferenças de zeros à esquerda e prefixos explícitos são normalizadas sem aceitar substrings.
+6. Somente depois das duas confirmações NXJ o userscript aciona o controle **Find**. Se qualquer confirmação faltar, a automação para e não consulta nem emite. Exige exatamente um registro e confere título, parcela e cliente. A comparação tolera zeros à esquerda apenas durante a conferência; os identificadores originais continuam armazenados como texto.
 7. Registra a proteção contra repetição e aciona **Emite boleto** uma única vez.
 8. Aciona `procAgendados`. Se o ERP mudar a visão na mesma aba, o userscript acompanha a transição; se abrir outra aba, a aba que receber a visão de processos recupera o estado compartilhado pelo Tampermonkey.
 9. Atualiza a grade automaticamente, procura o processo de emissão pela descrição e pelo horário da solicitação e só continua quando existe uma correspondência única com mensagem de sucesso.
@@ -61,8 +61,8 @@ Os dados de referência do CRM são usados para conduzir a operação e nomear o
 
 - O clique em **Enviar ao Systextil** é a autorização explícita; nenhuma emissão é iniciada sem ele.
 - Uma solicitação pendente é consumida por uma única aba com trava cooperativa no armazenamento GM. A trava reduz concorrência, mas não é uma transação distribuída.
-- O monitor NXJ inspeciona os segmentos de `fieldValues` e informa se reconheceu título/parcela, sem tratar diferenças de máscara como falha definitiva.
-- O Find precisa disparar uma requisição NXJ e retornar uma única correspondência; título, parcela e cliente são conferidos antes da emissão.
+- O monitor NXJ precisa reconhecer os valores exatos do título e da parcela nos comandos de confirmação concluídos com HTTP 2xx. O título visualmente vazio só é tolerado quando o NXJ confirmou seu valor; sem confirmação, o Find é bloqueado.
+- O Find só é acionado após confirmação NXJ de título e parcela, precisa retornar uma única correspondência e tem título, parcela e cliente conferidos antes da emissão.
 - A emissão recebe uma trava de cinco minutos por título/parcela. Se houver timeout depois do clique, o script não clica novamente: o resultado é tratado como incerto.
 - Somente o estado `preenchendo`, anterior ao acionamento da emissão, expira após 30 minutos. Estados `emissao-solicitada`, `processando`, `baixando` e `indeterminado` permanecem bloqueados até recuperação/conferência.
 - O processo precisa ser identificado sem ambiguidade e informar conclusão com sucesso. Linhas ambíguas, horários ilegíveis ou mensagens de falha bloqueiam o download.
@@ -75,7 +75,7 @@ Se a tela não for **Consulta de títulos** quando a solicitação chegar, o use
 
 ## Testes e homologação
 
-O arquivo `tests/segunda-via-integrada.test.js` cobre contrato de transferência, comparação tolerante do payload NXJ, expiração exclusiva de preenchimentos abandonados, consulta via Find, validação de pedido, identificação única de processo, ambiguidade e validação de URL/PDF. As suítes existentes continuam cobrindo a sequência NXJ e os contratos legados.
+O arquivo `tests/segunda-via-integrada.test.js` cobre contrato de transferência, comparação tolerante do payload NXJ, bloqueio quando título/parcela não são confirmados pelo NXJ, ordem da barreira em relação ao Find, expiração exclusiva de preenchimentos abandonados, identificação única de processo, ambiguidade e validação de URL/PDF. As suítes existentes continuam cobrindo a sequência NXJ e os contratos legados.
 
 Com Node.js 18 ou superior, execute na raiz:
 

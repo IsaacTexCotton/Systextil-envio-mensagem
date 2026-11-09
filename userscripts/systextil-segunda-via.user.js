@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Segunda Via Automática CRM
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      1.0.2
+// @version      1.0.3
 // @description  Recebe o título do SmartTable, consulta, emite, acompanha o processo e baixa o PDF automaticamente.
 // @match        https://texhub.texcotton.com.br/crm/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -22,7 +22,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "1.0.2";
+  const VERSION = "1.0.3";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const DATA_VIEW_PROCESSOS = "forms.systextil.batch";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
@@ -791,11 +791,17 @@
         parcela: monitor.confirmou(parcela, sequenciaAntesDaParcela)
       };
 
-      if (!confirmacoesNxj.titulo || !confirmacoesNxj.parcela) {
-        statusOperacional(
-          "Aviso: valor não identificado literalmente no payload NXJ (" +
-          monitor.resumo(sequenciaAntesDoTitulo) +
-          "). A conferência definitiva será feita pelo resultado do Find."
+      const confirmacoes = {
+        titulo: confirmacoesNxj.titulo ? "NXJ" : "PENDENTE",
+        parcela: confirmacoesNxj.parcela ? "NXJ" : "PENDENTE"
+      };
+
+      try {
+        validarConfirmacoesNxj(confirmacoes);
+      } catch (erroConfirmacao) {
+        throw new Error(
+          erroConfirmacao.message +
+          " Diagnóstico NXJ: " + monitor.resumo(sequenciaAntesDoTitulo) + "."
         );
       }
 
@@ -827,10 +833,7 @@
       return {
         titulo,
         parcela,
-        confirmacoes: {
-          titulo: confirmacoesNxj.titulo ? "NXJ" : "FIND",
-          parcela: confirmacoesNxj.parcela ? "NXJ" : "FIND"
-        }
+        confirmacoes
       };
     } catch (erro) {
       if (valoresAlterados) {
@@ -1960,6 +1963,29 @@
     });
   }
 
+  /**
+   * O Find só pode ser executado quando os dois valores foram observados
+   * em comandos NXJ de confirmação concluídos com HTTP 2xx.
+   *
+   * O campo visual do título pode ser limpo pelo ERP após o blur; isso só é
+   * aceitável quando o valor exato foi confirmado pelo protocolo NXJ.
+   */
+  function validarConfirmacoesNxj(confirmacoes) {
+    const pendentes = [];
+    if (confirmacoes?.titulo !== "NXJ") pendentes.push("número do título");
+    if (confirmacoes?.parcela !== "NXJ") pendentes.push("parcela");
+
+    if (pendentes.length) {
+      throw new Error(
+        "O Systextil não confirmou pelo protocolo NXJ o preenchimento de " +
+        pendentes.join(" e ") +
+        ". O Find foi bloqueado para evitar uma consulta sem os filtros completos."
+      );
+    }
+
+    return true;
+  }
+
   function documentosDaPagina() {
     return coletarDocumentosMesmoDominio(
       typeof unsafeWindow !== "undefined" && unsafeWindow ? unsafeWindow : window
@@ -2232,6 +2258,10 @@
       if (!preenchimento) {
         throw new Error("O preenchimento não retornou resultado verificável.");
       }
+
+      // Barreira independente: nenhuma consulta é enviada sem confirmação
+      // NXJ explícita dos dois campos.
+      validarConfirmacoesNxj(preenchimento.confirmacoes);
 
       const antesFind = lerCamposConsulta();
       if (
@@ -2691,6 +2721,7 @@
       validarPedido,
       extrairValoresPendentesNxj,
       valorConfere,
+      validarConfirmacoesNxj,
       obterExecucaoAtiva,
       analisarProcessos,
       interpretarDataHoraProcesso,
