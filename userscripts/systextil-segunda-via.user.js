@@ -2721,6 +2721,7 @@
       validarPedido,
       extrairValoresPendentesNxj,
       valorConfere,
+      validarConfirmacoesNxj,
       obterExecucaoAtiva,
       analisarProcessos,
       interpretarDataHoraProcesso,
