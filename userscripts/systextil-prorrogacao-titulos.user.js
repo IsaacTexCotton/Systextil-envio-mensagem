@@ -258,8 +258,8 @@ function criarApi() {
     throw new Error("O Systextil não abriu a tela esperada: " + esperada + ".");
   }
 
-  function coletarDocumentosMesmoDominio(janelaRaiz) {
-    const documentos = [];
+  function coletarJanelasMesmoDominio(janelaRaiz) {
+    const janelas = [];
     const janelasVisitadas = new Set();
 
     function visitar(janelaAtual) {
@@ -267,7 +267,8 @@ function criarApi() {
       janelasVisitadas.add(janelaAtual);
 
       try {
-        if (janelaAtual.document) documentos.push(janelaAtual.document);
+        if (!janelaAtual.document) return;
+        janelas.push(janelaAtual);
       } catch (_) {
         return;
       }
@@ -289,7 +290,12 @@ function criarApi() {
     }
 
     visitar(janelaRaiz);
-    return documentos;
+    return janelas;
+  }
+
+  function coletarDocumentosMesmoDominio(janelaRaiz) {
+    return coletarJanelasMesmoDominio(janelaRaiz)
+      .map(janela => janela.document);
   }
 
   function encontrarElementoPorId(documentos, id) {
@@ -421,30 +427,15 @@ function criarApi() {
   }
 
   function criarMonitorNxj(pagina) {
-    const prototipo = pagina.XMLHttpRequest?.prototype;
-    const descritorOpen = prototipo
-      ? Object.getOwnPropertyDescriptor(prototipo, "open")
-      : null;
-    const descritorSend = prototipo
-      ? Object.getOwnPropertyDescriptor(prototipo, "send")
-      : null;
-
-    if (
-      !descritorOpen || typeof descritorOpen.value !== "function" || !descritorOpen.writable ||
-      !descritorSend || typeof descritorSend.value !== "function" || !descritorSend.writable
-    ) {
-      throw new Error("Não foi possível monitorar o protocolo NXJ. Nenhum registro foi alterado.");
-    }
-
-    const openOriginal = descritorOpen.value;
-    const sendOriginal = descritorSend.value;
+    const janelas = coletarJanelasMesmoDominio(pagina);
     const metadados = new WeakMap();
     const requisicoes = [];
     const estado = { sequencia: 0, pendentes: 0, ultimaConclusao: Date.now() };
+    const instalacoes = [];
+    const prototiposInstalados = new Set();
 
-    function extrairComando(body) {
+    function extrairComando(body, janela) {
       try {
-        let parametros;
         if (body && typeof body.get === "function") {
           return {
             comando: String(body.get("commandName") ?? "").trim().toUpperCase(),
@@ -452,7 +443,9 @@ function criarApi() {
           };
         }
         if (typeof body !== "string") return { comando: "", segmentos: [] };
-        parametros = new (pagina.URLSearchParams || URLSearchParams)(body);
+
+        const Parametros = janela.URLSearchParams || URLSearchParams;
+        const parametros = new Parametros(body);
         return {
           comando: String(parametros.get("commandName") ?? "").trim().toUpperCase(),
           segmentos: String(parametros.get("fieldValues") ?? "").split("\f")
@@ -462,74 +455,130 @@ function criarApi() {
       }
     }
 
-    function openInterceptado(metodo, url) {
-      const textoUrl = String(url ?? "");
-      metadados.set(this, {
-        metodo: String(metodo ?? "GET").toUpperCase(),
-        monitorar: ENDPOINT_NXJ.test(textoUrl)
-      });
-      return openOriginal.apply(this, arguments);
-    }
+    function criarInterceptadores(janela, prototipo, descritorOpen, descritorSend) {
+      const openOriginal = descritorOpen.value;
+      const sendOriginal = descritorSend.value;
 
-    function sendInterceptado(body) {
-      const info = metadados.get(this);
-      if (!info?.monitorar) return sendOriginal.apply(this, arguments);
+      function openInterceptado(metodo, url) {
+        metadados.set(this, {
+          metodo: String(metodo ?? "GET").toUpperCase(),
+          monitorar: ENDPOINT_NXJ.test(String(url ?? ""))
+        });
+        return openOriginal.apply(this, arguments);
+      }
 
-      const dados = info.metodo === "POST"
-        ? extrairComando(body)
-        : { comando: "", segmentos: [] };
-      const registro = {
-        sequencia: ++estado.sequencia,
-        metodo: info.metodo,
-        comando: dados.comando,
-        segmentos: dados.segmentos.filter(segmento => String(segmento).trim() !== ""),
-        status: 0,
-        finalizado: false,
-        falhaMonitoramento: false
-      };
-      requisicoes.push(registro);
+      function sendInterceptado(body) {
+        const info = metadados.get(this);
+        if (!info?.monitorar) return sendOriginal.apply(this, arguments);
 
-      let finalizado = false;
-      estado.pendentes += 1;
+        const dados = info.metodo === "POST"
+          ? extrairComando(body, janela)
+          : { comando: "", segmentos: [] };
+        const registro = {
+          sequencia: ++estado.sequencia,
+          metodo: info.metodo,
+          comando: dados.comando,
+          segmentos: dados.segmentos.filter(segmento => String(segmento).trim() !== ""),
+          status: 0,
+          finalizado: false,
+          falhaMonitoramento: false
+        };
+        requisicoes.push(registro);
 
-      const finalizar = () => {
-        if (finalizado) return;
-        finalizado = true;
-        registro.finalizado = true;
+        let finalizado = false;
+        estado.pendentes += 1;
+
+        const finalizar = () => {
+          if (finalizado) return;
+          finalizado = true;
+          registro.finalizado = true;
+          try {
+            registro.status = Number(this.status) || 0;
+          } catch (_) {
+            registro.status = 0;
+          }
+          estado.pendentes = Math.max(0, estado.pendentes - 1);
+          estado.ultimaConclusao = Date.now();
+        };
+
         try {
-          registro.status = Number(this.status) || 0;
+          this.addEventListener("loadend", finalizar, { once: true });
         } catch (_) {
-          registro.status = 0;
+          registro.falhaMonitoramento = true;
+          estado.pendentes = Math.max(0, estado.pendentes - 1);
+          registro.finalizado = true;
         }
-        estado.pendentes = Math.max(0, estado.pendentes - 1);
-        estado.ultimaConclusao = Date.now();
+
+        try {
+          return sendOriginal.apply(this, arguments);
+        } catch (erro) {
+          finalizar();
+          throw erro;
+        }
+      }
+
+      return {
+        prototipo,
+        descritorOpen,
+        descritorSend,
+        openWrapper: openInterceptado,
+        sendWrapper: sendInterceptado
       };
-
-      try {
-        this.addEventListener("loadend", finalizar, { once: true });
-      } catch (_) {
-        registro.falhaMonitoramento = true;
-        estado.pendentes = Math.max(0, estado.pendentes - 1);
-        registro.finalizado = true;
-      }
-
-      try {
-        return sendOriginal.apply(this, arguments);
-      } catch (erro) {
-        finalizar();
-        throw erro;
-      }
     }
-
-    const openWrapper = openInterceptado;
-    const sendWrapper = sendInterceptado;
 
     try {
-      Object.defineProperty(prototipo, "open", { ...descritorOpen, value: openWrapper });
-      Object.defineProperty(prototipo, "send", { ...descritorSend, value: sendWrapper });
-    } catch (_) {
-      if (prototipo.open === openWrapper) Object.defineProperty(prototipo, "open", descritorOpen);
-      throw new Error("Não foi possível instalar o monitor NXJ. Nenhuma gravação foi iniciada.");
+      for (const janela of janelas) {
+        const prototipo = janela.XMLHttpRequest?.prototype;
+        if (!prototipo || prototiposInstalados.has(prototipo)) continue;
+        prototiposInstalados.add(prototipo);
+
+        const descritorOpen = Object.getOwnPropertyDescriptor(prototipo, "open");
+        const descritorSend = Object.getOwnPropertyDescriptor(prototipo, "send");
+
+        if (
+          !descritorOpen || typeof descritorOpen.value !== "function" || !descritorOpen.writable ||
+          !descritorSend || typeof descritorSend.value !== "function" || !descritorSend.writable
+        ) {
+          throw new Error(
+            "Não foi possível monitorar o protocolo NXJ em todos os frames acessíveis. Nenhum registro foi alterado."
+          );
+        }
+
+        const instalacao = criarInterceptadores(
+          janela,
+          prototipo,
+          descritorOpen,
+          descritorSend
+        );
+
+        Object.defineProperty(prototipo, "open", {
+          ...descritorOpen,
+          value: instalacao.openWrapper
+        });
+        Object.defineProperty(prototipo, "send", {
+          ...descritorSend,
+          value: instalacao.sendWrapper
+        });
+        instalacoes.push(instalacao);
+      }
+
+      if (!instalacoes.length) {
+        throw new Error("Nenhum contexto XMLHttpRequest foi encontrado para monitorar o NXJ.");
+      }
+    } catch (erro) {
+      for (const instalacao of instalacoes.reverse()) {
+        try {
+          if (instalacao.prototipo.open === instalacao.openWrapper) {
+            Object.defineProperty(instalacao.prototipo, "open", instalacao.descritorOpen);
+          }
+          if (instalacao.prototipo.send === instalacao.sendWrapper) {
+            Object.defineProperty(instalacao.prototipo, "send", instalacao.descritorSend);
+          }
+        } catch (_) {
+          // Mantém a falha original; restauração adicional é best effort.
+        }
+      }
+      throw erro;
     }
 
     async function aguardarOcioso(limiteMs) {
@@ -627,16 +676,17 @@ function criarApi() {
       aguardarComando,
       aguardarConfirmacaoCampo,
       remover() {
-        if (prototipo.open === openWrapper) {
-          Object.defineProperty(prototipo, "open", descritorOpen);
-        }
-        if (prototipo.send === sendWrapper) {
-          Object.defineProperty(prototipo, "send", descritorSend);
+        for (const instalacao of instalacoes) {
+          if (instalacao.prototipo.open === instalacao.openWrapper) {
+            Object.defineProperty(instalacao.prototipo, "open", instalacao.descritorOpen);
+          }
+          if (instalacao.prototipo.send === instalacao.sendWrapper) {
+            Object.defineProperty(instalacao.prototipo, "send", instalacao.descritorSend);
+          }
         }
       }
     };
   }
-
   async function focarCampo(campo, pagina, monitor) {
     if (!campo || typeof campo.focus !== "function") {
       throw new Error("O campo não permite receber foco.");
