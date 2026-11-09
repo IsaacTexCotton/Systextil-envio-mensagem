@@ -1,9 +1,8 @@
 // ==UserScript==
 // @name         Systextil - Parâmetros da Régua de Cobrança
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.8.1
+// @version      0.9.0
 // @description  Calcula e preenche, mediante ação explícita, parâmetros de datas da régua no Systextil.
-// @match        http://systextil.texcotton.com.br/systextil/*
 // @match        https://systextil.texcotton.com.br/systextil/*
 // @updateURL    https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-parametros-regua.user.js
 // @downloadURL  https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-parametros-regua.user.js
@@ -14,8 +13,8 @@
 (function () {
   'use strict';
 
-  const SCRIPT_VERSION = '0.8.1';
-  const SCRIPT_BUILD_ID = '2026-11-03-set-iteration-fix';
+  const SCRIPT_VERSION = '0.9.0';
+  const SCRIPT_BUILD_ID = '2026-11-09-ui-review';
 
   // Um único painel no documento principal; os campos podem estar em iframes same-origin.
   if (window.top !== window || window.__systextilParametrosReguaCarregado) return;
@@ -25,7 +24,10 @@
     ID_PAINEL: 'st-regua-parametros-panel',
     BUSCA_REVERSA_DIAS: 45,
     // Feriados locais ainda não confirmados ficam desativados.
-    FERIADOS_ADICIONAIS: []
+    FERIADOS_ADICIONAIS: [],
+    STORAGE_MINIMIZADO: 'st-regua-minimizado',
+    STORAGE_DEBUG: 'st-regua-debug',
+    ESPERA_GRADE_MS: 150
   };
 
   const PARAMETROS = [
@@ -40,6 +42,9 @@
     { key: 'inicio18', label: 'Início 18 Dias', target: 'inicio 18 dias' },
     { key: 'fim18', label: 'Fim 18 Dias', target: 'fim 18 dias' }
   ];
+
+  // Parâmetros cujo valor depende da matriz de feriados (2º e 6º dia).
+  const DEPENDEM_DE_FERIADO = ['inicio2', 'fim2', 'inicio6', 'fim6'];
 
   // Matriz operacional validada a partir das tabelas fornecidas pelo usuário.
   // referenceOffset = data de execução - data do feriado; start/end são offsets
@@ -111,7 +116,9 @@
     { type: 'six', holidayWeekday: 5, referenceOffset: 3, startOffset: -6, endOffset: -3, cobrar: 'SÁB A TER', label: '6º dia: sexta feriado; segunda seguinte cobra sábado a terça' }
   ];
 
-
+  /* ==========================================================================
+   * 1. CÁLCULO (lógica de negócio — preservada da versão 0.8.1)
+   * ========================================================================== */
 
   function localNoon(date) {
     const d = new Date(date);
@@ -166,14 +173,6 @@
     return new Date(year, month - 1, day, 12);
   }
 
-  // Converte Set usando seu método de visita direta, sem depender do iterador global.
-  function setToSortedArray(set) {
-    const values = [];
-    set.forEach(function (value) { values.push(value); });
-    values.sort();
-    return values;
-  }
-
   function holidaysForYear(year) {
     const fixed = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '12-25'];
     const dates = fixed.map(function (md) { return year + '-' + md; });
@@ -194,10 +193,6 @@
     const year = date.getFullYear();
     if (!holidayCache.has(year)) holidayCache.set(year, holidaysForYear(year));
     return holidayCache.get(year).has(iso(date));
-  }
-
-  function isBusinessDay(date) {
-    return date.getDay() !== 0 && date.getDay() !== 6 && !isHoliday(date);
   }
 
   function nextMonday(date) {
@@ -287,19 +282,15 @@
         if (parsed && Math.abs(calendarDayDifference(referenceDate, parsed)) <= 5) found.add(iso(parsed));
       });
     }
-    return setToSortedArray(found);
+    return Array.from(found).sort();
   }
 
-  function resolveHolidayWindow(type, referenceDate, explicitHolidayDates) {
-    const holidayValues = explicitHolidayDates === undefined
-      ? holidayDatesNear(referenceDate)
-      : (Array.isArray(explicitHolidayDates) ? explicitHolidayDates : []);
+  function resolveHolidayWindow(type, referenceDate) {
+    const holidayValues = holidayDatesNear(referenceDate);
     const matches = [];
 
     holidayValues.forEach(function (value) {
-      let holidayDate = null;
-      if (typeof value === 'string') holidayDate = parseIso(value);
-      else if (value && typeof value.getFullYear === 'function') holidayDate = localNoon(value);
+      const holidayDate = parseIso(value);
       if (!holidayDate) return;
 
       const referenceOffset = calendarDayDifference(referenceDate, holidayDate);
@@ -328,13 +319,7 @@
       return match.noExpediente && match.referenceOffset === 0;
     });
     if (noExpediente.length) {
-      return {
-        status: 'no-expediente',
-        start: null,
-        end: null,
-        matches: noExpediente,
-        ranges: []
-      };
+      return { status: 'no-expediente', start: null, end: null, matches: noExpediente, ranges: [] };
     }
 
     const validMatches = matches.filter(function (match) {
@@ -378,8 +363,8 @@
     return dates;
   }
 
-  function describeHolidayResolution(resolution) {
-    return resolution.matches.map(function (match) {
+  function describeHolidayMatches(matches) {
+    return matches.map(function (match) {
       return match.ruleLabel + ' (feriado em ' + br(match.holidayDate) + ')';
     }).join('; ');
   }
@@ -393,21 +378,15 @@
       two = {
         start: twoResolution.start,
         end: twoResolution.end,
-        note: 'Matriz de feriado aplicada ao 2º dia: ' + describeHolidayResolution(twoResolution) + '.'
+        note: 'Matriz de feriado aplicada ao 2º dia: ' + describeHolidayMatches(twoResolution.matches) + '.'
       };
     } else if (twoResolution.status === 'conflict') {
-      two = {
-        start: null,
-        end: null,
-        note: 'Conflito entre regras da matriz de feriados para o 2º dia; preenchimento bloqueado.'
-      };
+      two = { start: null, end: null,
+        note: 'Conflito entre regras da matriz de feriados para o 2º dia; preenchimento bloqueado.' };
     } else if (twoResolution.status === 'no-expediente') {
-      two = {
-        start: null,
-        end: null,
+      two = { start: null, end: null,
         note: 'SEM EXPEDIENTE para o 2º dia: a data de referência é feriado (' +
-          describeHolidayResolution(twoResolution) + ').'
-      };
+          describeHolidayMatches(twoResolution.matches) + ').' };
     } else {
       two = twoDayWindow(referenceDate);
     }
@@ -415,34 +394,28 @@
     let six;
     if (sixResolution.status === 'matched') {
       const dates = datesBetweenInclusive(sixResolution.start, sixResolution.end);
-      six = {
-        start: sixResolution.start,
-        end: sixResolution.end,
-        count: dates.length,
-        dates: dates,
-        contiguous: true
-      };
+      six = { start: sixResolution.start, end: sixResolution.end, count: dates.length, dates: dates, contiguous: true };
     } else if (sixResolution.status === 'conflict' || sixResolution.status === 'no-expediente') {
       six = { start: null, end: null, count: 0, dates: [], contiguous: false };
     } else {
       six = reverseSearchSixthDay(referenceDate);
     }
 
-    const conflicts = [];
+    const holidayConflicts = [];
     if (twoResolution.status === 'conflict') {
-      conflicts.push('2º dia: mais de uma janela da matriz de feriados descontínua (' +
+      holidayConflicts.push('2º dia: mais de uma janela da matriz de feriados descontínua (' +
         twoResolution.ranges.map(function (range) { return br(range.start) + ' a ' + br(range.end); }).join(' e ') + ')');
     }
     if (sixResolution.status === 'conflict') {
-      conflicts.push('6º dia: mais de uma janela da matriz de feriados descontínua (' +
+      holidayConflicts.push('6º dia: mais de uma janela da matriz de feriados descontínua (' +
         sixResolution.ranges.map(function (range) { return br(range.start) + ' a ' + br(range.end); }).join(' e ') + ')');
     }
 
-    const noExpediente = twoResolution.status === 'no-expediente' ||
-      sixResolution.status === 'no-expediente';
+    const noExpediente = twoResolution.status === 'no-expediente' || sixResolution.status === 'no-expediente';
     const ten = addDays(referenceDate, -10);
     const fifteen = addDays(referenceDate, -15);
     const eighteen = addDays(referenceDate, -18);
+
     return {
       values: {
         inicio2: two.start, fim2: two.end,
@@ -455,27 +428,24 @@
       sixCount: six.count,
       sixDates: six.dates,
       sixContiguous: six.contiguous,
-      sixSource: sixResolution.status === 'matched'
-        ? 'holiday-rule'
-        : sixResolution.status === 'no-expediente'
-          ? 'holiday-no-expediente'
-          : sixResolution.status === 'conflict' ? 'holiday-conflict' : 'reverse-search',
-      twoSource: twoResolution.status === 'matched'
-        ? 'holiday-rule'
-        : twoResolution.status === 'no-expediente'
-          ? 'holiday-no-expediente'
-          : twoResolution.status === 'conflict' ? 'holiday-conflict' : 'weekly-default',
-      twoHolidayStatus: twoResolution.status,
-      sixHolidayStatus: sixResolution.status,
-      holidayConflicts: conflicts,
+      sixSource: sixResolution.status === 'matched' ? 'holiday-rule'
+        : sixResolution.status === 'no-expediente' ? 'holiday-no-expediente'
+        : sixResolution.status === 'conflict' ? 'holiday-conflict' : 'reverse-search',
+      twoSource: twoResolution.status === 'matched' ? 'holiday-rule'
+        : twoResolution.status === 'no-expediente' ? 'holiday-no-expediente'
+        : twoResolution.status === 'conflict' ? 'holiday-conflict' : 'weekly-default',
+      sixMatches: sixResolution.matches,
+      holidayConflicts: holidayConflicts,
       noExpediente: noExpediente,
-      blocked: conflicts.length > 0 || noExpediente,
-      twoHolidayMatches: twoResolution.matches,
-      sixHolidayMatches: sixResolution.matches
+      blocked: holidayConflicts.length > 0 || noExpediente
     };
   }
 
-    function normalize(text) {
+  /* ==========================================================================
+   * 2. LEITURA E ESCRITA NO SYSTEXTIL
+   * ========================================================================== */
+
+  function normalize(text) {
     return String(text == null ? '' : text)
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -483,6 +453,10 @@
 
   function compact(text) {
     return normalize(text).replace(/\s+/g, '');
+  }
+
+  function textOf(node) {
+    return node ? String(node.textContent || '').trim() : '';
   }
 
   function documentsInFrames() {
@@ -517,51 +491,52 @@
     return style.display !== 'none' && style.visibility !== 'hidden' && el.getClientRects().length > 0;
   }
 
+  // Texto do contexto imediato (até 5 níveis, sem ultrapassar linha/item).
+  // textContent em vez de innerText: evita forçar layout para cada campo.
   function ancestorText(el) {
     const parts = [];
     let node = el;
     for (let depth = 0; node && depth < 5; depth += 1, node = node.parentElement) {
-      const text = node.innerText || node.textContent || '';
+      const text = textOf(node);
       if (text && text.length <= 260) parts.push(text);
       if (node.tagName === 'TR' || node.tagName === 'LI') break;
     }
     return parts.join(' ');
   }
 
-  function searchText(el) {
-    const doc = el.ownerDocument || document;
-    const attrs = [el.name, el.id, el.placeholder, el.getAttribute('aria-label'), el.getAttribute('title')].filter(Boolean);
-    if (el.labels) attrs.push.apply(attrs, Array.from(el.labels).map(function (label) {
-      return label.innerText || label.textContent || '';
-    }));
-    if (el.id) {
-      attrs.push.apply(attrs, Array.from(doc.querySelectorAll('label[for]'))
-        .filter(function (label) { return label.htmlFor === el.id; })
-        .map(function (label) { return label.innerText || label.textContent || ''; }));
-    }
-    attrs.push(ancestorText(el));
-    return compact(attrs.join(' '));
+  // Índice de campos construído uma única vez por operação (evita O(n²)).
+  function buildControlIndex() {
+    const entries = [];
+    documentsInFrames().forEach(function (doc) {
+      const labelById = new Map();
+      doc.querySelectorAll('label[for]').forEach(function (label) {
+        labelById.set(label.htmlFor, textOf(label));
+      });
+      doc.querySelectorAll('input, textarea, [contenteditable="true"]').forEach(function (el) {
+        if (!isVisible(el)) return;
+        const labels = [];
+        if (el.labels) Array.from(el.labels).forEach(function (label) { labels.push(textOf(label)); });
+        if (el.id && labelById.has(el.id)) labels.push(labelById.get(el.id));
+        const direct = compact([el.name, el.id, el.placeholder, el.getAttribute('aria-label'),
+          el.getAttribute('title')].concat(labels).filter(Boolean).join(' '));
+        const full = compact(direct + ' ' + ancestorText(el));
+        entries.push({ element: el, direct: direct, full: full });
+      });
+    });
+    return entries;
   }
 
-  function findControl(parameter) {
-    const controls = documentsInFrames().reduce(function (all, doc) {
-      return all.concat(Array.from(doc.querySelectorAll('input, textarea, [contenteditable="true"]')));
-    }, []).filter(isVisible);
+  function findControl(parameter, entries) {
     const target = compact(parameter.target);
-    const scored = controls.map(function (el) {
-      const text = searchText(el);
-      const direct = compact([el.name, el.id, el.placeholder, el.getAttribute('aria-label'),
-        el.getAttribute('title'), el.labels ? Array.from(el.labels).map(function (x) {
-          return x.innerText || x.textContent || '';
-        }).join(' ') : ''].join(' '));
+    const scored = entries.map(function (entry) {
       let score = 0;
-      if (direct.includes(target)) score += 100;
-      if (text.includes(target)) score += 20;
-      if (score && text.includes('inicio') && parameter.key.indexOf('fim') === 0) score -= 35;
-      if (score && text.includes('fim') && parameter.key.indexOf('inicio') === 0) score -= 35;
-      return { element: el, score: score };
+      if (entry.direct.includes(target)) score += 100;
+      if (entry.full.includes(target)) score += 20;
+      if (score && entry.full.includes('inicio') && parameter.key.indexOf('fim') === 0) score -= 35;
+      if (score && entry.full.includes('fim') && parameter.key.indexOf('inicio') === 0) score -= 35;
+      return { element: entry.element, score: score };
     }).filter(function (x) { return x.score > 0; }).sort(function (a, b) { return b.score - a.score; });
-    if (!scored.length) return { element: null, reason: 'não encontrado' };
+    if (!scored.length) return { element: null, reason: 'campo não encontrado' };
     const topScore = scored[0].score;
     const ties = scored.filter(function (x) { return x.score === topScore; });
     if (ties.length !== 1) return { element: null, reason: 'mais de um campo compatível' };
@@ -581,20 +556,19 @@
 
   function parameterFromRow(row) {
     const labelCell = row && row.cells && row.cells[0];
-    if (!labelCell) return null;
-    return parameterFromLabel(labelCell.innerText || labelCell.textContent || '');
+    return labelCell ? parameterFromLabel(textOf(labelCell)) : null;
   }
 
   function findSmartClientGrid(doc) {
     const view = doc.defaultView;
     if (!view) return null;
     const candidates = [];
-    try { candidates.push(view.parameterTab); } catch (_) {}
+    try { candidates.push(view.parameterTab); } catch (_) { /* ausente */ }
     try {
       if (view.isc && view.isc.Canvas && typeof view.isc.Canvas.getById === 'function') {
         candidates.push(view.isc.Canvas.getById('parameterTab'));
       }
-    } catch (_) {}
+    } catch (_) { /* ausente */ }
     return candidates.find(function (grid) {
       return grid &&
         typeof grid.getTotalRows === 'function' &&
@@ -602,7 +576,7 @@
         typeof grid.getFields === 'function' &&
         typeof grid.startEditing === 'function' &&
         typeof grid.setEditValue === 'function' &&
-        typeof grid.endEditing === 'function';
+        (typeof grid.saveAllEdits === 'function' || typeof grid.endEditing === 'function');
     }) || null;
   }
 
@@ -614,7 +588,7 @@
       if (indexes.label < 0 && /^(parametro|parameter)$/.test(name)) indexes.label = index;
       if (indexes.value < 0 && /^(valor|value)$/.test(name)) indexes.value = index;
     });
-    // Fallback baseado na estrutura fornecida: coluna 0 = Parâmetro, coluna 1 = Valor.
+    // Fallback baseado na estrutura conhecida: coluna 0 = Parâmetro, coluna 1 = Valor.
     if (indexes.label < 0 && fields.length >= 2) indexes.label = 0;
     if (indexes.value < 0 && fields.length >= 2) indexes.value = 1;
     return indexes;
@@ -627,149 +601,133 @@
         const value = grid.getCellValue(record, rowIndex, fieldIndex);
         if (value !== undefined && value !== null) return value;
       }
-    } catch (_) {}
-    const fields = grid.getFields() || [];
-    const field = fields[fieldIndex];
+    } catch (_) { /* cai no fallback abaixo */ }
+    const field = (grid.getFields() || [])[fieldIndex];
     if (field && field.name && record && record[field.name] !== undefined) return record[field.name];
     return undefined;
   }
 
-  function gridValueMatches(doc, grid, param, expected, indexes) {
+  function gridRowValue(grid, param, indexes) {
     const total = Number(grid.getTotalRows()) || 0;
     for (let rowIndex = 0; rowIndex < total; rowIndex += 1) {
       const record = grid.getRecord(rowIndex);
       if (!record) continue;
-      const label = smartClientCell(grid, record, rowIndex, indexes.label);
-      const mapped = parameterFromLabel(label);
+      const mapped = parameterFromLabel(smartClientCell(grid, record, rowIndex, indexes.label));
       if (mapped && mapped.key === param.key) {
-        const value = smartClientCell(grid, record, rowIndex, indexes.value);
-        if (value !== undefined && String(value).trim() === expected) return true;
-        break;
+        return String(smartClientCell(grid, record, rowIndex, indexes.value) ?? '').trim();
       }
     }
-
-    // O DOM é uma verificação secundária; a fonte principal é o registro da grade.
-    const row = parameterRows(doc).find(function (candidate) {
-      return parameterFromRow(candidate) && parameterFromRow(candidate).key === param.key;
-    });
-    return !!(row && row.cells[1] &&
-      String(row.cells[1].innerText || row.cells[1].textContent || '').trim() === expected);
+    return null;
   }
 
-  async function fillSmartClientGrid(result) {
+  function wait(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+  }
+
+  // Preenche a grade SmartClient de parâmetros. Retorna null se não houver grade.
+  async function applyToSmartClientGrid(calc) {
     for (const doc of documentsInFrames()) {
       const rows = parameterRows(doc);
       if (!rows.length) continue;
+
       const grid = findSmartClientGrid(doc);
       if (!grid) {
-        // Se a grade já foi reconhecida, não cair na busca genérica de inputs:
-        // ela poderia atingir apenas a célula atualmente selecionada.
-        return {
-          handled: true,
-          filled: 0,
-          cleared: 0,
-          skipped: PARAMETROS.map(function (param) {
-            return param.label + ': grade encontrada, API SmartClient indisponível';
-          })
-        };
+        return failAll('grade encontrada, mas a API SmartClient está indisponível');
       }
-
       const indexes = smartClientFieldIndexes(grid);
       if (indexes.label < 0 || indexes.value < 0) {
-        return {
-          handled: true,
-          filled: 0,
-          cleared: 0,
-          skipped: PARAMETROS.map(function (param) {
-            return param.label + ': colunas Parâmetro/Valor não identificadas em getFields()';
-          })
-        };
+        return failAll('colunas Parâmetro/Valor não identificadas');
       }
 
+      // Mapeia cada parâmetro à sua linha da grade.
       const rowIndexes = new Map();
       const totalRows = Number(grid.getTotalRows()) || 0;
       for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
         const record = grid.getRecord(rowIndex);
         if (!record) continue;
-        const label = smartClientCell(grid, record, rowIndex, indexes.label);
-        const param = parameterFromLabel(label);
+        const param = parameterFromLabel(smartClientCell(grid, record, rowIndex, indexes.label));
         if (param) rowIndexes.set(param.key, rowIndex);
       }
-      // Fallback para a posição publicada no DOM se a API não devolver rótulos.
       if (!rowIndexes.size) {
         rows.forEach(function (row, rowNumber) {
           const param = parameterFromRow(row);
           if (!param) return;
-          const announcedPosition = Number(row.getAttribute('aria-posinset'));
-          rowIndexes.set(param.key, Number.isInteger(announcedPosition) && announcedPosition > 0
-            ? announcedPosition - 1
-            : rowNumber);
+          const posinset = Number(row.getAttribute('aria-posinset'));
+          rowIndexes.set(param.key, Number.isInteger(posinset) && posinset > 0 ? posinset - 1 : rowNumber);
         });
       }
 
-      let filled = 0;
-      let cleared = 0;
-      const skipped = [];
+      const outcome = emptyOutcome();
+      const edited = [];
       for (const param of PARAMETROS) {
-        const date = result.values[param.key];
-        const expected = date ? br(date) : '';
+        const date = calc.values[param.key];
+        if (!date) { outcome.untouched.push(param.label); continue; }
         const rowIndex = rowIndexes.get(param.key);
         if (!Number.isInteger(rowIndex)) {
-          skipped.push(param.label + ': linha não encontrada na grade');
+          outcome.failed.push(param.label + ': linha não encontrada na grade');
           continue;
         }
         try {
-          // Edita via API do SmartClient; o índice da coluna Valor vem de getFields().
-          // Se a regra não produzir data, limpa-se um eventual valor antigo.
           grid.startEditing(rowIndex, indexes.value);
-          grid.setEditValue(rowIndex, indexes.value, expected);
-          // Não finalizar cada célula: deixar a grade consolidar a edição evita
-          // descartar mudanças anteriores enquanto percorremos os parâmetros.
-          if (date) filled += 1;
-          else cleared += 1;
+          grid.setEditValue(rowIndex, indexes.value, br(date));
+          edited.push({ param: param, date: date });
         } catch (error) {
-          skipped.push(param.label + ': falha de edição da grade');
+          outcome.failed.push(param.label + ': falha de edição da grade');
           console.warn('[Systextil Régua] Falha ao editar parâmetro da grade:', param.key, error);
         }
       }
+
       try {
         if (typeof grid.saveAllEdits === 'function') grid.saveAllEdits();
         else grid.endEditing();
       } catch (error) {
-        skipped.push('A grade não conseguiu concluir as edições');
+        outcome.failed.push('a grade não conseguiu concluir as edições');
         console.warn('[Systextil Régua] Falha ao concluir as edições:', error);
       }
-      await new Promise(function (resolve) { setTimeout(resolve, 100); });
-      let verified = 0;
-      let clearedVerified = 0;
-      for (const param of PARAMETROS) {
-        const date = result.values[param.key];
-        const expected = date ? br(date) : '';
-        if (gridValueMatches(doc, grid, param, expected, indexes)) {
-          if (date) verified += 1;
-          else clearedVerified += 1;
-        } else {
-          skipped.push(param.label + ': o ERP não confirmou o valor na grade');
-        }
-      }
-      filled = verified;
-      cleared = clearedVerified;
-      return {
-        handled: true,
-        filled: filled,
-        cleared: cleared,
-        skipped: skipped
-      };
+
+      await wait(CONFIG.ESPERA_GRADE_MS);
+
+      // Confirmação: relê o valor da própria grade, não apenas o que foi digitado.
+      edited.forEach(function (item) {
+        const current = gridRowValue(grid, item.param, indexes);
+        if (current === br(item.date)) outcome.verified += 1;
+        else outcome.failed.push(item.param.label + ': o ERP não confirmou o valor');
+      });
+      return outcome;
     }
-    return { handled: false, filled: 0, skipped: [] };
+    return null;
+  }
+
+  // Fallback para formulários comuns (inputs isolados).
+  async function applyToFormControls(calc) {
+    const entries = buildControlIndex();
+    const outcome = emptyOutcome();
+    const written = [];
+    for (const param of PARAMETROS) {
+      const date = calc.values[param.key];
+      if (!date) { outcome.untouched.push(param.label); continue; }
+      const found = findControl(param, entries);
+      if (!found.element) { outcome.failed.push(param.label + ': ' + found.reason); continue; }
+      if (setControlValue(found.element, date)) written.push({ param: param, element: found.element, date: date });
+      else outcome.failed.push(param.label + ': campo não aceitou o valor');
+    }
+    written.forEach(function (item) {
+      if (readControlValue(item.element) === br(item.date) || readControlValue(item.element) === iso(item.date)) {
+        outcome.verified += 1;
+      } else {
+        outcome.failed.push(item.param.label + ': o valor não foi confirmado no campo');
+      }
+    });
+    return outcome;
   }
 
   function setControlValue(el, date) {
-    if (!date) return false;
     const view = el.ownerDocument.defaultView || window;
-    const value = String(el.type).toLowerCase() === 'date' ? iso(date) : br(date);
-    if (el.isContentEditable) el.textContent = value;
-    else {
+    const isDate = String(el.type).toLowerCase() === 'date';
+    const value = isDate ? iso(date) : br(date);
+    if (el.isContentEditable) {
+      el.textContent = value;
+    } else {
       const proto = el.tagName === 'TEXTAREA' ? view.HTMLTextAreaElement.prototype : view.HTMLInputElement.prototype;
       const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
       if (descriptor && descriptor.set) descriptor.set.call(el, value);
@@ -780,425 +738,459 @@
     return true;
   }
 
-  let dateInput, tableBody, detailsEl, summaryEl, statusEl, lastCalculation, lastReferenceDate;
-  function setStatus(message, isError) {
-    if (!statusEl) return;
-    statusEl.textContent = message;
-    statusEl.style.color = isError ? '#b42318' : '#475467';
+  function readControlValue(el) {
+    return el.isContentEditable ? textOf(el) : String(el.value || '').trim();
   }
 
-  function buildSummary(result) {
+  function emptyOutcome() {
+    return { verified: 0, untouched: [], failed: [] };
+  }
+
+  function failAll(reason) {
+    const outcome = emptyOutcome();
+    PARAMETROS.forEach(function (param) { outcome.failed.push(param.label + ': ' + reason); });
+    return outcome;
+  }
+
+  async function applyToErp(calc) {
+    const viaGrid = await applyToSmartClientGrid(calc);
+    if (viaGrid) return viaGrid;
+    return applyToFormControls(calc);
+  }
+
+  /* ==========================================================================
+   * 3. RESUMO E TEXTOS
+   * ========================================================================== */
+
+  function blockReason(calc) {
+    return calc.noExpediente
+      ? 'a data de referência é feriado sem expediente'
+      : calc.holidayConflicts.join(' | ');
+  }
+
+  function buildSummary(calc, reference) {
+    const origem2 = calc.twoSource === 'holiday-rule' ? 'matriz de feriado'
+      : calc.twoSource === 'holiday-no-expediente' ? 'SEM EXPEDIENTE'
+      : calc.twoSource === 'holiday-conflict' ? 'conflito entre regras de feriado'
+      : 'calendário semanal padrão';
+    const origem6 = calc.sixSource === 'holiday-rule' ? 'matriz de feriado'
+      : calc.sixSource === 'holiday-no-expediente' ? 'SEM EXPEDIENTE'
+      : calc.sixSource === 'holiday-conflict' ? 'conflito entre regras de feriado'
+      : 'busca reversa padrão';
+    const janela6 = calc.sixCount === 0 ? 'sem correspondências'
+      : (calc.sixContiguous ? 'sim' : 'não; conferir a tabela auxiliar J:L');
+
     return PARAMETROS.map(function (p) {
-      return p.label + ': ' + br(result.values[p.key]);
-    }).join('\n') + '\nReferência: ' + br(lastReferenceDate) +
-      '\nRegra 2 dias: ' + result.twoNote +
-      '\nOrigem da regra 2º dia: ' + (result.twoSource === 'holiday-rule'
-        ? 'matriz de feriado'
-        : result.twoSource === 'holiday-no-expediente'
-          ? 'SEM EXPEDIENTE'
-          : result.twoSource === 'holiday-conflict'
-            ? 'conflito entre regras de feriado'
-            : 'calendário semanal padrão') +
-      '\nOrigem da regra 6º dia: ' + (result.sixSource === 'holiday-rule'
-        ? 'matriz de feriado'
-        : result.sixSource === 'holiday-no-expediente'
-          ? 'SEM EXPEDIENTE'
-          : result.sixSource === 'holiday-conflict'
-            ? 'conflito entre regras de feriado'
-            : 'busca reversa padrão') +
-      '\nDatas de vencimento do 6º dia: ' + (result.sixDates.length ? result.sixDates.map(br).join(', ') : 'nenhuma') +
-      '\nJanela do 6º dia contígua: ' + (result.sixCount === 0 ? 'sem correspondências' : (result.sixContiguous ? 'sim' : 'não; conferir a tabela auxiliar J:L')) +
-      '\nConflitos de feriado: ' + (result.holidayConflicts.length ? result.holidayConflicts.join(' | ') : 'nenhum') +
-      '\nPreenchimento permitido: ' + (result.blocked ? 'não' : 'sim');
+      return p.label + ': ' + br(calc.values[p.key]);
+    }).join('\n') +
+      '\nReferência: ' + br(reference) +
+      '\nRegra 2 dias: ' + calc.twoNote +
+      '\nOrigem da regra 2º dia: ' + origem2 +
+      '\nOrigem da regra 6º dia: ' + origem6 +
+      '\nDatas de vencimento do 6º dia: ' + (calc.sixDates.length ? calc.sixDates.map(br).join(', ') : 'nenhuma') +
+      '\nJanela do 6º dia contígua: ' + janela6 +
+      '\nConflitos de feriado: ' + (calc.holidayConflicts.length ? calc.holidayConflicts.join(' | ') : 'nenhum') +
+      '\nPreenchimento permitido: ' + (calc.blocked ? 'não' : 'sim');
   }
 
-    function renderCalculation() {
-    const reference = parseIso(dateInput.value);
-    if (!reference) { setStatus('Informe uma data de referência válida.', true); return; }
-    lastReferenceDate = reference;
-    lastCalculation = calculate(reference);
-    tableBody.replaceChildren();
-    PARAMETROS.forEach(function (param) {
-      const row = document.createElement('tr');
-      const label = document.createElement('td');
-      const value = document.createElement('td');
-      label.textContent = param.label;
-      value.textContent = br(lastCalculation.values[param.key]);
-      value.style.fontVariantNumeric = 'tabular-nums';
-      if (!lastCalculation.values[param.key]) value.style.color = '#b42318';
-      row.append(label, value);
-      tableBody.appendChild(row);
-    });
-    if (lastCalculation.blocked) {
-      detailsEl.textContent = lastCalculation.noExpediente
-        ? 'SEM EXPEDIENTE: a data de referência coincide com feriado assinalado em vermelho na matriz. Nenhum parâmetro será alterado. ' +
-          lastCalculation.twoNote
-        : 'PREENCHIMENTO BLOQUEADO: ' + lastCalculation.holidayConflicts.join(' | ') +
-          '. Nenhum campo será alterado enquanto houver janelas de feriado descontínuas. ' + lastCalculation.twoNote;
-    } else {
-      detailsEl.textContent = lastCalculation.twoNote + ' ' +
-        (lastCalculation.sixSource === 'holiday-rule'
-          ? 'Exceção de feriado aplicada ao 6º dia: ' + describeHolidayResolution({
-              matches: lastCalculation.sixHolidayMatches
-            }) + '. Janela: ' + br(lastCalculation.values.inicio6) + ' a ' + br(lastCalculation.values.fim6) + '.'
-          : !lastCalculation.sixCount
-            ? 'A busca reversa não encontrou vencimentos associados ao prazo final ' + br(reference) +
-              '. Confira se a data é compatível com o calendário e os feriados.'
-            : !lastCalculation.sixContiguous
-              ? 'A busca reversa encontrou ' + lastCalculation.sixCount +
-                ' datas de vencimento em intervalos separados. Início/Fim do 6º dia ficaram em branco para evitar incluir datas sem o mesmo prazo; confira a tabela auxiliar J:L.'
-              : 'Busca reversa do 6º dia: ' + lastCalculation.sixCount +
-                ' data(s) de vencimento associada(s) ao prazo final ' + br(reference) + '.');
+  function buildNote(calc, reference) {
+    if (calc.blocked) {
+      return calc.noExpediente
+        ? { tone: 'alert', text: 'Sem expediente: a data de referência coincide com feriado assinalado em vermelho na matriz. Nenhum parâmetro será preenchido. ' + calc.twoNote }
+        : { tone: 'alert', text: 'Preenchimento bloqueado: ' + calc.holidayConflicts.join(' | ') + '. Resolva o conflito de feriados antes de preencher. ' + calc.twoNote };
     }
-    summaryEl.value = buildSummary(lastCalculation);
-    setStatus(lastCalculation.blocked
-      ? (lastCalculation.noExpediente
-        ? 'SEM EXPEDIENTE na data de referência. Preenchimento bloqueado.'
-        : 'Preenchimento bloqueado por conflito entre regras de feriado. Confira o resumo.')
-      : 'Cálculo atualizado. Confira as datas antes de preencher ou executar a consulta.',
-      lastCalculation.blocked);
+    let sixText;
+    if (calc.sixSource === 'holiday-rule') {
+      sixText = 'Exceção de feriado aplicada ao 6º dia: ' + describeHolidayMatches(calc.sixMatches) +
+        '. Janela: ' + br(calc.values.inicio6) + ' a ' + br(calc.values.fim6) + '.';
+    } else if (!calc.sixCount) {
+      sixText = 'A busca reversa não encontrou vencimentos associados ao prazo final ' + br(reference) +
+        '. O 6º dia ficará sem alteração. Confira a data e o calendário.';
+    } else if (!calc.sixContiguous) {
+      sixText = 'A busca reversa encontrou ' + calc.sixCount + ' datas de vencimento em intervalos separados. ' +
+        'Início/Fim do 6º dia ficarão sem alteração para evitar incluir datas sem o mesmo prazo; confira a tabela auxiliar J:L.';
+    } else {
+      sixText = 'Busca reversa do 6º dia: ' + calc.sixCount +
+        ' data(s) de vencimento associada(s) ao prazo final ' + br(reference) + '.';
+    }
+    return { tone: 'info', text: calc.twoNote + ' ' + sixText };
   }
 
-  async function fillRecognizedFields() {
-    if (!lastCalculation) renderCalculation();
-    if (!lastCalculation) return;
-    if (lastCalculation.blocked) {
-      const reason = lastCalculation.noExpediente
-        ? 'SEM EXPEDIENTE na data de referência.'
-        : lastCalculation.holidayConflicts.join(' | ');
-      setStatus('Preenchimento cancelado: ' + reason, true);
-      console.warn('[Systextil Régua] Preenchimento bloqueado:', reason);
+  function rowCellText(param, calc) {
+    const date = calc.values[param.key];
+    if (date) return br(date);
+    if (DEPENDEM_DE_FERIADO.indexOf(param.key) >= 0) {
+      if (calc.noExpediente) return 'Sem expediente';
+      if (calc.blocked) return 'Bloqueado';
+    }
+    return 'Sem data';
+  }
+
+  /* ==========================================================================
+   * 4. INTERFACE
+   * ========================================================================== */
+
+  const ui = {
+    panel: null, body: null, toggle: null, dateInput: null, tbody: null,
+    note: null, status: null, fillBtn: null, copyBtn: null,
+    calc: null, reference: null, summary: '', busy: false, minimized: false
+  };
+
+  function h(tag, attrs, children) {
+    const node = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (key) {
+      const value = attrs[key];
+      if (value === undefined || value === null || value === false) return;
+      if (key === 'text') node.textContent = value;
+      else if (key === 'class') node.className = value;
+      else if (key.indexOf('on') === 0) node.addEventListener(key.slice(2), value);
+      else if (value === true) node.setAttribute(key, '');
+      else node.setAttribute(key, String(value));
+    });
+    (children || []).forEach(function (child) { if (child) node.appendChild(child); });
+    return node;
+  }
+
+  function readStoredFlag(key, fallback) {
+    try {
+      const value = sessionStorage.getItem(key);
+      return value === null ? fallback : value === '1';
+    } catch (_) { return fallback; }
+  }
+
+  function storeFlag(key, flag) {
+    try { sessionStorage.setItem(key, flag ? '1' : '0'); } catch (_) { /* armazenamento indisponível */ }
+  }
+
+  function injectStyles() {
+    if (document.getElementById('st-regua-parametros-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'st-regua-parametros-styles';
+    style.textContent = [
+      '#' + CONFIG.ID_PAINEL + '{position:fixed;right:12px;bottom:12px;z-index:2147483647;',
+      'width:360px;max-width:calc(100vw - 24px);max-height:78vh;display:flex;flex-direction:column;',
+      'background:#fff;color:#101828;border:1px solid #d0d5dd;border-radius:12px;',
+      'box-shadow:0 8px 24px rgba(16,24,40,.16);color-scheme:light;',
+      'font:13px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}',
+      '#' + CONFIG.ID_PAINEL + ' *{box-sizing:border-box;}',
+      '#' + CONFIG.ID_PAINEL + '.is-min{width:auto;max-height:none;min-width:220px;}',
+      '#' + CONFIG.ID_PAINEL + '[hidden]{display:none!important;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-hdr{display:flex;align-items:center;justify-content:space-between;gap:8px;',
+      'padding:6px 6px 6px 12px;min-height:44px;background:#102a43;color:#fff;border-radius:11px 11px 0 0;}',
+      '#' + CONFIG.ID_PAINEL + '.is-min .st-hdr{border-radius:11px;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-title{font-size:14px;font-weight:600;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-toggle{min-width:44px;min-height:44px;border:0;border-radius:8px;',
+      'background:#243b53;color:#fff;font-size:20px;line-height:1;cursor:pointer;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-toggle:hover{background:#334e68;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-body{padding:12px;overflow:auto;overscroll-behavior:contain;min-height:0;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-body[hidden]{display:none;}',
+      '#' + CONFIG.ID_PAINEL + ' label.st-label{display:block;font-weight:600;color:#344054;margin-bottom:4px;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-date{display:block;width:100%;min-height:44px;padding:9px 10px;',
+      'border:1px solid #667085;border-radius:8px;background:#fff;color:#101828;font:inherit;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-help{display:block;margin:6px 0 12px;color:#475467;font-size:12px;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-table{width:100%;border-collapse:collapse;margin-bottom:12px;',
+      'border:1px solid #eaecf0;border-radius:8px;overflow:hidden;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-table th{text-align:left;padding:8px 10px;background:#f2f4f7;',
+      'color:#344054;font-weight:600;border-bottom:1px solid #d0d5dd;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-table td{padding:7px 10px;color:#344054;border-bottom:1px solid #eaecf0;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-table tr:nth-child(even) td{background:#f8fafc;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-table .is-alert{color:#b42318;font-weight:600;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;',
+      'overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-note{margin:0 0 12px;padding:10px 12px;color:#344054;background:#f8fafc;',
+      'border:1px solid #e4e7ec;border-radius:8px;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-note.is-alert{background:#fef3f2;border-color:#fecdca;color:#912018;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-btn{min-height:44px;padding:10px 12px;border:0;border-radius:8px;',
+      'font:inherit;font-weight:600;line-height:1.3;cursor:pointer;overflow-wrap:anywhere;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-btn-primary{background:#175cd3;color:#fff;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-btn-primary:hover{background:#1849a9;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-btn-secondary{background:#eaecf0;color:#101828;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-btn-secondary:hover{background:#d0d5dd;}',
+      '#' + CONFIG.ID_PAINEL + ' [aria-disabled="true"]{opacity:.5;cursor:not-allowed;}',
+      '#' + CONFIG.ID_PAINEL + ' :focus-visible{outline:3px solid #1570ef;outline-offset:2px;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-status{margin-top:10px;padding:9px 10px;border-left:4px solid #1570ef;',
+      'border-radius:4px;background:#eff8ff;color:#194185;overflow-wrap:anywhere;min-height:2.5em;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-status.is-warn{border-left-color:#b54708;background:#fffaeb;color:#7a2e0e;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-status.is-error{border-left-color:#b42318;background:#fef3f2;color:#912018;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-status.is-ok{border-left-color:#067647;background:#ecfdf3;color:#054f31;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-foot{margin:12px 0 0;padding-top:10px;border-top:1px solid #eaecf0;',
+      'color:#475467;font-size:12px;}',
+      '@media (max-width:520px){',
+      '#' + CONFIG.ID_PAINEL + '{left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));',
+      'width:auto;max-width:none;max-height:calc(100vh - 16px);}',
+      '#' + CONFIG.ID_PAINEL + '.is-min{left:auto;width:auto;}',
+      '#' + CONFIG.ID_PAINEL + ' .st-actions{grid-template-columns:1fr;}',
+      '}',
+      '@media (prefers-reduced-motion:reduce){#' + CONFIG.ID_PAINEL + ' *{transition:none!important;animation:none!important;}}'
+    ].join('');
+    (document.head || document.documentElement).appendChild(style);
+  }
+
+  function setStatus(kind, message) {
+    if (!ui.status) return;
+    ui.status.className = 'st-status' + (kind === 'warn' ? ' is-warn' : kind === 'error' ? ' is-error' : kind === 'ok' ? ' is-ok' : '');
+    // Prefixo textual: a cor não é o único indicador de estado.
+    const prefix = kind === 'error' ? 'Erro: ' : kind === 'warn' ? 'Atenção: ' : kind === 'ok' ? 'Concluído: ' : '';
+    ui.status.textContent = prefix + message;
+  }
+
+  function updateActions() {
+    const fillBlocked = !ui.calc || ui.calc.blocked || ui.busy;
+    ui.fillBtn.setAttribute('aria-disabled', String(fillBlocked));
+    ui.fillBtn.textContent = ui.busy ? 'Preenchendo…' : 'Preencher no Systextil';
+    ui.copyBtn.setAttribute('aria-disabled', String(!ui.calc));
+  }
+
+  function renderRows() {
+    ui.tbody.replaceChildren();
+    PARAMETROS.forEach(function (param) {
+      const text = rowCellText(param, ui.calc);
+      const missing = !ui.calc.values[param.key];
+      ui.tbody.appendChild(h('tr', null, [
+        h('td', { text: param.label }),
+        h('td', { class: 'num' + (missing ? ' is-alert' : ''), text: text })
+      ]));
+    });
+  }
+
+  function renderCalculation() {
+    const reference = parseIso(ui.dateInput.value);
+    if (!reference) {
+      ui.calc = null;
+      ui.tbody.replaceChildren();
+      ui.note.textContent = '';
+      ui.note.className = 'st-note';
+      ui.summary = '';
+      setStatus('error', 'Informe uma data de referência válida.');
+      updateActions();
       return;
     }
 
-    // O relatório usa uma ListGrid SmartClient: nove valores podem ser texto
-    // estático no DOM, embora sejam editáveis via a API da grade.
-    const smartClientResult = await fillSmartClientGrid(lastCalculation);
-    let filled = 0;
-    let cleared = 0;
-    let skipped = [];
-    if (smartClientResult.handled) {
-      filled = smartClientResult.filled;
-      cleared = smartClientResult.cleared || 0;
-      skipped = smartClientResult.skipped;
+    ui.reference = reference;
+    ui.calc = calculate(reference);
+    ui.summary = buildSummary(ui.calc, reference);
+    renderRows();
+
+    const note = buildNote(ui.calc, reference);
+    ui.note.textContent = note.text;
+    ui.note.className = 'st-note' + (note.tone === 'alert' ? ' is-alert' : '');
+
+    if (ui.calc.blocked) {
+      setStatus('error', 'Preenchimento bloqueado (' + blockReason(ui.calc) + '). Nenhum campo será alterado.');
     } else {
-      PARAMETROS.forEach(function (param) {
-        const value = lastCalculation.values[param.key];
-        if (!value) { skipped.push(param.label + ': sem data calculada'); return; }
-        const found = findControl(param);
-        if (!found.element) { skipped.push(param.label + ': ' + found.reason); return; }
-        if (setControlValue(found.element, value)) filled += 1;
-      });
+      setStatus('', 'Cálculo atualizado. Confira os valores no quadro antes de preencher.');
     }
-    const message = 'Preenchidos e verificados: ' + filled + '; campos limpos por ausência de data: ' + cleared +
-      '; total: ' + PARAMETROS.length + '.' +
-      (skipped.length ? ' Não confirmados: ' + skipped.join('; ') + '.' : '');
-    setStatus(message, skipped.length > 0 || filled + cleared !== PARAMETROS.length);
-    console.info('[Systextil Régua] Resultado do preenchimento:', {
-      preenchidosEVerificados: filled, camposLimpos: cleared,
-      total: PARAMETROS.length, naoConfirmados: skipped
-    });
+    updateActions();
   }
 
-  function copyText(text) {
+  function reportOutcome(outcome) {
+    const total = PARAMETROS.length;
+    const parts = [outcome.verified + ' de ' + total + ' parâmetros preenchidos e confirmados no Systextil.'];
+    if (outcome.untouched.length) {
+      parts.push('Sem data calculada, mantidos sem alteração: ' + outcome.untouched.join(', ') + '.');
+    }
+    if (outcome.failed.length) {
+      parts.push('Não confirmados: ' + outcome.failed.join('; ') + '.');
+    }
+    if (outcome.failed.length) {
+      setStatus('warn', parts.join(' ') + ' Confira no Systextil antes de salvar.');
+    } else if (outcome.untouched.length) {
+      setStatus('warn', parts.join(' ') + ' Confira no Systextil antes de salvar.');
+    } else {
+      setStatus('ok', parts.join(' ') + ' Revise no Systextil antes de salvar.');
+    }
+  }
+
+  async function fillFromCalculation() {
+    if (ui.busy) return;
+    if (!ui.calc) { setStatus('error', 'Informe uma data de referência válida antes de preencher.'); return; }
+    if (ui.calc.blocked) {
+      setStatus('error', 'Preenchimento bloqueado (' + blockReason(ui.calc) + '). Nenhum campo foi alterado.');
+      return;
+    }
+
+    ui.busy = true;
+    updateActions();
+    setStatus('', 'Preenchendo parâmetros no Systextil…');
+    try {
+      const outcome = await applyToErp(ui.calc);
+      reportOutcome(outcome);
+      if (outcome.failed.length) console.warn('[Systextil Régua] Não confirmados:', outcome.failed);
+    } catch (error) {
+      console.error('[Systextil Régua] Falha inesperada ao preencher:', error);
+      setStatus('error', 'Falha inesperada ao preencher. Nada foi confirmado; confira os campos manualmente.');
+    } finally {
+      ui.busy = false;
+      updateActions();
+    }
+  }
+
+  function copySummary() {
+    if (!ui.calc) { setStatus('error', 'Não há resumo para copiar. Informe uma data válida.'); return; }
+    const text = ui.summary;
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () {
-        setStatus('Resumo copiado.', false);
+        setStatus('ok', 'Resumo copiado.');
       }).catch(function () { legacyCopy(text); });
-    } else legacyCopy(text);
+    } else {
+      legacyCopy(text);
+    }
   }
 
   function legacyCopy(text) {
     const area = document.createElement('textarea');
     area.value = text;
+    area.setAttribute('readonly', '');
     Object.assign(area.style, { position: 'fixed', opacity: '0', left: '-9999px', top: '0' });
     document.body.appendChild(area);
     area.select();
     let copied = false;
     try { copied = document.execCommand('copy'); } catch (_) { copied = false; }
     area.remove();
-    setStatus(copied ? 'Resumo copiado.' : 'Não foi possível copiar automaticamente; selecione o resumo.', !copied);
+    setStatus(copied ? 'ok' : 'error', copied
+      ? 'Resumo copiado.'
+      : 'Não foi possível copiar automaticamente. Selecione o resumo manualmente.');
+  }
+
+  function setMinimized(next) {
+    ui.minimized = next;
+    ui.panel.classList.toggle('is-min', next);
+    ui.body.hidden = next;
+    ui.toggle.textContent = next ? '+' : '−';
+    const label = next ? 'Expandir painel da régua de cobrança' : 'Minimizar painel da régua de cobrança';
+    ui.toggle.setAttribute('aria-label', label);
+    ui.toggle.setAttribute('title', label);
+    ui.toggle.setAttribute('aria-expanded', String(!next));
+    storeFlag(CONFIG.STORAGE_MINIMIZADO, next);
   }
 
   function createPanel() {
     if (document.getElementById(CONFIG.ID_PAINEL) || !document.body) return;
+    injectStyles();
 
-    if (!document.getElementById('st-regua-parametros-styles')) {
-      const style = document.createElement('style');
-      style.id = 'st-regua-parametros-styles';
-      style.textContent = String.raw`
-        #st-regua-parametros-panel,
-        #st-regua-parametros-panel * { box-sizing: border-box; }
-        #st-regua-parametros-panel button,
-        #st-regua-parametros-panel input,
-        #st-regua-parametros-panel textarea { font: inherit; }
-        #st-regua-parametros-panel .st-regua-body {
-          min-height: 0; overflow: auto; overscroll-behavior: contain;
-        }
-        #st-regua-parametros-panel .st-regua-table caption {
-          position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-          overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
-        }
-        #st-regua-parametros-panel { color-scheme: light; }
-        #st-regua-parametros-panel .st-regua-table tbody tr { background: #fff; }
-        #st-regua-parametros-panel .st-regua-table tbody tr:nth-child(even) {
-          background: #f8fafc;
-        }
-        #st-regua-parametros-panel .st-regua-table th {
-          color: #344054; background: #f2f4f7;
-        }
-        #st-regua-parametros-panel .st-regua-table td {
-          color: #344054; background: transparent;
-          padding: 6px 9px; border-bottom: 1px solid #eaecf0;
-        }
-        #st-regua-parametros-panel .st-regua-date-input,
-        #st-regua-parametros-panel .st-regua-summary {
-          color-scheme: light; color: #101828; background: #fff;
-        }
-        #st-regua-parametros-panel .st-regua-actions button {
-          min-height: 44px; line-height: 1.35; overflow-wrap: anywhere;
-          transition: background-color 120ms ease, box-shadow 120ms ease;
-        }
-        #st-regua-parametros-panel button:hover { filter: brightness(.96); }
-        #st-regua-parametros-panel button:focus-visible,
-        #st-regua-parametros-panel input:focus-visible,
-        #st-regua-parametros-panel textarea:focus-visible {
-          outline: 3px solid #84adff !important; outline-offset: 2px;
-        }
-        @media (max-width: 520px) {
-          #st-regua-parametros-panel {
-            top: auto !important; right: 8px !important; bottom: 8px !important;
-            max-width: calc(100vw - 16px) !important;
-            max-height: calc(100vh - 16px) !important; border-radius: 12px !important;
-          }
-          #st-regua-parametros-panel:not(.st-regua-minimized) {
-            width: calc(100vw - 16px) !important;
-          }
-          #st-regua-parametros-panel.st-regua-minimized {
-            width: min(220px, calc(100vw - 16px)) !important;
-          }
-          #st-regua-parametros-panel .st-regua-header { padding: 8px 10px !important; }
-          #st-regua-parametros-panel .st-regua-actions { grid-template-columns: 1fr; }
-          #st-regua-parametros-panel .st-regua-actions button { min-height: 44px; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          #st-regua-parametros-panel *,
-          #st-regua-parametros-panel *::before,
-          #st-regua-parametros-panel *::after {
-            transition: none !important; animation: none !important;
-          }
-        }
-      `;
-      (document.head || document.documentElement).appendChild(style);
-    }
+    ui.dateInput = h('input', {
+      type: 'date', id: 'st-regua-data', class: 'st-date',
+      value: iso(new Date()), 'aria-describedby': 'st-regua-data-ajuda',
+      onchange: renderCalculation
+    });
+    ui.tbody = h('tbody');
+    const table = h('table', { class: 'st-table' }, [
+      h('caption', { class: 'st-sr', text: 'Valores calculados para os parâmetros da régua de cobrança' }),
+      h('thead', null, [h('tr', null, [
+        h('th', { scope: 'col', text: 'Parâmetro' }),
+        h('th', { scope: 'col', class: 'num', text: 'Valor calculado' })
+      ])]),
+      ui.tbody
+    ]);
 
-    const panel = document.createElement('section');
-    panel.id = CONFIG.ID_PAINEL;
-    panel.className = 'st-regua-panel';
-    panel.setAttribute('role', 'region');
-    panel.setAttribute('aria-label', 'Parâmetros da régua de cobrança');
-    Object.assign(panel.style, {
-      position: 'fixed', right: '12px', top: 'auto', bottom: '12px', width: '360px',
-      maxWidth: 'calc(100vw - 24px)', maxHeight: '78vh', overflow: 'hidden',
-      display: 'flex', flexDirection: 'column', zIndex: '2147483647',
-      background: '#fff', color: '#101828', border: '1px solid #d0d5dd',
-      borderRadius: '12px', boxShadow: '0 8px 24px rgba(16,24,40,.16)',
-      colorScheme: 'light',
-      font: '13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+    ui.note = h('p', { class: 'st-note' });
+    ui.fillBtn = h('button', {
+      type: 'button', class: 'st-btn st-btn-primary', 'aria-describedby': 'st-regua-status',
+      onclick: fillFromCalculation
+    });
+    ui.copyBtn = h('button', {
+      type: 'button', class: 'st-btn st-btn-secondary', text: 'Copiar resumo',
+      onclick: copySummary
+    });
+    ui.status = h('div', { id: 'st-regua-status', class: 'st-status', role: 'status', 'aria-live': 'polite', 'aria-atomic': 'true' });
+
+    ui.body = h('div', { class: 'st-body' }, [
+      h('label', { class: 'st-label', for: 'st-regua-data', text: 'Data de referência' }),
+      ui.dateInput,
+      h('span', { id: 'st-regua-data-ajuda', class: 'st-help', text: 'Os valores são recalculados ao mudar a data. Nada é enviado ao Systextil até você pressionar o botão.' }),
+      table,
+      ui.note,
+      h('div', { class: 'st-actions' }, [ui.fillBtn, ui.copyBtn]),
+      ui.status,
+      h('p', { class: 'st-foot', text: 'Confira os campos no Systextil antes de confirmar. Feriados locais são configurados em FERIADOS_ADICIONAIS.' })
+    ]);
+
+    ui.toggle = h('button', { type: 'button', class: 'st-toggle', onclick: function () { setMinimized(!ui.minimized); } });
+    const titleId = 'st-regua-titulo';
+    const header = h('div', { class: 'st-hdr' }, [
+      h('strong', { id: titleId, class: 'st-title', text: 'Régua de cobrança' }),
+      ui.toggle
+    ]);
+
+    ui.panel = h('section', {
+      id: CONFIG.ID_PAINEL, role: 'region', 'aria-labelledby': titleId
+    }, [header, ui.body]);
+
+    // Escape recolhe o painel e devolve o foco ao botão de expandir.
+    ui.panel.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && !ui.minimized) {
+        setMinimized(true);
+        ui.toggle.focus();
+      }
     });
 
-    const header = document.createElement('div');
-    header.className = 'st-regua-header';
-    Object.assign(header.style, {
-      background: '#102a43', color: '#fff', padding: '8px 10px', display: 'flex',
-      alignItems: 'center', justifyContent: 'space-between', gap: '8px',
-      borderRadius: '11px 11px 0 0', minHeight: '44px'
-    });
-    const title = document.createElement('strong');
-    title.id = 'st-regua-panel-title';
-    title.textContent = 'Régua de cobrança';
-    title.style.fontSize = '13px';
-    title.style.lineHeight = '1.25';
-    panel.setAttribute('aria-labelledby', title.id);
-    const minimize = document.createElement('button');
-    minimize.type = 'button'; minimize.textContent = '—'; minimize.title = 'Minimizar painel';
-    minimize.className = 'st-regua-minimize';
-    minimize.setAttribute('aria-label', 'Minimizar painel');
-    minimize.setAttribute('aria-expanded', 'true');
-    Object.assign(minimize.style, {
-      flex: '0 0 30px', border: '0', borderRadius: '7px', cursor: 'pointer',
-      background: '#243b53', color: '#fff', width: '30px', minWidth: '30px',
-      height: '30px', fontSize: '18px', lineHeight: '1'
-    });
-    header.append(title, minimize);
-
-    const body = document.createElement('div');
-    body.className = 'st-regua-body';
-    Object.assign(body.style, {
-      padding: '12px', overflow: 'auto', minHeight: '0', flex: '1 1 auto'
-    });
-    const dateLabel = document.createElement('label');
-    dateLabel.textContent = 'Data de referência: ';
-    dateLabel.className = 'st-regua-date-label';
-    dateLabel.style.display = 'block';
-    dateLabel.style.fontWeight = '650';
-    dateInput = document.createElement('input');
-    dateInput.type = 'date';
-    dateInput.id = 'st-regua-reference-date';
-    dateInput.className = 'st-regua-date-input';
-    dateInput.value = iso(new Date());
-    Object.assign(dateInput.style, {
-      display: 'block', width: '100%', minHeight: '44px', boxSizing: 'border-box',
-      margin: '6px 0 14px', padding: '9px 10px', border: '1px solid #98a2b3',
-      borderRadius: '8px', background: '#fff', color: '#101828', fontSize: '14px'
-    });
-    dateLabel.appendChild(dateInput);
-
-    const table = document.createElement('table');
-    table.className = 'st-regua-table';
-    Object.assign(table.style, {
-      borderCollapse: 'collapse', width: '100%', marginBottom: '12px',
-      fontSize: '13px', border: '1px solid #eaecf0', borderRadius: '8px'
-    });
-    const caption = document.createElement('caption');
-    caption.textContent = 'Valores calculados para os parâmetros da régua de cobrança';
-    const head = document.createElement('thead');
-    const row = document.createElement('tr');
-    ['Parâmetro', 'Valor calculado'].forEach(function (text) {
-      const th = document.createElement('th');
-      th.textContent = text;
-      Object.assign(th.style, {
-        textAlign: 'left', padding: '9px 10px', borderBottom: '1px solid #d0d5dd',
-        background: '#f2f4f7', color: '#344054', fontWeight: '650'
-      });
-      row.appendChild(th);
-    });
-    head.appendChild(row);
-    tableBody = document.createElement('tbody');
-    table.append(caption, head, tableBody);
-
-    detailsEl = document.createElement('p');
-    detailsEl.className = 'st-regua-details';
-    Object.assign(detailsEl.style, {
-      margin: '0 0 12px', padding: '10px 12px', color: '#344054',
-      background: '#f8fafc', border: '1px solid #e4e7ec', borderRadius: '8px',
-      fontSize: '13px', lineHeight: '1.5'
-    });
-    summaryEl = document.createElement('textarea');
-    summaryEl.readOnly = true;
-    summaryEl.className = 'st-regua-summary';
-    summaryEl.style.display = 'none';
-    summaryEl.setAttribute('aria-hidden', 'true');
-    summaryEl.setAttribute('aria-label', 'Resumo copiável dos parâmetros calculados');
-    summaryEl.rows = 4;
-    Object.assign(summaryEl.style, {
-      width: '100%', boxSizing: 'border-box', padding: '9px 10px',
-      border: '1px solid #d0d5dd', borderRadius: '8px',
-      font: '12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-      marginBottom: '12px', background: '#fff', color: '#344054', resize: 'vertical'
-    });
-
-    const actions = document.createElement('div');
-    actions.className = 'st-regua-actions';
-    Object.assign(actions.style, { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' });
-    const fill = document.createElement('button');
-    fill.type = 'button'; fill.textContent = 'Preencher campos encontrados';
-    fill.className = 'st-regua-primary';
-    fill.setAttribute('aria-describedby', 'st-regua-status');
-    const copy = document.createElement('button');
-    copy.type = 'button'; copy.textContent = 'Copiar resumo';
-    copy.className = 'st-regua-secondary';
-    [fill, copy].forEach(function (button, index) {
-      Object.assign(button.style, {
-        padding: '10px 12px', border: '0', borderRadius: '8px', cursor: 'pointer',
-        background: index === 0 ? '#175cd3' : '#eaecf0',
-        color: index === 0 ? '#fff' : '#344054', fontWeight: '650'
-      });
-    });
-    actions.append(fill, copy);
-
-    statusEl = document.createElement('div');
-    statusEl.id = 'st-regua-status';
-    statusEl.className = 'st-regua-status';
-    statusEl.setAttribute('role', 'status');
-    statusEl.setAttribute('aria-live', 'polite');
-    statusEl.setAttribute('aria-atomic', 'true');
-    Object.assign(statusEl.style, {
-      fontSize: '13px', lineHeight: '1.45', marginTop: '10px', padding: '9px 10px',
-      borderLeft: '3px solid #84adff', borderRadius: '4px', background: '#eff8ff',
-      color: '#344054', overflowWrap: 'anywhere'
-    });
-    const warning = document.createElement('p');
-    warning.className = 'st-regua-warning';
-    warning.textContent = 'O painel não executa a consulta. Confira os campos antes de confirmar no Systextil. Feriados locais precisam ser configurados no script.';
-    Object.assign(warning.style, {
-      margin: '12px 0 0', paddingTop: '10px', borderTop: '1px solid #eaecf0',
-      color: '#475467', fontSize: '12px', lineHeight: '1.45'
-    });
-
-    body.append(dateLabel, table, detailsEl, summaryEl, actions, statusEl, warning);
-    panel.append(header, body);
-    document.body.appendChild(panel);
-
-    let minimized = true;
-    function setMinimized(nextMinimized) {
-      minimized = nextMinimized;
-      panel.classList.toggle('st-regua-minimized', minimized);
-      body.style.display = minimized ? 'none' : 'block';
-      panel.style.width = minimized ? '220px' : '360px';
-      panel.style.maxHeight = minimized ? 'none' : '78vh';
-      panel.style.boxShadow = minimized
-        ? '0 4px 14px rgba(16,24,40,.14)'
-        : '0 8px 24px rgba(16,24,40,.16)';
-      header.style.padding = minimized ? '7px 9px' : '8px 10px';
-      header.style.minHeight = minimized ? '40px' : '44px';
-      header.style.borderRadius = minimized ? '10px' : '11px 11px 0 0';
-      title.style.fontSize = minimized ? '12px' : '13px';
-      minimize.textContent = minimized ? '+' : '−';
-      minimize.title = minimized ? 'Expandir régua de cobrança' : 'Minimizar painel';
-      minimize.setAttribute('aria-label', minimize.title);
-      minimize.setAttribute('aria-expanded', String(!minimized));
-    }
-    minimize.addEventListener('click', function () {
-      setMinimized(!minimized);
-    });
-    setMinimized(true);
-    dateInput.addEventListener('change', renderCalculation);
-    fill.addEventListener('click', fillRecognizedFields);
-    copy.addEventListener('click', function () { copyText(summaryEl.value); });
+    document.body.appendChild(ui.panel);
+    setMinimized(readStoredFlag(CONFIG.STORAGE_MINIMIZADO, false));
     renderCalculation();
   }
 
-  // API somente de leitura para diagnóstico e testes; não toca no formulário.
-  window.__systextilParametrosReguaDebug = Object.freeze({
-    version: SCRIPT_VERSION,
-    buildId: SCRIPT_BUILD_ID,
-    holidayCalendarContains: function (dateString) {
-      const date = parseIso(dateString);
-      return Boolean(date && holidaysForYear(date.getFullYear()).has(iso(date)));
-    },
-    calculate: calculate,
-    twoDayWindow: twoDayWindow,
-    calculateSixthDayDeadline: calculateSixthDayDeadline,
-    reverseSearchSixthDay: reverseSearchSixthDay,
-    resolveHolidayWindow: resolveHolidayWindow,
-    holidayRules: HOLIDAY_RULES,
-    isBusinessDay: isBusinessDay,
-    holidaysForYear: function (year) { return setToSortedArray(holidaysForYear(year)); },
-    iso: iso,
-    br: br,
-    parameterKeyFromLabel: function (label) {
-      const param = parameterFromLabel(label);
-      return param ? param.key : null;
-    }
-  });
+  /* ==========================================================================
+   * 5. DIAGNÓSTICO (somente com opt-in explícito no localStorage)
+   * ========================================================================== */
 
-  function initialize() {
-    if (!document.body) { setTimeout(initialize, 200); return; }
-    createPanel();
+  function debugEnabled() {
+    try { return localStorage.getItem(CONFIG.STORAGE_DEBUG) === '1'; } catch (_) { return false; }
+  }
+
+  if (debugEnabled()) {
+    window.__systextilParametrosReguaDebug = Object.freeze({
+      version: SCRIPT_VERSION,
+      buildId: SCRIPT_BUILD_ID,
+      calculate: calculate,
+      twoDayWindow: twoDayWindow,
+      calculateSixthDayDeadline: calculateSixthDayDeadline,
+      reverseSearchSixthDay: reverseSearchSixthDay,
+      resolveHolidayWindow: resolveHolidayWindow,
+      holidayRules: HOLIDAY_RULES.slice(),
+      holidaysForYear: function (year) { return Array.from(holidaysForYear(year)).sort(); },
+      iso: iso,
+      br: br
+    });
+  }
+
+  // O painel só se mostra na tela de parâmetros da régua (grade presente no
+  // documento principal ou em iframes same-origin). Fora dela fica oculto.
+  function telaDaReguaPresente() {
+    return documentsInFrames().some(function (doc) {
+      return parameterRows(doc).length > 0;
+    });
+  }
+
+  function sincronizarVisibilidade() {
+    const presente = telaDaReguaPresente();
+    if (presente && !ui.panel && document.body) createPanel();
+    if (ui.panel) ui.panel.hidden = !presente;
+  }
+
+  let sincronizacaoAgendada = false;
+  function agendarSincronizacao() {
+    if (sincronizacaoAgendada) return;
+    sincronizacaoAgendada = true;
+    setTimeout(function () {
+      sincronizacaoAgendada = false;
+      sincronizarVisibilidade();
+    }, 250);
+  }
+
+  function iniciar() {
+    if (!document.body) { setTimeout(iniciar, 200); return; }
+    sincronizarVisibilidade();
+    // SPA/ERP: a grade pode aparecer ou sair sem recarregar a página.
+    new MutationObserver(agendarSincronizacao).observe(document.body, { childList: true, subtree: true });
+    // Rede de segurança para conteúdo em iframes, que não geram mutação no documento pai.
+    setInterval(sincronizarVisibilidade, 2000);
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initialize, { once: true });
-  } else initialize();
+    document.addEventListener('DOMContentLoaded', iniciar, { once: true });
+  } else {
+    iniciar();
+  }
 })();
