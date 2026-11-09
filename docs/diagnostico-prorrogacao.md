@@ -30,8 +30,8 @@ O registro de \`fieldValues\` contém apenas contagens. Os valores transportados
 1. Abra a aba já autenticada do Systextil.
 2. No Tampermonkey, crie um userscript temporário e copie o arquivo acima, ou instale o arquivo da branch de diagnóstico.
 3. Salve o script. O cabeçalho usa \`@run-at context-menu\`; portanto, a sonda deve ser iniciada pelo popup do Tampermonkey na aba já aberta, sem atualizar/recarregar a tela.
-4. Clique no ícone do Tampermonkey e execute **Systextil — Diagnóstico de Prorrogação (somente leitura)**.
-5. Confira se o painel **SOMENTE LEITURA** apareceu. Clique em **Iniciar captura**.
+4. Clique no ícone do Tampermonkey e execute **Systextil — Diagnóstico de Prorrogação (somente leitura)**. Esse modo de execução exige Tampermonkey 5.6.6239 ou superior.
+5. Confira se o painel **SOMENTE LEITURA** apareceu. Clique em **Iniciar captura**. Se o item não aparecer no popup, confira a versão do Tampermonkey; não recarregue a página apenas para tentar ativá-lo.
 6. Execute manualmente o procedimento normal, somente quando a operação já estiver autorizada. Antes de cada etapa abaixo, selecione a etapa correspondente e clique em **Registrar etapa**:
    - Consulta de títulos aberta, antes de F7;
    - Consulta de títulos após F7 e carregamento do título;
