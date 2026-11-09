@@ -147,7 +147,7 @@ test('identifica somente um processo concluído dentro da janela da solicitaçã
   assert.equal(resultado.registro.rowIndex, 0);
 });
 
-test('mantém mensagens intermediárias não vazias em acompanhamento e permite nova atualização', () => {
+test('mantém mensagens intermediárias não vazias como em andamento', () => {
   const solicitadoEm = Date.now();
   const resultado = api.analisarProcessos([{
     rowIndex: 0,
