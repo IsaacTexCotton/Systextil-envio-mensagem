@@ -1061,7 +1061,7 @@ function criarApi() {
       try {
         loteValidado = obterLote();
         renderizarResultados(loteValidado);
-        botaoIniciar.disabled = false;
+        botaoIniciar.disabled = !campoConfirmacao.checked;
         mostrarStatus(
           loteValidado.length + " item(ns) válido(s). Confira o histórico e marque a confirmação."
         );
