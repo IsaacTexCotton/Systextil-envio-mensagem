@@ -131,7 +131,7 @@ test('expira apenas preenchimento abandonado e preserva estados de resultado inc
 });
 
 test('oferece recuperação manual do estado persistido sem expirar resultado incerto automaticamente', () => {
-  assert.match(SOURCE, /@grant\\s+GM_registerMenuCommand/);
+  assert.match(SOURCE, /@grant\s+GM_registerMenuCommand/);
   assert.match(SOURCE, /Segunda via: liberar bloqueio após conferência manual/);
 
   const inicio = SOURCE.indexOf('async function recuperarBloqueioManual');
@@ -146,10 +146,10 @@ test('oferece recuperação manual do estado persistido sem expirar resultado in
   assert.ok(revalidacao >= 0 && primeiraLimpeza > revalidacao);
   assert.match(trecho, /Processos agendados/);
   assert.match(trecho, /pasta Downloads/);
-  assert.match(trecho, /CHAVES\\.consumidor/);
-  assert.match(trecho, /CHAVES\\.lockProcesso/);
-  assert.match(trecho, /CHAVES\\.resultado/);
-  assert.doesNotMatch(trecho, /executarConsultaCrm|botaoEmitir\\.click/);
+  assert.match(trecho, /CHAVES\.consumidor/);
+  assert.match(trecho, /CHAVES\.lockProcesso/);
+  assert.match(trecho, /CHAVES\.resultado/);
+  assert.doesNotMatch(trecho, /executarConsultaCrm|botaoEmitir\.click/);
 
   assert.match(SOURCE, /registro persistido de execução anterior/);
   assert.doesNotMatch(SOURCE, /Já existe uma segunda via em andamento ou com resultado pendente de conferência/);
