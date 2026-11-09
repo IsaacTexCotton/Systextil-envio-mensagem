@@ -420,3 +420,27 @@ Sondas referenciadas na investigação: probe_page.js (estrutura), network_tap.j
 - [Userscript unificado atual](../userscripts/systextil-segunda-via.user.js)
 - [PR #36 — bloqueio do Find sem confirmação NXJ](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/36)
 - [PR #37 — acompanhamento de mensagens intermediárias, integrada na v1.0.4](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/37)
+
+
+## 17. Correções do userscript de segunda via na v1.0.5 — PR #39
+
+Esta seção registra as alterações da PR #39 sobre a base integrada v1.0.4. Diferencie o comportamento da base `main` usada pela PR do comportamento proposto no código v1.0.5; a validação operacional no Systextil real ainda precisa confirmar a implementação.
+
+### 17.1 Atualização de Processos agendados
+
+- O operador informou que, na tela Processos agendados, o controle que atualiza a lista é `procAgendados` (sininho). A implementação anterior tentou usar `btnFind.`, que pertence à Consulta de títulos e não está presente na grade de processos.
+- A v1.0.5 aciona `procAgendados` antes da primeira leitura da grade e novamente antes das releituras seguintes.
+- Após o clique, aguarda a requisição NXJ quando ela é observável e respeita pelo menos quatro segundos para a renderização da lista. O tempo é uma tolerância implementada para o fluxo relatado, não um SLA universal do ERP.
+- A ausência de confirmação de sucesso continua impedindo o download. Ambiguidade, falha explícita e timeout não disparam uma nova emissão.
+
+### 17.2 Primeira confirmação NXJ de título e parcela
+
+- Na implementação anterior, o marco de sequência do título era capturado depois de escrever o valor e aguardar parte da sequência de foco. Uma confirmação rápida do ERP poderia ficar fora da janela monitorada.
+- Na v1.0.5, os marcos de sequência de título e parcela são capturados antes da escrita dos campos correspondentes.
+- A barreira NXJ permanece obrigatória: ambos os campos precisam ser confirmados antes do Find; normalização de zeros à esquerda e prefixos continua controlada, sem aceitar correspondências parciais.
+
+### 17.3 Evidência e validação pendente
+
+- O identificador `procAgendados` e o comportamento de clicar novamente no sininho foram informados pelo operador da instalação.
+- Os testes direcionados verificam a ordem do baseline NXJ, o seletor do sininho, o tempo mínimo de espera e o refresh antes da primeira leitura.
+- Esses testes não comprovam que a tela real atualiza em todas as execuções nem que a primeira busca sempre será confirmada. Homologar com um título já previsto em operação real; não gerar uma emissão exclusivamente para teste.

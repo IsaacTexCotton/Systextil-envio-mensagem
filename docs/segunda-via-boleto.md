@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-> **Atualização da arquitetura (main v1.0.4, 09/11/2026):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. A implementação integrada é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte [transferencia-crm-systextil.md](transferencia-crm-systextil.md) e [referencia-tecnica-nxj-systextil.md](referencia-tecnica-nxj-systextil.md) para as instruções atuais.
+> **Atualização da arquitetura (main v1.0.4 como base da PR #39; correções da v1.0.5 registradas em 09/11/2026):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. A implementação integrada é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte [transferencia-crm-systextil.md](transferencia-crm-systextil.md) e [referencia-tecnica-nxj-systextil.md](referencia-tecnica-nxj-systextil.md) para as instruções atuais.
 
 
 **Base histórica:** a rotina NXJ v0.4.9 foi validada no Systextil real e evoluiu até o helper-base v0.6.0 na `main`. Esta branch propõe o helper-base v0.6.1, a ponte v0.2.0 e o orquestrador v0.2.0 para automatizar a cadeia completa. Ainda não integrada nem homologada operacionalmente.  
@@ -1277,3 +1277,24 @@ A rotina classifica como sucesso somente a mensagem explícita esperada `Process
 Enquanto o processo não chega a um estado terminal, a grade é atualizada pelo controle Find a cada quatro segundos, respeitando o limite de três minutos. Se o controle Find não estiver disponível para atualizar a grade, ou o prazo terminar sem confirmação de sucesso, o resultado permanece indeterminado. A emissão não é repetida e o PDF não é baixado sem sucesso explícito.
 
 A PR #37 registrou parse sintático e dez verificações direcionadas aprovadas. A suíte completa `npm run verify` não foi executada naquela sessão e a homologação no Chrome/Tampermonkey/Systextil real continua pendente. A lista de marcadores de falha precisa ser confrontada com mensagens reais da instalação.
+
+## 31. Correções da v1.0.5 — PR #39 (09/11/2026)
+
+A main permanece na versão 1.0.4, integrada pelas PRs #36 e #37. A PR #39 propõe a versão 1.0.5 e não deve ser tratada como homologada até a revisão e a validação operacional.
+
+### Atualização de Processos agendados
+
+- O operador informou que o botão `procAgendados` (sininho) é o controle que deve ser acionado novamente para atualizar a grade de Processos agendados.
+- O código anterior usava `btnFind.`, que pertence à Consulta de títulos e não está disponível nessa tela.
+- A v1.0.5 proposta aciona `procAgendados` antes da primeira leitura e antes de cada releitura, aguarda a requisição NXJ quando observável e respeita pelo menos quatro segundos para a renderização da grade.
+- Mensagens vazias, intermediárias ou desconhecidas continuam em acompanhamento. O processo só é baixado após a mensagem explícita de sucesso; falha explícita, ambiguidade ou timeout não provocam uma segunda emissão.
+
+### Primeira busca do título
+
+Os limites de sequência do monitor NXJ eram capturados depois de atribuir o valor e aguardar parte da sequência de foco. Uma confirmação enviada pelo ERP imediatamente após `input/change` poderia ocorrer antes do limite e não ser contabilizada. A v1.0.5 captura o limite de título e o de parcela antes de escrever cada campo.
+
+A barreira NXJ permanece obrigatória: o Find não é acionado sem confirmação dos dois campos, e a consulta continua exigindo um único registro com título, parcela e cliente conferidos.
+
+### Validação
+
+Foram aprovadas 18 verificações direcionadas e o parse sintático dos arquivos alterados nesta revisão. `npm run verify` não foi executado. A validação operacional no Chrome/Tampermonkey/Systextil real continua pendente; não criar emissão extra apenas para homologar.

@@ -4,7 +4,7 @@ Userscripts para reduzir trabalho repetitivo no Systextil, mantendo uma autoriza
 
 ## Segunda via automática — SmartTable → Systextil
 
-**Instalação única:** [userscripts/systextil-segunda-via.user.js](userscripts/systextil-segunda-via.user.js) · v1.0.4.
+**Instalação única:** [userscripts/systextil-segunda-via.user.js](userscripts/systextil-segunda-via.user.js) · v1.0.5.
 
 O mesmo userscript funciona no CRM e no Systextil. O clique em **Enviar ao Systextil** no SmartTable é a única autorização humana necessária. Depois disso, o script:
 
@@ -12,7 +12,7 @@ O mesmo userscript funciona no CRM e no Systextil. O clique em **Enviar ao Syste
 2. Preenche os campos reais `num_duplicata.` e `seq_duplicatas.` diretamente no Systextil, usando a sequência de comandos NXJ.
 3. Exige a confirmação NXJ do título e da parcela antes de acionar Find; sem os dois filtros confirmados, interrompe sem consultar.
 4. Confere título, parcela e cliente antes de acionar **Emite boleto** uma única vez.
-5. Abre **Processos agendados**, atualiza a grade e acompanha mensagens intermediárias até a confirmação explícita de sucesso ou um estado terminal/indeterminado.
+5. Abre **Processos agendados**, aciona novamente o sininho `procAgendados`, aguarda a grade atualizar e acompanha mensagens intermediárias até a confirmação explícita de sucesso ou um estado terminal/indeterminado.
 6. Obtém o PDF autenticado somente após a confirmação, valida a origem e o conteúdo binário e inicia o download para a pasta padrão do navegador.
 
 Não são criados painéis flutuantes, campos auxiliares, janelas de conferência ou etapas de F7 manual. O código antigo da ponte, do orquestrador e do helper foi consolidado no userscript único.
@@ -21,13 +21,15 @@ Não são criados painéis flutuantes, campos auxiliares, janelas de conferênci
 
 **Instalação e atualização:** instale somente `systextil-segunda-via.user.js` no Tampermonkey e habilite-o no CRM e no Systextil. Os três userscripts antigos foram desativados por metadados e não devem ser reativados. Depois de instalar o novo, remova ou desative as entradas antigas no Tampermonkey para evitar confusão.
 
-**Conferência da versão instalada:** o cabeçalho do arquivo na `main` declara `@version 1.0.4`. Se o Tampermonkey ainda mostrar `1.0`, confira o cabeçalho do código da entrada instalada, atualize a entrada correta e desative/remova cópias antigas. A versão exibida não deve ser inferida pelo nome do arquivo.
+**Conferência da versão instalada:** a versão proposta nesta PR declara `@version 1.0.5`; a `main` permanece na 1.0.4 até a integração. Depois da atualização, confira o cabeçalho do código da entrada instalada, desative/remova cópias antigas e confirme a versão efetivamente instalada. A versão exibida não deve ser inferida pelo nome do arquivo.
 
 **Proteções operacionais:** confirmação NXJ obrigatória dos dois campos antes do Find, correspondência única, conferência de título/parcela/cliente, trava contra emissão repetida, identificação inequívoca do processo, validação do PDF e bloqueio de repetição quando o resultado do download é indeterminado. Um timeout após clicar em **Emite boleto** não prova que a emissão falhou; nesses casos o fluxo não emite novamente. Um resultado de download indeterminado exige conferir a pasta Downloads antes de uma nova tentativa.
 
 Documentação da integração: [docs/transferencia-crm-systextil.md](docs/transferencia-crm-systextil.md). Histórico técnico e riscos: [docs/segunda-via-boleto.md](docs/segunda-via-boleto.md).
 
 **Estado da versão 1.0.4 na main:** integrada pela PR [#37](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/37) em 09/11/2026. Mensagens vazias, intermediárias ou desconhecidas em Processos agendados permanecem em acompanhamento; marcadores explícitos de falha encerram a execução. A grade é atualizada a cada quatro segundos, por até três minutos. A emissão não é repetida e o PDF só é liberado após sucesso explícito. A PR registrou parse sintático e dez verificações direcionadas aprovadas; `npm run verify` não foi executado e a homologação no Chrome/Tampermonkey/Systextil reais continua pendente. Não use emissão extra para testar.
+
+**Correções da versão 1.0.5 — PR #39:** atualiza Processos agendados pelo sininho `procAgendados`, aguarda a renderização da grade e captura as confirmações NXJ de título/parcela desde antes da escrita. Foram aprovadas 18 verificações direcionadas; `npm run verify` e a homologação no ERP real ainda estão pendentes.
 
 ## Desenvolvimento e testes
 

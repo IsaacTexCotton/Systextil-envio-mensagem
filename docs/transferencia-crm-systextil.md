@@ -1,8 +1,8 @@
 # Segunda via automática — SmartTable → Systextil
 
 **Userscript único:** `userscripts/systextil-segunda-via.user.js`  
-**Versão:** 1.0.4  
-**Status:** v1.0.4 integrada à main pela PR #37 em 09/11/2026. A homologação operacional no Chrome/Tampermonkey/Systextil real ainda está pendente.
+**Versão:** 1.0.5  
+**Status:** v1.0.4 integrada à main pela PR #37; as correções da v1.0.5 estão registradas na PR #39. A homologação operacional no Chrome/Tampermonkey/Systextil real permanece pendente.
 
 ## Objetivo e autorização
 
@@ -30,7 +30,7 @@ O SmartTable continua responsável por apresentar os títulos elegíveis e emiti
 6. Somente depois das duas confirmações NXJ o userscript aciona o controle **Find**. Se qualquer confirmação faltar, a automação para e não consulta nem emite. Exige exatamente um registro e confere título, parcela e cliente. A comparação tolera zeros à esquerda apenas durante a conferência; os identificadores originais continuam armazenados como texto.
 7. Registra a proteção contra repetição e aciona **Emite boleto** uma única vez.
 8. Aciona `procAgendados`. Se o ERP mudar a visão na mesma aba, o userscript acompanha a transição; se abrir outra aba, a aba que receber a visão de processos recupera o estado compartilhado pelo Tampermonkey.
-9. Atualiza a grade automaticamente, procura o processo pela descrição e pelo horário da solicitação e continua acompanhando mensagens intermediárias ou desconhecidas. Só prossegue com uma correspondência única e confirmação explícita de sucesso.
+9. Aciona novamente o sininho `procAgendados` para atualizar a grade, aguarda a renderização do ERP e procura o processo pela descrição e pelo horário. Mensagens intermediárias ou desconhecidas mantêm o acompanhamento; só prossegue com uma correspondência única e confirmação explícita de sucesso.
 10. Seleciona a linha identificada, revalida os dados da grade e confere a URL e o relatório PDF fornecidos pelo próprio Systextil.
 11. Obtém o PDF autenticado, confere origem, caminho, relatório, assinatura `%PDF-`, marcador `%%EOF` e limite de tamanho. Só então envia o Blob validado ao download do Tampermonkey.
 12. O navegador salva o arquivo na pasta padrão de Downloads, usando nome baseado na razão social, título e parcela. Em caso de nome já existente, o Tampermonkey usa um nome alternativo em vez de sobrescrever.
@@ -65,7 +65,8 @@ Os dados de referência do CRM são usados para conduzir a operação e nomear o
 - O Find só é acionado após confirmação NXJ de título e parcela, precisa retornar uma única correspondência e tem título, parcela e cliente conferidos antes da emissão.
 - A emissão recebe uma trava de cinco minutos por título/parcela. Se houver timeout depois do clique, o script não clica novamente: o resultado é tratado como incerto.
 - Somente o estado `preenchendo`, anterior ao acionamento da emissão, expira após 30 minutos. Estados `emissao-solicitada`, `processando`, `baixando` e `indeterminado` permanecem bloqueados até recuperação/conferência.
-- O processo precisa ser identificado sem ambiguidade e informar conclusão com sucesso. Mensagens intermediárias ou desconhecidas mantêm o acompanhamento ativo e provocam nova atualização da grade; marcadores explícitos de falha interrompem o fluxo. O limite de espera gera estado indeterminado, sem repetir a emissão. O download continua bloqueado até a confirmação explícita de sucesso.
+- O processo precisa ser identificado sem ambiguidade e informar conclusão com sucesso. A atualização da grade é feita pelo sininho `procAgendados`, não pelo Find da tela de consulta. A primeira leitura ocorre após o refresh inicial e a espera de renderização. Mensagens intermediárias ou desconhecidas mantêm o acompanhamento ativo e provocam nova atualização; marcadores explícitos de falha interrompem o fluxo. O limite de espera gera estado indeterminado, sem repetir a emissão. O download continua bloqueado até a confirmação explícita de sucesso.
+- Os marcos de sequência NXJ do título e da parcela são capturados antes da escrita dos respectivos campos. Isso evita descartar uma confirmação enviada imediatamente por `input/change` antes do blur, sem enfraquecer a barreira de confirmação antes do Find.
 - O PDF só é baixado após revalidar o processo, a seleção da grade e a URL/relatório.
 - Existe reserva contra download duplicado. Se o navegador não confirmar se o download terminou, a reserva fica indeterminada; confira manualmente a pasta Downloads antes de tentar novamente.
 - `Esc` interrompe a automação local. Não cancela uma emissão já enviada ao ERP.
@@ -75,7 +76,7 @@ Se a tela não for **Consulta de títulos** quando a solicitação chegar, o use
 
 ## Testes e homologação
 
-O arquivo `tests/segunda-via-integrada.test.js` cobre contrato de transferência, comparação tolerante do payload NXJ, bloqueio quando título/parcela não são confirmados pelo NXJ, ordem da barreira em relação ao Find, expiração exclusiva de preenchimentos abandonados, identificação única de processo, estados intermediários, falhas explícitas, ambiguidade e validação de URL/PDF. As suítes existentes continuam cobrindo a sequência NXJ e os contratos legados.
+O arquivo `tests/segunda-via-integrada.test.js` cobre contrato de transferência, comparação tolerante do payload NXJ, bloqueio quando título/parcela não são confirmados pelo NXJ, ordem da barreira em relação ao Find, baseline NXJ antes da escrita, refresh de Processos agendados pelo sininho antes da primeira leitura, expiração exclusiva de preenchimentos abandonados, identificação única de processo, estados intermediários, falhas explícitas, ambiguidade e validação de URL/PDF. As suítes existentes continuam cobrindo a sequência NXJ e os contratos legados.
 
 Com Node.js 18 ou superior, execute na raiz:
 
@@ -83,7 +84,7 @@ Com Node.js 18 ou superior, execute na raiz:
 npm run verify
 ```
 
-A execução dos testes não comprova a integração operacional. A v1.0.4 já está na `main`, mas a homologação no Chrome/Tampermonkey e Systextil reais continua pendente. Aproveite um título que já esteja previsto em uma operação real; não gere emissão extra apenas para testar.
+A execução dos testes não comprova a integração operacional. A v1.0.4 já está na `main`; a v1.0.5 permanece em revisão na PR #39. A homologação no Chrome/Tampermonkey e Systextil reais continua pendente. Aproveite um título que já esteja previsto em uma operação real; não gere emissão extra apenas para testar.
 
 A homologação precisa confirmar:
 
@@ -95,7 +96,7 @@ A homologação precisa confirmar:
 6. O download validado do PDF para a pasta Downloads sem janela de destino, incluindo o comportamento de nome duplicado.
 7. O retorno do resultado ao SmartTable e o bloqueio seguro em timeout/falha.
 
-**Estado atual:** a PR #37 integrou a v1.0.4 à `main`. Antes de distribuir a automação como homologada, execute `npm run verify` e conclua a homologação operacional no ERP real, sem gerar emissão extra para teste.
+**Estado atual:** a PR #37 integrou a v1.0.4 à `main`; a PR #39 registra as correções da versão 1.0.5. Antes de distribuir a automação como homologada, execute `npm run verify` e conclua a homologação operacional no ERP real, sem gerar emissão extra para teste.
 
 
 ## Correção do acompanhamento de Processos agendados (v1.0.4)
@@ -105,3 +106,11 @@ A rotina anterior classificava qualquer mensagem diferente da confirmação lite
 Na versão 1.0.4, somente marcadores explícitos de erro são classificados como falha. Mensagens vazias, intermediárias ou desconhecidas permanecem em acompanhamento: o userscript atualiza a grade e reanalisa o mesmo processo em intervalos de quatro segundos, por até três minutos. Se o controle Find não estiver disponível, ou o limite de espera terminar sem confirmação, o estado fica indeterminado e exige conferência manual. Nenhuma nova emissão é disparada. O PDF continua condicionado à confirmação literal de sucesso e à validação posterior do registro/relatório.
 
 A suíte automatizada inclui regressões para mensagem intermediária não vazia, falha explícita e disponibilidade do controle de atualização. A homologação no Systextil real continua necessária para confirmar os textos efetivamente retornados e a atualização da grade na estação operacional.
+
+## Correções da versão 1.0.5 — PR #39
+
+A tela Processos agendados é atualizada pelo controle `procAgendados` (sininho). O userscript aciona esse controle antes da primeira leitura e novamente antes de cada releitura, aguarda a requisição NXJ quando observável e respeita ao menos quatro segundos para a grade renderizar. O controle `btnFind.` continua reservado à Consulta de títulos e não é usado para atualizar Processos agendados.
+
+Na Consulta de títulos, os marcos de sequência do monitor NXJ passam a ser capturados antes da escrita de título e parcela. A versão anterior os capturava depois da escrita e parte da espera; uma confirmação imediata do ERP podia ficar fora da janela monitorada. A barreira que exige confirmação de ambos os campos antes do Find permanece inalterada.
+
+A PR #39 inclui regressões para a ordem dos marcos NXJ, refresh pelo sininho e atualização antes da primeira leitura da grade. Parse sintático e 18 verificações direcionadas foram aprovados nesta revisão; `npm run verify` e a homologação no Systextil real ainda não foram executados.
