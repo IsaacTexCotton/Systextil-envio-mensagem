@@ -38,6 +38,7 @@
   let capturando = false;
   let iniciadoEm = null;
   let encerradoEm = null;
+  let relatorioGerado = false;
   let descartados = 0;
   let contadorEventos = 0;
   let painel = null;
@@ -627,8 +628,8 @@
     pagina.document.body.appendChild(link);
     link.click();
     link.remove();
-    pagina.setTimeout(() => pagina.URL.revokeObjectURL(url), 1000);
-    atualizarStatus("Relatório JSON gerado localmente.");
+    relatorioGerado = true;
+    atualizarStatus("Download do relatório solicitado ao navegador.");
   }
 
   function atualizarStatus(mensagem) {
@@ -747,6 +748,10 @@
     fechar.addEventListener("click", () => {
       if (capturando) {
         atualizarStatus("Encerre a captura e baixe o relatório antes de fechar o painel.");
+        return;
+      }
+      if (iniciadoEm && !relatorioGerado) {
+        atualizarStatus("Baixe o relatório JSON antes de fechar o painel para não perder a coleta.");
         return;
       }
       host.remove();
