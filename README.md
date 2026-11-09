@@ -21,7 +21,7 @@ Não são criados painéis flutuantes, campos auxiliares, janelas de conferênci
 
 **Instalação e atualização:** instale somente `systextil-segunda-via.user.js` no Tampermonkey e habilite-o no CRM e no Systextil. Os três userscripts antigos foram desativados por metadados e não devem ser reativados. Depois de instalar o novo, remova ou desative as entradas antigas no Tampermonkey para evitar confusão.
 
-**Conferência da versão instalada:** o cabeçalho do arquivo na `main` declara `@version 1.0.5`. Se o Tampermonkey ainda mostrar `1.0`, confira o cabeçalho do código da entrada instalada, atualize a entrada correta e desative/remova cópias antigas. A versão exibida não deve ser inferida pelo nome do arquivo.
+**Conferência da versão instalada:** a versão proposta nesta PR declara `@version 1.0.5`; a `main` permanece na 1.0.4 até a integração. Depois da atualização, confira o cabeçalho do código da entrada instalada, desative/remova cópias antigas e confirme a versão efetivamente instalada. A versão exibida não deve ser inferida pelo nome do arquivo.
 
 **Proteções operacionais:** confirmação NXJ obrigatória dos dois campos antes do Find, correspondência única, conferência de título/parcela/cliente, trava contra emissão repetida, identificação inequívoca do processo, validação do PDF e bloqueio de repetição quando o resultado do download é indeterminado. Um timeout após clicar em **Emite boleto** não prova que a emissão falhou; nesses casos o fluxo não emite novamente. Um resultado de download indeterminado exige conferir a pasta Downloads antes de uma nova tentativa.
 
@@ -29,7 +29,7 @@ Documentação da integração: [docs/transferencia-crm-systextil.md](docs/trans
 
 **Estado da versão 1.0.4 na main:** integrada pela PR [#37](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/37) em 09/11/2026. Mensagens vazias, intermediárias ou desconhecidas em Processos agendados permanecem em acompanhamento; marcadores explícitos de falha encerram a execução. A grade é atualizada a cada quatro segundos, por até três minutos. A emissão não é repetida e o PDF só é liberado após sucesso explícito. A PR registrou parse sintático e dez verificações direcionadas aprovadas; `npm run verify` não foi executado e a homologação no Chrome/Tampermonkey/Systextil reais continua pendente. Não use emissão extra para testar.
 
-**Estado da versão 1.0.5 na PR #39:** correção proposta para atualizar Processos agendados pelo sininho `procAgendados`, aguardar a renderização da grade e capturar as confirmações NXJ de título/parcela desde antes da escrita. Foram aprovadas 18 verificações direcionadas nesta revisão; `npm run verify` e a homologação no ERP real ainda estão pendentes. A `main` permanece na v1.0.4 até a revisão e integração da PR #39.
+**Correções da versão 1.0.5 — PR #39:** atualiza Processos agendados pelo sininho `procAgendados`, aguarda a renderização da grade e captura as confirmações NXJ de título/parcela desde antes da escrita. Foram aprovadas 18 verificações direcionadas; `npm run verify` e a homologação no ERP real ainda estão pendentes.
 
 ## Desenvolvimento e testes
 
