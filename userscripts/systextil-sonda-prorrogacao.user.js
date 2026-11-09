@@ -64,14 +64,19 @@
   }
 
   function adicionarEvento(evento) {
-    if (!capturando) return;
+    if (!capturando) return null;
     contadorEventos += 1;
     if (eventos.length >= LIMITE_EVENTOS) {
       descartados += 1;
-      return;
+      return null;
     }
-    eventos.push(Object.assign({ numero: contadorEventos, instante: agora() }, evento));
+    const eventoRegistrado = Object.assign(
+      { numero: contadorEventos, instante: agora() },
+      evento
+    );
+    eventos.push(eventoRegistrado);
     atualizarStatus();
+    return eventoRegistrado;
   }
 
   function nomeVisao(win) {
@@ -378,9 +383,10 @@
 
       const instanteInicio = Date.now();
       const dados = meta.method === "POST" ? lerMetadadosRequisicao(body, win) : {};
-      const evento = {
+      const evento = adicionarEvento({
         tipo: "nxj-request",
         frame: contexto.caminho,
+        viewName: nomeVisao(win),
         method: meta.method,
         path: meta.path,
         commandName: dados.commandName || null,
@@ -388,11 +394,11 @@
         fieldValues: dados.fieldValues || null,
         status: null,
         duracaoMs: null
-      };
-      adicionarEvento(evento);
+      });
 
       try {
         this.addEventListener("loadend", function () {
+          if (!evento) return;
           evento.status = Number.isFinite(this.status) ? this.status : null;
           evento.duracaoMs = Math.max(0, Date.now() - instanteInicio);
           atualizarStatus();
@@ -451,6 +457,10 @@
       frame: contexto.caminho,
       viewName: nomeVisao(contexto.win),
       tecla: evento.key,
+      codigo: identificadorSeguro(evento.code),
+      codigoNumerico: Number.isInteger(evento.which) && evento.which > 0
+        ? evento.which
+        : (Number.isInteger(evento.keyCode) && evento.keyCode > 0 ? evento.keyCode : null),
       controle: alvo && /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(String(alvo.tagName || ""))
         ? {
           tag: String(alvo.tagName || "").toLowerCase(),
@@ -462,6 +472,25 @@
     });
   }
 
+  function registrarClique(contexto, evento) {
+    const alvo = evento.target;
+    if (!alvo || typeof alvo.closest !== "function") return;
+    const controle = alvo.closest("button, input[type='button'], input[type='submit'], a");
+    if (!controle) return;
+
+    adicionarEvento({
+      tipo: "click",
+      frame: contexto.caminho,
+      viewName: nomeVisao(contexto.win),
+      controle: {
+        tag: String(controle.tagName || "").toLowerCase(),
+        tipo: identificadorSeguro(controle.type),
+        name: identificadorSeguro(controle.name),
+        id: identificadorSeguro(controle.id)
+      }
+    });
+  }
+
   function instalarListeners(contexto) {
     const win = contexto.win;
     if (janelasMonitoradas.has(win)) return;
@@ -469,6 +498,7 @@
 
     const aoFocar = evento => registrarFoco(contexto, evento);
     const aoTeclar = evento => registrarTecla(contexto, evento);
+    const aoClicar = evento => registrarClique(contexto, evento);
     const aoCarregarFrame = evento => {
       if (evento.target && String(evento.target.tagName || "").toUpperCase() === "IFRAME") {
         atualizarContextos();
@@ -477,8 +507,15 @@
 
     contexto.doc.addEventListener("focusin", aoFocar, true);
     contexto.doc.addEventListener("keydown", aoTeclar, true);
+    contexto.doc.addEventListener("click", aoClicar, true);
     contexto.doc.addEventListener("load", aoCarregarFrame, true);
-    contextoListeners.push({ doc: contexto.doc, aoFocar, aoTeclar, aoCarregarFrame });
+    contextoListeners.push({
+      doc: contexto.doc,
+      aoFocar,
+      aoTeclar,
+      aoClicar,
+      aoCarregarFrame
+    });
   }
 
   const contextoListeners = [];
@@ -548,6 +585,7 @@
     for (const item of contextoListeners.splice(0)) {
       item.doc.removeEventListener("focusin", item.aoFocar, true);
       item.doc.removeEventListener("keydown", item.aoTeclar, true);
+      item.doc.removeEventListener("click", item.aoClicar, true);
       item.doc.removeEventListener("load", item.aoCarregarFrame, true);
     }
 
@@ -615,6 +653,7 @@
   }
 
   function exportarRelatorio() {
+    if (capturando) encerrarCaptura();
     const relatorio = montarRelatorio();
     const blob = new Blob([JSON.stringify(relatorio, null, 2)], {
       type: "application/json;charset=utf-8"
