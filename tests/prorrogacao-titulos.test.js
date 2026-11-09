@@ -44,7 +44,7 @@ test('rejeita data inexistente e formatos ambíguos', () => {
 test('exige sigla do executor e valida siglas opcionais', () => {
   assert.throws(
     () => api.montarComplementoHistorico({ data: '09/11/2026', executor: '' }),
-    /Executor/
+    /executor/i
   );
   assert.throws(
     () => api.montarComplementoHistorico({
@@ -52,7 +52,7 @@ test('exige sigla do executor e valida siglas opcionais', () => {
       executor: 'IT',
       autorizacao: 'SIGLA COM ESPAÇO'
     }),
-    /Autorização/
+    /autorização/i
   );
 });
 
