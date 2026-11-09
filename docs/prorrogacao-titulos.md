@@ -1,0 +1,133 @@
+# Prorrogação de títulos — evidências e operação
+
+**Userscript:** \`userscripts/systextil-prorrogacao-titulos.user.js\`  
+**Versão inicial:** 0.1.0  
+**Branch de implementação:** \`feat/prorrogacao-titulos\`  
+**Base técnica:** sonda somente leitura 0.1.2, captura de 09/11/2026 entre 19:03:52 e 19:04:39 UTC.
+
+## 1. Objetivo
+
+Processar uma lista de títulos/parcelas em sequência, preenchendo:
+
+- \`Compl.hist\` na visão \`forms.crec.crec_f030\`;
+- \`data_prorrogacao.N\` na linha da parcela;
+- \`nr_mtv_prorrogacao.N\` com o código fixo \`01\`, na visão \`forms.crec.crec_f035\`.
+
+Cada item só é considerado concluído depois de retornar à Consulta, refazer o Find e conferir a data e o complemento do histórico lidos no formulário.
+
+A funcionalidade é um userscript independente. Não altera o userscript de segunda via, a ponte SmartTable ou a sonda diagnóstica.
+
+## 2. Evidências observadas
+
+A sonda 0.1.2 registrou 22 eventos, sem comandos de gravação e sem alterações de campos. A captura confirmou:
+
+| Tela | \`curDataView.name\` | Campos/controles relevantes |
+|---|---|---|
+| Consulta de títulos | \`forms.crec.crec_f090\` | \`num_duplicata.\`, \`seq_duplicatas.\`, \`data_prorrogacao.\`, \`compl_historico.\` |
+| Manutenção de títulos a receber | \`forms.crec.crec_f030\` | \`num_duplicata.\`, \`seq_duplicatas.\`, \`compl_historico.\` |
+| Manutenção de títulos | \`forms.crec.crec_f035\` | \`seq_duplicatas.N\`, \`data_prorrogacao.N\`, \`nr_mtv_prorrogacao.N\` |
+
+### Navegação confirmada
+
+| Origem | Ação manual observada | Comando NXJ | Destino |
+|---|---|---|---|
+| \`crec_f090\` | Clique em \`cmdBtnTitulos\` | \`cmdBtnTitulos\` | \`crec_f030\` |
+| \`crec_f030\` | F2 | \`cmdNextForm\` | \`crec_f035\` |
+| \`crec_f035\` | F1 | \`PREVIOUS_FORM\` | \`crec_f030\` |
+| \`crec_f030\` | F1 | \`PREVIOUS_FORM\` | \`crec_f090\` |
+
+Os quatro comandos tiveram resposta HTTP 200 na captura. Os atalhos F1/F2 foram observados sem Alt, Ctrl, Shift ou Meta.
+
+### Campos e limites observados
+
+- \`forms.crec.crec_f030\`: \`compl_historico.\` editável, \`maxLength = 60\`.
+- \`forms.crec.crec_f035\`: grade com até dez posições observadas. O índice da parcela fica no nome do campo, por exemplo \`seq_duplicatas.0\`; os campos editáveis correspondentes são \`data_prorrogacao.0\` e \`nr_mtv_prorrogacao.0\`.
+- As posições superiores a 2 estavam desabilitadas no snapshot observado. A implementação verifica \`disabled\` e \`readOnly\` no momento da execução.
+- O campo sem sufixo \`seq_duplicatas.\` também aparece em \`crec_f035\`; a seleção usa somente os campos com sufixo numérico e compara o valor da parcela. Não usa \`currentRow\` nem presume que a parcela esteja na primeira linha.
+
+### Gravação manual observada
+
+- F9 em \`crec_f030\` enviou \`ADD_UPDATE\`, HTTP 200, e a visão passou a \`recordAction = UPDATED\`.
+- F9 em \`crec_f035\` enviou \`ADD_UPDATE\`, HTTP 200, e a visão passou a \`recordAction = UPDATED\`.
+- A evidência de F9 repetido em \`crec_f030\` mostra por que a automação envia exatamente um F9 por tela e não tenta repetir quando o resultado é ambíguo.
+- A captura não exportou valores de campos ou conteúdos de registros. Portanto, não prova por si só quais valores foram persistidos nem substitui releitura.
+
+## 3. Formato de Compl.hist
+
+O texto é montado nesta ordem:
+
+\`DD/MM/AAAA - [MOTIVO] - PRORROG - [AUT SIGLA] - [EXECUTOR]\`
+
+Motivo e autorização são opcionais. A sigla do executor é obrigatória e configurável; não existe sigla fixa no código. O código do motivo da prorrogação na grade é sempre \`01\`.
+
+Exemplos:
+
+- \`09/11/2026 - PRORROG - IT\`
+- \`09/11/2026 - PEDIDO CLIENTE - PRORROG - AUT GISELA - IT\`
+
+O limite é de 60 caracteres. O script rejeita o texto que exceder esse tamanho; não trunca e não substitui silenciosamente o histórico.
+
+## 4. Entrada do lote
+
+Uma linha por título/parcela:
+
+\`\`\`text
+00012345;03
+00012346;01;15/11/2026
+\`\`\`
+
+A primeira linha usa a data comum informada no painel. A segunda usa a data individual, que prevalece sobre a data comum. A data individual deve estar no formato \`DD/MM/AAAA\`.
+
+No painel, informe também o motivo (opcional), a sigla de autorização (opcional) e a sigla do executor (obrigatória). Clique em **Validar lote**, revise os itens e marque a confirmação antes de **Iniciar lote**.
+
+O script permite títulos vencidos: não aplica bloqueio por atraso.
+
+## 5. Fluxo implementado
+
+Para cada título/parcela:
+
+1. Exige a visão Consulta e prepara o modo Find com o controle \`btnClearToFind.\`.
+2. Preenche título e parcela nos campos reais, usando o setter nativo e eventos \`input\`/\`change\`.
+3. Aguarda confirmação NXJ de cada identificador, executa Find uma vez e exige um único registro correspondente.
+4. Abre \`crec_f030\` por \`cmdBtnTitulos\`, confere título e parcela, substitui \`compl_historico.\` e executa um único F9.
+5. Exige POST \`ADD_UPDATE\` HTTP 2xx, payload contendo o texto esperado e \`recordAction = UPDATED\`.
+6. Entra em \`crec_f035\` por F2, procura a parcela por seu valor nos campos \`seq_duplicatas.N\`, exige uma única correspondência e preenche data e código \`01\`.
+7. Executa um único F9 e exige a mesma confirmação do comando, payload e estado \`UPDATED\`.
+8. Retorna à Consulta por F1 duas vezes, refaz a consulta e confere \`data_prorrogacao.\` e \`compl_historico.\`.
+9. Só então inicia o próximo item.
+
+A sequência é serial. Não há paralelismo entre títulos.
+
+## 6. Segurança operacional e falhas
+
+- A gravação do histórico e a gravação da prorrogação são dois salvamentos independentes. Não existe transação única nem rollback automático.
+- Se a primeira gravação for confirmada e a segunda falhar, o item fica parcial e o lote é interrompido.
+- Se o comando F9 for disparado e a confirmação ficar ausente, o estado é tratado como indeterminado. Não pressione F9 novamente nem inicie nova tentativa antes de conferir o título no ERP.
+- Se a parcela não existir, aparecer duplicada, estiver desabilitada ou não tiver os campos correspondentes, o item é bloqueado.
+- Se o Find não retornar exatamente um registro, o item é bloqueado.
+- Se a releitura não confirmar a data e o histórico, o lote é interrompido.
+- Não há tentativa automática de desfazer uma alteração já gravada.
+- O monitor registra somente metadados necessários ao fluxo e os segmentos NXJ em memória para conferir os valores; não grava payload, dados de cliente, cookies ou tokens em armazenamento ou console.
+
+## 7. Pendências de homologação
+
+A sonda comprovou as teclas e os comandos quando acionados manualmente. A implementação dispara F1, F2 e F9 por eventos \`KeyboardEvent\` sintéticos e exige a resposta NXJ correspondente. **A aceitação desses eventos sintéticos pelo handler legado do Systextil ainda precisa ser homologada no navegador real.** Se a aplicação rejeitar eventos sintéticos, o monitor deve interromper o fluxo; não há fallback que envie comandos NXJ manualmente.
+
+Também dependem de homologação:
+
+1. confirmar que a edição direta dos campos da grade, seguida de mudança de foco, envia os valores pelo NXJ no ambiente de produção;
+2. confirmar que \`data_prorrogacao.\` e \`compl_historico.\` na releitura de \`crec_f090\` refletem os valores persistidos para a parcela pesquisada;
+3. executar primeiro um único título/parcela de teste autorizado e conferir manualmente os dois campos no ERP;
+4. testar depois um lote com duas parcelas, somente após a primeira execução estar confirmada.
+
+Não use títulos reais sem autorização do responsável pelo processo. O resultado dos testes automatizados não comprova a gravação operacional no Systextil.
+
+## 8. Verificação local
+
+Na raiz do repositório, com Node.js 18 ou superior:
+
+\`\`\`powershell
+npm run verify
+\`\`\`
+
+O comando verifica a sintaxe de todos os userscripts e executa a suíte completa com o runner nativo do Node.js. O repositório não deve receber CI/CD ou GitHub Actions para esta alteração.
