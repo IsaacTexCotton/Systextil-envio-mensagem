@@ -1286,7 +1286,7 @@ A v1.0.5 foi integrada à `main` pela PR #39 em 09/11/2026. A integração não 
 
 - O operador informou que o botão `procAgendados` (sininho) é o controle que deve ser acionado novamente para atualizar a grade de Processos agendados.
 - O código anterior usava `btnFind.`, que pertence à Consulta de títulos e não está disponível nessa tela.
-- A v1.0.5 proposta aciona `procAgendados` antes da primeira leitura e antes de cada releitura, aguarda a requisição NXJ quando observável e respeita pelo menos quatro segundos para a renderização da grade.
+- A v1.0.5 integrada aciona `procAgendados` antes da primeira leitura e antes de cada releitura, aguarda a requisição NXJ quando observável e respeita pelo menos quatro segundos para a renderização da grade.
 - Mensagens vazias, intermediárias ou desconhecidas continuam em acompanhamento. O processo só é baixado após a mensagem explícita de sucesso; falha explícita, ambiguidade ou timeout não provocam uma segunda emissão.
 
 ### Primeira busca do título
