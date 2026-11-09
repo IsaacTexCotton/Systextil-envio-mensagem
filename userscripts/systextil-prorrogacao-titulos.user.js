@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Prorrogação de Títulos
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      0.1.4
+// @version      0.1.5
 // @description  Prorroga títulos em lote com confirmação NXJ, gravação sequencial e releitura.
 // @match        https://systextil.texcotton.com.br/systextil/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -28,7 +28,7 @@
 function criarApi() {
   "use strict";
 
-  const VERSION = "0.1.4";
+  const VERSION = "0.1.5";
   const VISAO_CONSULTA = "forms.crec.crec_f090";
   const VISAO_HISTORICO = "forms.crec.crec_f030";
   const VISAO_PARCELAS = "forms.crec.crec_f035";
@@ -718,11 +718,31 @@ function criarApi() {
       return false;
     }
 
+    function obterResumo(sequenciaInicial, valorEsperado) {
+      return requisicoes
+        .filter(item =>
+          item.sequencia > sequenciaInicial &&
+          item.metodo === "POST"
+        )
+        .slice(-8)
+        .map(item => {
+          const tamanhos = item.segmentos.map(segmento => String(segmento).length).join(",");
+          const status = item.finalizado ? "HTTP " + item.status : "pendente";
+          const corresponde = valorEsperado === undefined
+            ? ""
+            : ";valor=" + (valorConfere(item.segmentos, valorEsperado) ? "sim" : "não");
+          return (item.comando || "SEM_COMANDO") + "[" + item.segmentos.length +
+            (tamanhos ? ":" + tamanhos : "") + "];" + status + corresponde;
+        })
+        .join(" | ") || "nenhum POST NXJ observado";
+    }
+
     return {
       obterSequencia: () => estado.sequencia,
       aguardarOcioso,
       aguardarComando,
       aguardarConfirmacaoCampo,
+      obterResumo,
       remover() {
         for (const instalacao of instalacoes) {
           if (instalacao.prototipo.open === instalacao.openWrapper) {
@@ -894,15 +914,24 @@ function criarApi() {
     await aguardarVisao(pagina, visaoEsperada);
   }
 
-  function dispararTecla(pagina, tecla) {
-    const codigos = { F1: 112, F2: 113, F9: 120 };
+  function obterCodigoTecla(tecla) {
+    const codigos = { F1: 112, F2: 113, F9: 120, Tab: 9 };
     const codigo = codigos[tecla];
     if (!codigo) throw new Error("Atalho de teclado não autorizado: " + tecla + ".");
+    return codigo;
+  }
 
-    const alvo = pagina.document.activeElement &&
+  function dispararTecla(pagina, tecla, alvoPreferencial) {
+    const codigo = obterCodigoTecla(tecla);
+    const alvo = alvoPreferencial ||
+      (pagina.document.activeElement &&
       pagina.document.activeElement !== pagina.document.body
-      ? pagina.document.activeElement
-      : pagina.document;
+        ? pagina.document.activeElement
+        : pagina.document);
+    if (!alvo || typeof alvo.dispatchEvent !== "function") {
+      throw new Error("Não foi possível enviar a tecla " + tecla + " ao campo ativo.");
+    }
+
     const evento = new pagina.KeyboardEvent("keydown", {
       key: tecla,
       code: tecla,
@@ -936,12 +965,25 @@ function criarApi() {
     atribuirValor(campo, valor, pagina);
     await pausa(ATRASO_FOCO_MS);
 
+    // A saída por Tab é um caminho NXJ observado para transportar o valor
+    // pendente. Em seguida, o próximo controle é ativado caso o evento
+    // sintético não tenha movido o foco por conta própria.
+    dispararTecla(pagina, "Tab", campo);
+    await pausa(ATRASO_FOCO_MS);
+
     const proximo = obterCampo(pagina, nomeProximoCampo);
-    await focarCampo(proximo, pagina, monitor);
+    if (pagina.document.activeElement !== proximo) {
+      await focarCampo(proximo, pagina, monitor);
+    } else {
+      await monitor.aguardarOcioso();
+    }
 
     const confirmacao = await monitor.aguardarConfirmacaoCampo(valor, sequenciaAntes);
     if (!confirmacao) {
-      throw new Error("O NXJ não confirmou o conteúdo do campo " + nomeCampo + ".");
+      throw new Error(
+        "O NXJ não confirmou o conteúdo do campo " + nomeCampo +
+        ". Diagnóstico NXJ: " + monitor.obterResumo(sequenciaAntes, valor) + "."
+      );
     }
 
     const atual = obterCampo(pagina, nomeCampo);
@@ -1434,6 +1476,7 @@ function criarApi() {
     analisarLote,
     selecionarLinhaPorParcela,
     obterLimiteCampo,
+    obterCodigoTecla,
     valoresNaoConfirmados,
     encontrarElementoPorId,
     coletarDocumentosMesmoDominio,
