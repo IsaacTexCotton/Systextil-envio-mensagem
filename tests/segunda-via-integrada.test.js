@@ -36,7 +36,7 @@ function formatarDataHora(timestamp) {
 }
 
 test('expõe a versão unificada e valida a transferência recebida do SmartTable', () => {
-  assert.equal(api.VERSION, '1.0.4');
+  assert.equal(api.VERSION, '1.0.5');
   const pedido = api.validarPedido(pedidoValido());
   assert.equal(pedido.titulo, '00001234');
   assert.equal(pedido.parcela, '03');
@@ -181,14 +181,41 @@ test('interrompe o acompanhamento quando o ERP informa falha explícita', () => 
   assert.match(resultado.mensagem, /falha no processo/i);
 });
 
-test('não inicia a atualização da grade quando o controle Find não está disponível', () => {
+test('captura a confirmação NXJ antes de escrever título e parcela', () => {
+  const inicio = SOURCE.indexOf('async function preencherCamposConsulta');
+  const fim = SOURCE.indexOf('function normalizarTextoProcesso', inicio);
+  const trecho = SOURCE.slice(inicio, fim);
+
+  const baselineTitulo = trecho.indexOf('const sequenciaAntesDoTitulo = monitor.obterSequencia()');
+  const escritaTitulo = trecho.indexOf('atribuirValorCampo(campoTitulo, titulo)');
+  const baselineParcela = trecho.indexOf('const sequenciaAntesDaParcela = monitor.obterSequencia()');
+  const escritaParcela = trecho.indexOf('atribuirValorCampo(campoParcela, parcela)');
+
+  assert.ok(baselineTitulo >= 0 && baselineTitulo < escritaTitulo);
+  assert.ok(baselineParcela >= 0 && baselineParcela < escritaParcela);
+});
+
+test('atualiza Processos agendados pelo sininho e aguarda a grade', () => {
   const inicio = SOURCE.indexOf('async function atualizarGradeProcessos');
   const fim = SOURCE.indexOf('async function iniciarDownloadAutomatico', inicio);
   const trecho = SOURCE.slice(inicio, fim);
 
-  assert.match(trecho, /if \(!botaoFind \|\| botaoFind\.disabled === true\)/);
-  assert.match(trecho, /botaoFind\.click\(\)/);
+  assert.match(trecho, /acharPorId\("procAgendados"\)/);
+  assert.match(trecho, /botaoProcessos\.click\(\)/);
+  assert.match(trecho, /tempoMinimoAtualizacaoMs = 4000/);
   assert.match(trecho, /await aguardarOcioso\(monitor, 20000\)/);
+  assert.doesNotMatch(trecho, /btnFind\./);
+});
+
+test('atualiza a grade antes da primeira leitura dos processos', () => {
+  const inicio = SOURCE.indexOf('async function executarProcessosAutomaticamente');
+  const fim = SOURCE.indexOf('async function receberPedidoCrm', inicio);
+  const trecho = SOURCE.slice(inicio, fim);
+  const primeiraAtualizacao = trecho.indexOf('await atualizarGradeProcessos(pagina, monitor)');
+  const primeiraLeitura = trecho.indexOf('lerRegistrosProcessos()');
+
+  assert.ok(primeiraAtualizacao >= 0);
+  assert.ok(primeiraLeitura > primeiraAtualizacao);
 });
 
 test('bloqueia resultado ambíguo de processos', () => {
