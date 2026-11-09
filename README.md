@@ -21,15 +21,17 @@ Não são criados painéis flutuantes, campos auxiliares, janelas de conferênci
 
 **Instalação e atualização:** instale somente `systextil-segunda-via.user.js` no Tampermonkey e habilite-o no CRM e no Systextil. Os três userscripts antigos foram desativados por metadados e não devem ser reativados. Depois de instalar o novo, remova ou desative as entradas antigas no Tampermonkey para evitar confusão.
 
+**Conferência da versão instalada:** o cabeçalho do arquivo na `main` declara `@version 1.0.4`. Se o Tampermonkey ainda mostrar `1.0`, confira o cabeçalho do código da entrada instalada, atualize a entrada correta e desative/remova cópias antigas. A versão exibida não deve ser inferida pelo nome do arquivo.
+
 **Proteções operacionais:** confirmação NXJ obrigatória dos dois campos antes do Find, correspondência única, conferência de título/parcela/cliente, trava contra emissão repetida, identificação inequívoca do processo, validação do PDF e bloqueio de repetição quando o resultado do download é indeterminado. Um timeout após clicar em **Emite boleto** não prova que a emissão falhou; nesses casos o fluxo não emite novamente. Um resultado de download indeterminado exige conferir a pasta Downloads antes de uma nova tentativa.
 
 Documentação da integração: [docs/transferencia-crm-systextil.md](docs/transferencia-crm-systextil.md). Histórico técnico e riscos: [docs/segunda-via-boleto.md](docs/segunda-via-boleto.md).
 
-**Estado da versão 1.0.4:** correção de acompanhamento preparada em branch própria. Mensagens do ERP não reconhecidas como sucesso ou falha explícita mantêm o processo em observação; a grade é atualizada sem repetir a emissão. `npm run verify` e homologação no Chrome/Tampermonkey/Systextil reais ainda precisam ser executados antes de integrar à `main`. Não use uma emissão extra apenas para testar; a primeira homologação deve aproveitar um título de uma operação real já prevista.
+**Estado da versão 1.0.4 na main:** integrada pela PR [#37](https://github.com/IsaacTexCotton/Systextil-envio-mensagem/pull/37) em 09/11/2026. Mensagens vazias, intermediárias ou desconhecidas em Processos agendados permanecem em acompanhamento; marcadores explícitos de falha encerram a execução. A grade é atualizada a cada quatro segundos, por até três minutos. A emissão não é repetida e o PDF só é liberado após sucesso explícito. A PR registrou parse sintático e dez verificações direcionadas aprovadas; `npm run verify` não foi executado e a homologação no Chrome/Tampermonkey/Systextil reais continua pendente. Não use emissão extra para testar.
 
 ## Desenvolvimento e testes
 
-Guia transversal para novas automações e agentes de IA: [docs/guia-automacao-tampermonkey-systextil.md](docs/guia-automacao-tampermonkey-systextil.md). Ele complementa o `AGENTS.md` com padrões de DOM, contexto da página, integração com o ERP, segurança, testes e critérios de validação.
+Para qualquer nova automação no ERP, leia primeiro o [AGENTS.md](AGENTS.md), o [guia transversal de Tampermonkey](docs/guia-automacao-tampermonkey-systextil.md) e a [referência técnica NXJ e de telas](docs/referencia-tecnica-nxj-systextil.md). A referência NXJ reúne campos e comandos observados na Consulta de títulos e na Baixa de Títulos por Seleção, além dos limites conhecidos de Processos agendados. Os achados não são universais: confirme a visão, os campos e a sequência na tela de destino.
 
 Com Node.js 18 ou superior, na raiz do repositório:
 

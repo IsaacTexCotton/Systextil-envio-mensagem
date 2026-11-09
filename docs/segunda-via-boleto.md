@@ -1,10 +1,10 @@
 # Segunda via de boleto — levantamento técnico
 
-> **Atualização da arquitetura (v1.0.4):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. Elas não são mais instruções de instalação/operação. A implementação vigente em revisão é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte `docs/transferencia-crm-systextil.md` para as instruções atuais.
+> **Atualização da arquitetura (main v1.0.4, 09/11/2026):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. A implementação integrada é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte [transferencia-crm-systextil.md](transferencia-crm-systextil.md) e [referencia-tecnica-nxj-systextil.md](referencia-tecnica-nxj-systextil.md) para as instruções atuais.
 
 
 **Base histórica:** a rotina NXJ v0.4.9 foi validada no Systextil real e evoluiu até o helper-base v0.6.0 na `main`. Esta branch propõe o helper-base v0.6.1, a ponte v0.2.0 e o orquestrador v0.2.0 para automatizar a cadeia completa. Ainda não integrada nem homologada operacionalmente.  
-**Última atualização:** 2026-11-05
+**Última atualização:** 2026-11-09
 
 > Esta documentação preserva o histórico das fases anteriores. O estado de produção e as correções posteriores prevalecem sobre descrições históricas que indiquem versões anteriores como atuais. Para padrões transversais de automação e instruções para agentes de IA, consulte [guia-automacao-tampermonkey-systextil.md](guia-automacao-tampermonkey-systextil.md).  
 **Escopo:** obter o PDF de um boleto já existente no Systextil e salvá-lo com nome padronizado em uma pasta de rede.
@@ -1218,7 +1218,7 @@ Foi adicionada a suíte `tests/segunda-via-integrada.test.js` para contrato CRM,
 
 Executar `npm run verify` com Node.js 18 ou superior. A suíte automatizada não substitui a homologação operacional; a nova cobertura inclui payload NXJ com máscara/prefixo, uso do controle Find e preservação de estados indeterminados.
 
-**Estado:** implementação em branch de revisão. A suíte completa e a validação no Chrome/Tampermonkey/Systextil reais ainda não foram confirmadas. Não integrar à `main` até verificar a transferência do CRM, a troca de visão para Processos agendados, a identificação do processo e o download real para Downloads. A primeira homologação deve utilizar um título já previsto para operação, sem criar uma emissão exclusivamente para teste.
+**Estado na main em 09/11/2026:** a versão 1.0.4 está integrada pelas PRs #36 e #37. A suíte completa `npm run verify` não foi executada no registro da PR #37 e a homologação no Chrome/Tampermonkey/Systextil reais permanece pendente. Não gerar uma emissão exclusivamente para testar; aproveitar um título que já esteja previsto em uma operação real.
 
 ## 28. Bloqueio do Find sem confirmação NXJ de título e parcela (v1.0.3 — 09/11/2026)
 
@@ -1246,7 +1246,7 @@ A suíte de integração verifica confirmação completa, título pendente, parc
 - Homologar com um título já previsto para uma operação legítima, sem gerar emissão apenas para teste. Confirmar no diagnóstico que ambos os campos geraram comandos NXJ reconhecidos antes de permitir o Find.
 - Se a confirmação NXJ não ocorrer, o fluxo deve parar e não se deve executar a consulta manualmente até conferir/limpar os campos.
 
-**Estado:** correção preparada em branch de revisão. A suíte completa e a homologação operacional no ERP real ainda não foram executadas.
+**Estado:** a correção foi integrada à main pela PR #36 como v1.0.3; a v1.0.4 também está integrada pela PR #37. A suíte completa e a homologação operacional no ERP real continuam pendentes.
 
 
 ## 29. Acompanhamento de mensagens intermediárias em Processos agendados (v1.0.4 — 09/11/2026)
@@ -1266,3 +1266,14 @@ A análise classificava como falha qualquer mensagem diferente de `Processo conc
 ### Testes e validação
 
 Foram adicionados testes para mensagem intermediária não vazia, erro explícito e existência do mecanismo de atualização. Os testes automatizados simulam a regra de classificação; a confirmação da lista de mensagens e do comportamento de atualização depende de homologação no Systextil real.
+
+
+## 30. Estado integrado da v1.0.4 na main (09/11/2026)
+
+A PR #37 foi integrada em 09/11/2026 pelo merge commit `57cdc19e9f6b1fe98d295e1fef360a6c2a11dea3`. A versão do userscript único na main é 1.0.4.
+
+A rotina classifica como sucesso somente a mensagem explícita esperada `Processo concluído com sucesso.`. Mensagens vazias, intermediárias ou desconhecidas permanecem em acompanhamento. Marcadores explícitos de erro, falha, cancelamento, rejeição, interrupção, invalidação, negação, não autorização ou falta de permissão são tratados como falha terminal.
+
+Enquanto o processo não chega a um estado terminal, a grade é atualizada pelo controle Find a cada quatro segundos, respeitando o limite de três minutos. Se o controle Find não estiver disponível para atualizar a grade, ou o prazo terminar sem confirmação de sucesso, o resultado permanece indeterminado. A emissão não é repetida e o PDF não é baixado sem sucesso explícito.
+
+A PR #37 registrou parse sintático e dez verificações direcionadas aprovadas. A suíte completa `npm run verify` não foi executada naquela sessão e a homologação no Chrome/Tampermonkey/Systextil real continua pendente. A lista de marcadores de falha precisa ser confrontada com mensagens reais da instalação.

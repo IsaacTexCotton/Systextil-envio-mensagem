@@ -2,7 +2,7 @@
 
 **Userscript único:** `userscripts/systextil-segunda-via.user.js`  
 **Versão:** 1.0.4  
-**Status:** implementação em branch de revisão; a homologação operacional ainda está pendente.
+**Status:** v1.0.4 integrada à main pela PR #37 em 09/11/2026. A homologação operacional no Chrome/Tampermonkey/Systextil real ainda está pendente.
 
 ## Objetivo e autorização
 
@@ -83,7 +83,7 @@ Com Node.js 18 ou superior, execute na raiz:
 npm run verify
 ```
 
-A execução dos testes não comprova a integração operacional. Antes de integrar a `main`, homologar no Chrome/Tampermonkey e Systextil reais, aproveitando um título que já esteja previsto em uma operação real; não gerar uma emissão extra apenas para testar.
+A execução dos testes não comprova a integração operacional. A v1.0.4 já está na `main`, mas a homologação no Chrome/Tampermonkey e Systextil reais continua pendente. Aproveite um título que já esteja previsto em uma operação real; não gere emissão extra apenas para testar.
 
 A homologação precisa confirmar:
 
@@ -95,7 +95,7 @@ A homologação precisa confirmar:
 6. O download validado do PDF para a pasta Downloads sem janela de destino, incluindo o comportamento de nome duplicado.
 7. O retorno do resultado ao SmartTable e o bloqueio seguro em timeout/falha.
 
-**Não integrar nem distribuir a versão 1.0.0 antes de concluir a revisão e a homologação operacional.**
+**Estado atual:** a PR #37 integrou a v1.0.4 à `main`. Antes de distribuir a automação como homologada, execute `npm run verify` e conclua a homologação operacional no ERP real, sem gerar emissão extra para teste.
 
 
 ## Correção do acompanhamento de Processos agendados (v1.0.4)
