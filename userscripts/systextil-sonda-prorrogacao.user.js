@@ -336,11 +336,12 @@
     } catch (_) {
       return;
     }
-    if (!prototipo || contextosInstalados.has(win)) return;
+    if (!prototipo) return false;
+    if (contextosInstalados.has(win)) return true;
 
     const originalOpen = prototipo.open;
     const originalSend = prototipo.send;
-    if (typeof originalOpen !== "function" || typeof originalSend !== "function") return;
+    if (typeof originalOpen !== "function" || typeof originalSend !== "function") return false;
 
     const requisicoes = new WeakMap();
 
@@ -393,10 +394,10 @@
       if (prototipo.open !== openMonitorado || prototipo.send !== sendMonitorado) {
         prototipo.open = originalOpen;
         prototipo.send = originalSend;
-        return;
+        return false;
       }
     } catch (_) {
-      return;
+      return false;
     }
 
     contextosInstalados.set(win, {
@@ -406,6 +407,7 @@
       openMonitorado,
       sendMonitorado
     });
+    return true;
   }
 
   function registrarFoco(contexto, evento) {
@@ -466,11 +468,14 @@
   const contextoListeners = [];
 
   function atualizarContextos() {
-    if (!capturando) return;
-    for (const contexto of listarContextos()) {
-      instalarMonitorXhr(contexto);
+    if (!capturando) return { frames: 0, xhrMonitorados: 0 };
+    const contextos = listarContextos();
+    let xhrMonitorados = 0;
+    for (const contexto of contextos) {
+      if (instalarMonitorXhr(contexto)) xhrMonitorados += 1;
       instalarListeners(contexto);
     }
+    return { frames: contextos.length, xhrMonitorados };
   }
 
   function iniciarCaptura() {
@@ -478,7 +483,7 @@
     capturando = true;
     iniciadoEm = agora();
     encerradoEm = null;
-    atualizarContextos();
+    const diagnosticoInicial = atualizarContextos();
 
     try {
       const Observador = pagina.MutationObserver;
@@ -500,13 +505,22 @@
       observadorFrames = null;
     }
 
-    adicionarEvento({ tipo: "captura-iniciada", framesDetectados: listarContextos().length });
+    adicionarEvento({
+      tipo: "captura-iniciada",
+      framesDetectados: diagnosticoInicial.frames,
+      xhrMonitorados: diagnosticoInicial.xhrMonitorados
+    });
     atualizarBotoes();
-    atualizarStatus();
+    atualizarStatus(
+      diagnosticoInicial.xhrMonitorados > 0
+        ? "Captura iniciada. XHR monitorado em " + diagnosticoInicial.xhrMonitorados + " frame(s)."
+        : "Atenção: a captura iniciou, mas não conseguiu monitorar XHR. O relatório pode ficar incompleto."
+    );
   }
 
   function encerrarCaptura() {
     if (!capturando) return;
+    adicionarEvento({ tipo: "captura-encerrada" });
     capturando = false;
     encerradoEm = agora();
 
@@ -536,7 +550,6 @@
       }
     }
 
-    adicionarEvento({ tipo: "captura-encerrada" });
     atualizarBotoes();
     atualizarStatus();
   }
@@ -618,7 +631,7 @@
 
   function atualizarBotoes() {
     if (!botaoIniciar) return;
-    botaoIniciar.disabled = capturando;
+    botaoIniciar.disabled = capturando || Boolean(iniciadoEm);
     botaoMarcar.disabled = !capturando;
     botaoEncerrar.disabled = !capturando;
     botaoExportar.disabled = !iniciadoEm;
@@ -717,7 +730,10 @@
     botaoEncerrar.addEventListener("click", encerrarCaptura);
     botaoExportar.addEventListener("click", exportarRelatorio);
     fechar.addEventListener("click", () => {
-      if (capturando) encerrarCaptura();
+      if (capturando) {
+        atualizarStatus("Encerre a captura e baixe o relatório antes de fechar o painel.");
+        return;
+      }
       host.remove();
       painel = null;
     });
