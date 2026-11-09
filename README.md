@@ -2,6 +2,21 @@
 
 Userscripts para reduzir trabalho repetitivo no Systextil, mantendo uma autorização explícita para ações comerciais.
 
+
+## Prorrogação de títulos — lote
+
+**Userscript independente:** [userscripts/systextil-prorrogacao-titulos.user.js](userscripts/systextil-prorrogacao-titulos.user.js) · v0.1.0.
+
+- Recebe uma linha por título/parcela no formato \`TITULO;PARCELA\`; a data pode ser comum ao lote ou individual por linha.
+- Substitui \`Compl.hist\` em \`forms.crec.crec_f030\` e grava a data de prorrogação e Mot \`01\` na linha encontrada em \`forms.crec.crec_f035\`.
+- Exige correspondência única da parcela na grade, confirmação NXJ e releitura na Consulta antes de avançar ao próximo item.
+- O executor é uma sigla configurável, não fixa. Motivo e autorização são opcionais. O texto de histórico não pode ultrapassar 60 caracteres.
+- Não bloqueia títulos vencidos. A gravação ocorre em duas telas e não tem rollback automático; qualquer estado parcial ou indeterminado interrompe o lote.
+
+Documentação, evidências de telas/atalhos, formato do histórico e pendências de homologação: [docs/prorrogacao-titulos.md](docs/prorrogacao-titulos.md).
+
+**Atenção:** a captura confirmou F1, F2, os comandos NXJ e o resultado manual de F9. A aceitação de eventos de teclado sintéticos ainda depende de homologação no Systextil real. Não considere a automação pronta para produção antes de validar um único título autorizado.
+
 ## Segunda via automática — SmartTable → Systextil
 
 **Instalação única:** [userscripts/systextil-segunda-via.user.js](userscripts/systextil-segunda-via.user.js) · v1.0.6.
