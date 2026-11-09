@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-> **Atualização da arquitetura (main v1.0.4, 09/11/2026):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. A implementação integrada é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte `docs/transferencia-crm-systextil.md` e `docs/referencia-tecnica-nxj-systextil.md` para as instruções atuais.
+> **Atualização da arquitetura (main v1.0.4, 09/11/2026):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. A implementação integrada é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte [transferencia-crm-systextil.md](transferencia-crm-systextil.md) e [referencia-tecnica-nxj-systextil.md](referencia-tecnica-nxj-systextil.md) para as instruções atuais.
 
 
 **Base histórica:** a rotina NXJ v0.4.9 foi validada no Systextil real e evoluiu até o helper-base v0.6.0 na `main`. Esta branch propõe o helper-base v0.6.1, a ponte v0.2.0 e o orquestrador v0.2.0 para automatizar a cadeia completa. Ainda não integrada nem homologada operacionalmente.  
