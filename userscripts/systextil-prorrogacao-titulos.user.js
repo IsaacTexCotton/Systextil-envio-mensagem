@@ -157,7 +157,6 @@ function criarApi() {
     }
 
     const dataPadrao = dataComum ? validarData(dataComum) : "";
-    const dataHistorico = formatarDataLocal(dataAtual);
     const resultado = [];
     const identificadores = new Set();
 
