@@ -323,6 +323,62 @@ test('formata a data atual pelo calendário local do navegador', () => {
   assert.throws(() => api.formatarDataLocal(new Date('invalid')), /data atual/i);
 });
 
+test('retorna confirmação NXJ do campo com comando, valor e status', async () => {
+  function criarClasseFakeXHR() {
+    return class FakeXHR {
+      constructor() {
+        this.listeners = {};
+        this.status = 0;
+      }
+      open(metodo, url) {
+        this.metodo = metodo;
+        this.url = url;
+      }
+      addEventListener(nome, callback) {
+        this.listeners[nome] = callback;
+      }
+      send(body) {
+        this.body = body;
+        this.status = 200;
+        this.listeners.loadend?.();
+      }
+    };
+  }
+
+  const janela = {
+    document: {},
+    frames: [],
+    URLSearchParams,
+    XMLHttpRequest: criarClasseFakeXHR()
+  };
+  const monitor = api.criarMonitorNxj(janela);
+  const historico = '09/11/2026 - PRORROG - IT';
+
+  try {
+    const sequenciaInicial = monitor.obterSequencia();
+    const parametros = new URLSearchParams();
+    parametros.append('commandName', 'NEXT_FIELD');
+    parametros.append('fieldValues', historico);
+
+    const xhr = new janela.XMLHttpRequest();
+    xhr.open('POST', '/systextil/UnifyNXJ.jsp');
+    xhr.send(parametros);
+
+    const confirmacao = await monitor.aguardarConfirmacaoCampo(
+      historico,
+      sequenciaInicial,
+      3000
+    );
+
+    assert.equal(confirmacao.valor, historico);
+    assert.equal(confirmacao.comando, 'NEXT_FIELD');
+    assert.equal(confirmacao.status, 200);
+    assert.deepEqual(confirmacao.segmentos, [historico]);
+  } finally {
+    monitor.remover();
+  }
+});
+
 test('captura todas as entradas repetidas de fieldValues no NXJ', async () => {
   function criarClasseFakeXHR() {
     return class FakeXHR {
