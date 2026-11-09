@@ -23,7 +23,7 @@ O registro de \`fieldValues\` contém apenas contagens. Os valores transportados
 
 ## Arquivo
 
-\`userscripts/systextil-sonda-prorrogacao.user.js\` — versão 0.1.1.
+\`userscripts/systextil-sonda-prorrogacao.user.js\` — versão 0.1.2.
 
 ## Como executar sem recarregar a sessão
 
@@ -65,3 +65,25 @@ A implementação da prorrogação só deve começar após identificar, com evid
 5. a forma de retornar à consulta sem perder a referência do título.
 
 A sonda não prova que uma gravação foi persistida: status HTTP 200 ou presença do comando F9 são apenas metadados. Essa confirmação precisa ser identificada por leitura/reconsulta controlada na própria tela antes de implementar a automação.
+
+
+## Resultado da segunda coleta (09/11/2026)
+
+A coleta v0.1.1 confirmou:
+
+| Tela | Visão \`curDataView.name\` | Campo de gravação | Evidência após F9 |
+|---|---|---|---|
+| Manutenção de Títulos a Receber | \`forms.crec.crec_f030\` | \`compl_historico.\` | POST \`ADD_UPDATE\` HTTP 200; \`recordAction: UPDATED\` |
+| Manutenção de Títulos | \`forms.crec.crec_f035\` | \`data_prorrogacao.N\` e \`nr_mtv_prorrogacao.N\` | POST \`ADD_UPDATE\` HTTP 200; \`recordAction: UPDATED\` |
+
+\`N\` é o sufixo numérico da linha. A grade expõe vários registros repetidos; a implementação deve localizar a parcela pelo valor do campo \`seq_duplicatas.N\`, exigir correspondência única e validar os campos da mesma linha. Não fixar \`.0\`.
+
+A primeira tela de manutenção foi aberta pelo botão \`cmdBtnTitulos\`. F2 na visão \`forms.crec.crec_f030\` gerou \`cmdNextForm\` e abriu \`forms.crec.crec_f035\`.
+
+O F9 gerou \`ADD_UPDATE\` nas duas visões. A resposta HTTP foi 200 e, nos snapshots posteriores aos marcadores das etapas 4 e 6, \`curDataView.recordAction\` estava como \`UPDATED\`. Isto comprova a resposta positiva observada pelo cliente NXJ nessa coleta, mas ainda não substitui uma releitura independente do registro após retornar à consulta.
+
+Na etapa de complemento histórico houve dois F9 separados, com dois POST \`ADD_UPDATE\`. O primeiro já foi seguido por \`recordAction: UPDATED\`; por isso, a automação deverá enviar F9 uma única vez e nunca repetir o salvamento por timeout ou ausência de retorno visual. Após qualquer resultado indeterminado, interromper a fila para conferência manual.
+
+O retorno à Consulta de títulos ocorreu por dois POST \`PREVIOUS_FORM\` consecutivos: de \`forms.crec.crec_f035\` para \`forms.crec.crec_f030\`, e depois para \`forms.crec.crec_f090\`. A v0.1.1 não registrou qual tecla/atalho originou esses comandos porque capturava somente F2, F7, F9 e Enter. A v0.1.2 amplia a captura para F1–F12, Escape, Enter e Tab, incluindo modificadores, para identificar essa última transição sem repetir qualquer gravação.
+
+**Próxima captura:** somente navegue manualmente entre as telas necessárias para provocar o retorno \`forms.crec.crec_f035\` → \`forms.crec.crec_f030\` → \`forms.crec.crec_f090\`. Não altere campos, não pressione F9 e não execute nova prorrogação apenas para gerar esse diagnóstico. Marque as etapas e exporte o JSON.
