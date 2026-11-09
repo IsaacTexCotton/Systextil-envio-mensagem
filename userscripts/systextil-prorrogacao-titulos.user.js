@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Prorrogação de Títulos
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      0.1.3
+// @version      0.1.4
 // @description  Prorroga títulos em lote com confirmação NXJ, gravação sequencial e releitura.
 // @match        https://systextil.texcotton.com.br/systextil/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -28,7 +28,7 @@
 function criarApi() {
   "use strict";
 
-  const VERSION = "0.1.3";
+  const VERSION = "0.1.4";
   const VISAO_CONSULTA = "forms.crec.crec_f090";
   const VISAO_HISTORICO = "forms.crec.crec_f030";
   const VISAO_PARCELAS = "forms.crec.crec_f035";
@@ -438,6 +438,28 @@ function criarApi() {
     });
   }
 
+  function valoresNaoConfirmados(registroGravacao, valoresEsperados, confirmacoesCampo) {
+    const confirmacoesValidas = Array.isArray(confirmacoesCampo)
+      ? confirmacoesCampo
+      : [];
+
+    return (valoresEsperados || []).filter(valor => {
+      if (valorConfere(registroGravacao?.segmentos, valor)) return false;
+
+      // Alguns comandos NXJ transportam o valor pendente ao sair do campo.
+      // O ADD_UPDATE pode não repetir esse valor no próprio fieldValues.
+      return !confirmacoesValidas.some(confirmacao =>
+        confirmacao?.valor === String(valor) &&
+        ["CLICKONFIELD", "NEXT_FIELD"].includes(confirmacao.comando) &&
+        confirmacao.finalizado === true &&
+        confirmacao.falhaMonitoramento !== true &&
+        confirmacao.status >= 200 &&
+        confirmacao.status < 300 &&
+        valorConfere(confirmacao.segmentos, valor)
+      );
+    });
+  }
+
   function criarMonitorNxj(pagina) {
     const janelas = coletarJanelasMesmoDominio(pagina);
     const metadados = new WeakMap();
@@ -670,7 +692,7 @@ function criarApi() {
       const inicio = Date.now();
       while (Date.now() - inicio < (limiteMs || TIMEOUT_NXJ_MS)) {
         await aguardarOcioso(limiteMs);
-        const confirmada = requisicoes.some(item =>
+        const confirmada = requisicoes.find(item =>
           item.sequencia > sequenciaInicial &&
           item.metodo === "POST" &&
           ["CLICKONFIELD", "NEXT_FIELD"].includes(item.comando) &&
@@ -680,7 +702,17 @@ function criarApi() {
           item.status < 300 &&
           valorConfere(item.segmentos, valor)
         );
-        if (confirmada) return true;
+        if (confirmada) {
+          return Object.freeze({
+            valor: String(valor),
+            comando: confirmada.comando,
+            sequencia: confirmada.sequencia,
+            finalizado: confirmada.finalizado,
+            falhaMonitoramento: confirmada.falhaMonitoramento,
+            status: confirmada.status,
+            segmentos: Object.freeze(confirmada.segmentos.slice())
+          });
+        }
         await pausa(60);
       }
       return false;
@@ -907,7 +939,8 @@ function criarApi() {
     const proximo = obterCampo(pagina, nomeProximoCampo);
     await focarCampo(proximo, pagina, monitor);
 
-    if (!await monitor.aguardarConfirmacaoCampo(valor, sequenciaAntes)) {
+    const confirmacao = await monitor.aguardarConfirmacaoCampo(valor, sequenciaAntes);
+    if (!confirmacao) {
       throw new Error("O NXJ não confirmou o conteúdo do campo " + nomeCampo + ".");
     }
 
@@ -915,9 +948,17 @@ function criarApi() {
     if (String(atual.value ?? "").trim() !== valor) {
       throw new Error("O campo " + nomeCampo + " mudou durante a confirmação.");
     }
+
+    return confirmacao;
   }
 
-  async function salvarUmaVez(pagina, monitor, visao, valoresEsperados) {
+  async function salvarUmaVez(
+    pagina,
+    monitor,
+    visao,
+    valoresEsperados,
+    confirmacoesCampo
+  ) {
     exigirVisao(pagina, visao);
     const estadoAnterior = obterEstado(pagina);
     const sequencia = monitor.obterSequencia();
@@ -937,8 +978,10 @@ function criarApi() {
       );
     }
 
-    const faltantes = (valoresEsperados || []).filter(valor =>
-      !valorConfere(registro.segmentos, valor)
+    const faltantes = valoresNaoConfirmados(
+      registro,
+      valoresEsperados,
+      confirmacoesCampo
     );
     if (faltantes.length) {
       throw criarErroIndeterminado(
@@ -1014,7 +1057,7 @@ function criarApi() {
       throw new Error("O limite do Compl.hist não corresponde aos 60 caracteres esperados.");
     }
 
-    await focarEGravarCampo(
+    const confirmacaoHistorico = await focarEGravarCampo(
       pagina,
       monitor,
       "compl_historico.",
@@ -1022,14 +1065,20 @@ function criarApi() {
       "seq_duplicatas."
     );
 
-    await salvarUmaVez(pagina, monitor, VISAO_HISTORICO, [item.historico]);
+    await salvarUmaVez(
+      pagina,
+      monitor,
+      VISAO_HISTORICO,
+      [item.historico],
+      [confirmacaoHistorico]
+    );
   }
 
   async function gravarProrrogacao(pagina, monitor, item) {
     exigirVisao(pagina, VISAO_PARCELAS);
     const linha = localizarLinhaParcela(pagina, item.parcela);
 
-    await focarEGravarCampo(
+    const confirmacaoData = await focarEGravarCampo(
       pagina,
       monitor,
       "data_prorrogacao." + linha.indice,
@@ -1037,7 +1086,7 @@ function criarApi() {
       "nr_mtv_prorrogacao." + linha.indice
     );
 
-    await focarEGravarCampo(
+    const confirmacaoMotivo = await focarEGravarCampo(
       pagina,
       monitor,
       "nr_mtv_prorrogacao." + linha.indice,
@@ -1049,7 +1098,8 @@ function criarApi() {
       pagina,
       monitor,
       VISAO_PARCELAS,
-      [item.data, CODIGO_MOTIVO_PRORROGACAO]
+      [item.data, CODIGO_MOTIVO_PRORROGACAO],
+      [confirmacaoData, confirmacaoMotivo]
     );
   }
 
@@ -1384,6 +1434,7 @@ function criarApi() {
     analisarLote,
     selecionarLinhaPorParcela,
     obterLimiteCampo,
+    valoresNaoConfirmados,
     encontrarElementoPorId,
     coletarDocumentosMesmoDominio,
     criarMonitorNxj,
