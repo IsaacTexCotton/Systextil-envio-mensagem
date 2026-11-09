@@ -36,7 +36,7 @@ function formatarDataHora(timestamp) {
 }
 
 test('expõe a versão unificada e valida a transferência recebida do SmartTable', () => {
-  assert.equal(api.VERSION, '1.0.3');
+  assert.equal(api.VERSION, '1.0.4');
   const pedido = api.validarPedido(pedidoValido());
   assert.equal(pedido.titulo, '00001234');
   assert.equal(pedido.parcela, '03');
@@ -145,6 +145,50 @@ test('identifica somente um processo concluído dentro da janela da solicitaçã
 
   assert.equal(resultado.status, 'sucesso');
   assert.equal(resultado.registro.rowIndex, 0);
+});
+
+test('mantém mensagens intermediárias não vazias como em andamento', () => {
+  const solicitadoEm = Date.now();
+  const resultado = api.analisarProcessos([{
+    rowIndex: 0,
+    titulo: 'Emissão de boletos com registro',
+    dataExecucao: formatarDataHora(solicitadoEm),
+    mensagem: 'Execução iniciada. Aguardando processamento.'
+  }], {
+    solicitadoEm,
+    titulo: '00001234',
+    parcela: '03'
+  }, solicitadoEm + 1000);
+
+  assert.equal(resultado.status, 'em-andamento');
+  assert.match(resultado.mensagem, /grade será atualizada e analisada novamente/i);
+});
+
+test('interrompe o acompanhamento quando o ERP informa falha explícita', () => {
+  const solicitadoEm = Date.now();
+  const resultado = api.analisarProcessos([{
+    rowIndex: 0,
+    titulo: 'Emissão de boletos com registro',
+    dataExecucao: formatarDataHora(solicitadoEm),
+    mensagem: 'Erro ao gerar o relatório.'
+  }], {
+    solicitadoEm,
+    titulo: '00001234',
+    parcela: '03'
+  }, solicitadoEm + 1000);
+
+  assert.equal(resultado.status, 'falha');
+  assert.match(resultado.mensagem, /falha no processo/i);
+});
+
+test('não inicia a atualização da grade quando o controle Find não está disponível', () => {
+  const inicio = SOURCE.indexOf('async function atualizarGradeProcessos');
+  const fim = SOURCE.indexOf('async function iniciarDownloadAutomatico', inicio);
+  const trecho = SOURCE.slice(inicio, fim);
+
+  assert.match(trecho, /if \(!botaoFind \|\| botaoFind\.disabled === true\)/);
+  assert.match(trecho, /botaoFind\.click\(\)/);
+  assert.match(trecho, /await aguardarOcioso\(monitor, 20000\)/);
 });
 
 test('bloqueia resultado ambíguo de processos', () => {

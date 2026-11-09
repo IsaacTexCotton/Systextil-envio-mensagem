@@ -1,7 +1,7 @@
 # Segunda via automática — SmartTable → Systextil
 
 **Userscript único:** `userscripts/systextil-segunda-via.user.js`  
-**Versão:** 1.0.3  
+**Versão:** 1.0.4  
 **Status:** implementação em branch de revisão; a homologação operacional ainda está pendente.
 
 ## Objetivo e autorização
@@ -30,7 +30,7 @@ O SmartTable continua responsável por apresentar os títulos elegíveis e emiti
 6. Somente depois das duas confirmações NXJ o userscript aciona o controle **Find**. Se qualquer confirmação faltar, a automação para e não consulta nem emite. Exige exatamente um registro e confere título, parcela e cliente. A comparação tolera zeros à esquerda apenas durante a conferência; os identificadores originais continuam armazenados como texto.
 7. Registra a proteção contra repetição e aciona **Emite boleto** uma única vez.
 8. Aciona `procAgendados`. Se o ERP mudar a visão na mesma aba, o userscript acompanha a transição; se abrir outra aba, a aba que receber a visão de processos recupera o estado compartilhado pelo Tampermonkey.
-9. Atualiza a grade automaticamente, procura o processo de emissão pela descrição e pelo horário da solicitação e só continua quando existe uma correspondência única com mensagem de sucesso.
+9. Atualiza a grade automaticamente, procura o processo pela descrição e pelo horário da solicitação e continua acompanhando mensagens intermediárias ou desconhecidas. Só prossegue com uma correspondência única e confirmação explícita de sucesso.
 10. Seleciona a linha identificada, revalida os dados da grade e confere a URL e o relatório PDF fornecidos pelo próprio Systextil.
 11. Obtém o PDF autenticado, confere origem, caminho, relatório, assinatura `%PDF-`, marcador `%%EOF` e limite de tamanho. Só então envia o Blob validado ao download do Tampermonkey.
 12. O navegador salva o arquivo na pasta padrão de Downloads, usando nome baseado na razão social, título e parcela. Em caso de nome já existente, o Tampermonkey usa um nome alternativo em vez de sobrescrever.
@@ -65,7 +65,7 @@ Os dados de referência do CRM são usados para conduzir a operação e nomear o
 - O Find só é acionado após confirmação NXJ de título e parcela, precisa retornar uma única correspondência e tem título, parcela e cliente conferidos antes da emissão.
 - A emissão recebe uma trava de cinco minutos por título/parcela. Se houver timeout depois do clique, o script não clica novamente: o resultado é tratado como incerto.
 - Somente o estado `preenchendo`, anterior ao acionamento da emissão, expira após 30 minutos. Estados `emissao-solicitada`, `processando`, `baixando` e `indeterminado` permanecem bloqueados até recuperação/conferência.
-- O processo precisa ser identificado sem ambiguidade e informar conclusão com sucesso. Linhas ambíguas, horários ilegíveis ou mensagens de falha bloqueiam o download.
+- O processo precisa ser identificado sem ambiguidade e informar conclusão com sucesso. Mensagens intermediárias ou desconhecidas mantêm o acompanhamento ativo e provocam nova atualização da grade; marcadores explícitos de falha interrompem o fluxo. O limite de espera gera estado indeterminado, sem repetir a emissão. O download continua bloqueado até a confirmação explícita de sucesso.
 - O PDF só é baixado após revalidar o processo, a seleção da grade e a URL/relatório.
 - Existe reserva contra download duplicado. Se o navegador não confirmar se o download terminou, a reserva fica indeterminada; confira manualmente a pasta Downloads antes de tentar novamente.
 - `Esc` interrompe a automação local. Não cancela uma emissão já enviada ao ERP.
@@ -75,7 +75,7 @@ Se a tela não for **Consulta de títulos** quando a solicitação chegar, o use
 
 ## Testes e homologação
 
-O arquivo `tests/segunda-via-integrada.test.js` cobre contrato de transferência, comparação tolerante do payload NXJ, bloqueio quando título/parcela não são confirmados pelo NXJ, ordem da barreira em relação ao Find, expiração exclusiva de preenchimentos abandonados, identificação única de processo, ambiguidade e validação de URL/PDF. As suítes existentes continuam cobrindo a sequência NXJ e os contratos legados.
+O arquivo `tests/segunda-via-integrada.test.js` cobre contrato de transferência, comparação tolerante do payload NXJ, bloqueio quando título/parcela não são confirmados pelo NXJ, ordem da barreira em relação ao Find, expiração exclusiva de preenchimentos abandonados, identificação única de processo, estados intermediários, falhas explícitas, ambiguidade e validação de URL/PDF. As suítes existentes continuam cobrindo a sequência NXJ e os contratos legados.
 
 Com Node.js 18 ou superior, execute na raiz:
 
@@ -96,3 +96,12 @@ A homologação precisa confirmar:
 7. O retorno do resultado ao SmartTable e o bloqueio seguro em timeout/falha.
 
 **Não integrar nem distribuir a versão 1.0.0 antes de concluir a revisão e a homologação operacional.**
+
+
+## Correção do acompanhamento de Processos agendados (v1.0.4)
+
+A rotina anterior classificava qualquer mensagem diferente da confirmação literal de sucesso como falha. Isso encerrava o acompanhamento antes da próxima atualização da grade, mesmo quando o texto retornado pelo ERP era apenas um estado intermediário ou não reconhecido.
+
+Na versão 1.0.4, somente marcadores explícitos de erro são classificados como falha. Mensagens vazias, intermediárias ou desconhecidas permanecem em acompanhamento: o userscript atualiza a grade e reanalisa o mesmo processo em intervalos de quatro segundos, por até três minutos. Se o controle Find não estiver disponível, ou o limite de espera terminar sem confirmação, o estado fica indeterminado e exige conferência manual. Nenhuma nova emissão é disparada. O PDF continua condicionado à confirmação literal de sucesso e à validação posterior do registro/relatório.
+
+A suíte automatizada inclui regressões para mensagem intermediária não vazia, falha explícita e disponibilidade do controle de atualização. A homologação no Systextil real continua necessária para confirmar os textos efetivamente retornados e a atualização da grade na estação operacional.

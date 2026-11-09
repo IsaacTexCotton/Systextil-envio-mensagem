@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Segunda Via Automática CRM
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      1.0.3
+// @version      1.0.4
 // @description  Recebe o título do SmartTable, consulta, emite, acompanha o processo e baixa o PDF automaticamente.
 // @match        https://texhub.texcotton.com.br/crm/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -22,7 +22,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "1.0.3";
+  const VERSION = "1.0.4";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const DATA_VIEW_PROCESSOS = "forms.systextil.batch";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
@@ -41,6 +41,15 @@
   const CHAVE_SOLICITACAO_EMISSAO = "st-segunda-via-boleto:solicitacao";
   const TITULO_PROCESSO_BOLETO = "Emissão de boletos com registro";
   const MENSAGEM_SUCESSO_PROCESSO = "Processo concluído com sucesso.";
+  const PADROES_FALHA_PROCESSO = Object.freeze([
+    /\b(?:erro|error|exception)\b/,
+    /\b(?:falha|falhou)\b/,
+    /\b(?:cancelado|cancelada|rejeitado|rejeitada|interrompido|interrompida)\b/,
+    /\b(?:invalido|invalida|negado|negada|bloqueado|bloqueada)\b/,
+    /\bnao foi possivel\b/,
+    /\bnao autorizado\b/,
+    /\bsem permissao\b/
+  ]);
   const TOLERANCIA_HORARIO_PROCESSO_MS = 90 * 1000;
   const MAX_IDADE_SOLICITACAO_MS = 30 * 60 * 1000;
   const MAX_REGISTROS_PROCESSO = 200;
@@ -863,6 +872,19 @@
   }
 
   /**
+   * Só considera falha quando o ERP informa um marcador inequívoco.
+   * Mensagens desconhecidas não provam sucesso nem falha: continuam em observação.
+   */
+  function classificarMensagemProcesso(mensagem) {
+    const normalizada = normalizarTextoProcesso(mensagem);
+    const sucessoEsperado = normalizarTextoProcesso(MENSAGEM_SUCESSO_PROCESSO);
+
+    if (normalizada.includes(sucessoEsperado)) return "sucesso";
+    if (PADROES_FALHA_PROCESSO.some(padrao => padrao.test(normalizada))) return "falha";
+    return "em-andamento";
+  }
+
+  /**
    * Interpreta somente formatos explícitos com data e hora.
    * Retorna timestamp local ou null se o formato/data não for verificável.
    */
@@ -1032,10 +1054,9 @@
     } else {
       registro = candidatos[0];
     }
-    const mensagemNormalizada = normalizarTextoProcesso(registro.mensagem);
-    const sucessoEsperado = normalizarTextoProcesso(MENSAGEM_SUCESSO_PROCESSO);
+    const statusMensagem = classificarMensagemProcesso(registro.mensagem);
 
-    if (mensagemNormalizada.includes(sucessoEsperado)) {
+    if (statusMensagem === "sucesso") {
       return {
         status: "sucesso",
         mensagem: "Processo único identificado e concluído com sucesso.",
@@ -1044,18 +1065,18 @@
       };
     }
 
-    if (!mensagemNormalizada) {
+    if (statusMensagem === "falha") {
       return {
-        status: "em-andamento",
-        mensagem: "O processo correspondente foi localizado, mas ainda não apresenta confirmação de conclusão.",
+        status: "falha",
+        mensagem: "O ERP informou uma mensagem de falha no processo. O download permanece bloqueado.",
         candidatos: 1,
         registro
       };
     }
 
     return {
-      status: "falha",
-      mensagem: "O processo correspondente foi localizado, mas o ERP não informou a mensagem de sucesso. O download não deve prosseguir.",
+      status: "em-andamento",
+      mensagem: "O processo foi localizado, mas a mensagem atual ainda não confirma sucesso nem falha. A grade será atualizada e analisada novamente.",
       candidatos: 1,
       registro
     };
@@ -2438,10 +2459,14 @@
 
   async function atualizarGradeProcessos(pagina, monitor) {
     const botaoFind = acharPorId("btnFind.");
-    if (botaoFind) {
-      botaoFind.click();
-      await aguardarOcioso(monitor, 20000);
+    if (!botaoFind || botaoFind.disabled === true) {
+      throw new Error(
+        "Não foi possível atualizar Processos agendados: o controle Find não está disponível. O resultado da emissão permanece indeterminado; confira a grade manualmente antes de qualquer nova tentativa."
+      );
     }
+
+    botaoFind.click();
+    await aguardarOcioso(monitor, 20000);
   }
 
   async function iniciarDownloadAutomatico(execucao, registro, pagina) {
