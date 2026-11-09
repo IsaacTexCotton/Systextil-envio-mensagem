@@ -36,7 +36,7 @@ function formatarDataHora(timestamp) {
 }
 
 test('expõe a versão unificada e valida a transferência recebida do SmartTable', () => {
-  assert.equal(api.VERSION, '1.0.0');
+  assert.equal(api.VERSION, '1.0.2');
   const pedido = api.validarPedido(pedidoValido());
   assert.equal(pedido.titulo, '00001234');
   assert.equal(pedido.parcela, '03');
@@ -70,45 +70,38 @@ test('encontra o valor exato do campo NXJ mesmo quando outros segmentos vêm dep
   assert.equal(segmentos.includes('93652'), false);
 });
 
-test('envia keydown e keyup de F7 ao campo real do título com foco', () => {
-  const eventos = [];
-  let documento;
-  const campoTitulo = {
-    focus() {
-      documento.activeElement = this;
-    },
-    dispatchEvent(evento) {
-      eventos.push(evento);
-      return true;
-    }
-  };
-  documento = {
-    activeElement: null,
-    getElementsByName(nome) {
-      assert.equal(nome, 'num_duplicata.');
-      return [campoTitulo];
-    }
-  };
-  class KeyboardEventFake {
-    constructor(tipo, opcoes) {
-      this.type = tipo;
-      Object.assign(this, opcoes);
-    }
-  }
-
-  api.pressionarF7({ document: documento, KeyboardEvent: KeyboardEventFake });
-
-  assert.equal(documento.activeElement, campoTitulo);
-  assert.deepEqual(eventos.map(evento => evento.type), ['keydown', 'keyup']);
-  assert.ok(eventos.every(evento => evento.key === 'F7' && evento.code === 'F7'));
-  assert.ok(eventos.every(evento => evento.keyCode === 118 && evento.which === 118));
+test('usa o controle Find do ERP em vez de simular a tecla F7', () => {
+  assert.match(SOURCE, /find:\s*"btnFind\."/);
+  assert.match(SOURCE, /clicarBarraConsulta\("find"\)/);
+  assert.doesNotMatch(SOURCE, /pressionarF7|KeyboardEvent|key:\s*["']F7["']/);
 });
 
-test('normaliza somente zeros à esquerda para comparar o título, sem alterar a parcela', () => {
+test('normaliza zeros à esquerda somente durante a comparação dos códigos', () => {
   assert.equal(api.normalizarCodigoComparacao('00012345'), '12345');
   assert.equal(api.normalizarCodigoComparacao('12345'), '12345');
-  assert.equal(api.normalizarCodigoComparacao('03'), '03');
+  assert.equal(api.normalizarCodigoComparacao('03'), '3');
   assert.equal(api.normalizarCodigoComparacao('AB-12'), 'AB-12');
+});
+
+test('reconhece payload NXJ com zeros à esquerda e prefixo de campo', () => {
+  assert.equal(api.valorConfere(['00012345'], '12345'), true);
+  assert.equal(api.valorConfere(['seq_duplicatas.=03'], '3'), true);
+  assert.equal(api.valorConfere(['campo:00012345'], '12345'), true);
+  assert.equal(api.valorConfere(['00012346'], '12345'), false);
+  assert.equal(api.valorConfere(['123456'], '12345'), false);
+});
+
+test('expira apenas preenchimento abandonado e preserva estados de resultado incerto', () => {
+  const agora = 1_800_000_000_000;
+  const antigo = agora - 31 * 60 * 1000;
+
+  assert.equal(api.obterExecucaoAtiva({ status: 'preenchendo', criadoEm: antigo }, agora), false);
+  assert.equal(api.obterExecucaoAtiva({ status: 'preenchendo', criadoEm: agora - 5 * 60 * 1000 }, agora), true);
+  assert.equal(api.obterExecucaoAtiva({ status: 'emissao-solicitada', criadoEm: antigo }, agora), true);
+  assert.equal(api.obterExecucaoAtiva({ status: 'processando', criadoEm: antigo }, agora), true);
+  assert.equal(api.obterExecucaoAtiva({ status: 'baixando', criadoEm: antigo }, agora), true);
+  assert.equal(api.obterExecucaoAtiva({ status: 'indeterminado', criadoEm: antigo }, agora), true);
+  assert.equal(api.obterExecucaoAtiva({ status: 'preenchendo' }, agora), true);
 });
 
 test('identifica somente um processo concluído dentro da janela da solicitação', () => {
@@ -180,10 +173,11 @@ test('valida assinatura e marcador final do PDF antes de salvar', () => {
 test('entrega um único userscript, sem painéis auxiliares nem serviço Windows', () => {
   assert.match(SOURCE, /@match\s+https:\/\/texhub\.texcotton\.com\.br\/crm\//);
   assert.match(SOURCE, /@match\s+https:\/\/systextil\.texcotton\.com\.br\/systextil\//);
-  assert.match(SOURCE, /GM_download/);\n  assert.match(SOURCE, /key:\s*\"F7\"/);\n  assert.match(SOURCE, /pressionarF7\(pagina\)/);
+  assert.match(SOURCE, /GM_download/);
   assert.match(SOURCE, /saveAs:\s*false/);
   assert.match(SOURCE, /titulo:\s*"num_duplicata\."/);
   assert.match(SOURCE, /parcela:\s*"seq_duplicatas\."/);
-  assert.doesNotMatch(SOURCE, /st-auto-segunda-via-panel|st-segunda-via-boleto-panel|st-crm-systextil-reference/);
+  assert.doesNotMatch(SOURCE, /pressionarF7|KeyboardEvent|key:\s*["']F7["']/);
   assert.doesNotMatch(SOURCE, /127\.0\.0\.1:17834|BoletoHelper\.ps1|PowerShell/);
+  assert.doesNotMatch(SOURCE, /window\.__systextilSegundaViaAutomatica\s*=\s*Object\.freeze\(\{[\s\S]*?preencherCamposConsulta/);
 });
