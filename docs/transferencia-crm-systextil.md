@@ -1,7 +1,7 @@
 # Segunda via automática — SmartTable → Systextil
 
 **Userscript único:** `userscripts/systextil-segunda-via.user.js`  
-**Versão:** 1.0.4  
+**Versão:** 1.0.5  
 **Status:** implementação em branch de revisão; a homologação operacional ainda está pendente.
 
 ## Objetivo e autorização
@@ -30,7 +30,7 @@ O SmartTable continua responsável por apresentar os títulos elegíveis e emiti
 6. Somente depois das duas confirmações NXJ o userscript aciona o controle **Find**. Se qualquer confirmação faltar, a automação para e não consulta nem emite. Exige exatamente um registro e confere título, parcela e cliente. A comparação tolera zeros à esquerda apenas durante a conferência; os identificadores originais continuam armazenados como texto.
 7. Registra a proteção contra repetição e aciona **Emite boleto** uma única vez.
 8. Aciona `procAgendados`. Se o ERP mudar a visão na mesma aba, o userscript acompanha a transição; se abrir outra aba, a aba que receber a visão de processos recupera o estado compartilhado pelo Tampermonkey.
-9. Atualiza a grade automaticamente, procura o processo pela descrição e pelo horário da solicitação e continua acompanhando mensagens intermediárias ou desconhecidas. Só prossegue com uma correspondência única e confirmação explícita de sucesso.
+9. Aciona novamente o sininho procAgendados para atualizar a grade, aguarda a renderização do ERP e então procura o processo pela descrição e pelo horário. Mensagens intermediárias ou desconhecidas mantêm o acompanhamento; só prossegue com uma correspondência única e confirmação explícita de sucesso.
 10. Seleciona a linha identificada, revalida os dados da grade e confere a URL e o relatório PDF fornecidos pelo próprio Systextil.
 11. Obtém o PDF autenticado, confere origem, caminho, relatório, assinatura `%PDF-`, marcador `%%EOF` e limite de tamanho. Só então envia o Blob validado ao download do Tampermonkey.
 12. O navegador salva o arquivo na pasta padrão de Downloads, usando nome baseado na razão social, título e parcela. Em caso de nome já existente, o Tampermonkey usa um nome alternativo em vez de sobrescrever.
@@ -65,7 +65,8 @@ Os dados de referência do CRM são usados para conduzir a operação e nomear o
 - O Find só é acionado após confirmação NXJ de título e parcela, precisa retornar uma única correspondência e tem título, parcela e cliente conferidos antes da emissão.
 - A emissão recebe uma trava de cinco minutos por título/parcela. Se houver timeout depois do clique, o script não clica novamente: o resultado é tratado como incerto.
 - Somente o estado `preenchendo`, anterior ao acionamento da emissão, expira após 30 minutos. Estados `emissao-solicitada`, `processando`, `baixando` e `indeterminado` permanecem bloqueados até recuperação/conferência.
-- O processo precisa ser identificado sem ambiguidade e informar conclusão com sucesso. Mensagens intermediárias ou desconhecidas mantêm o acompanhamento ativo e provocam nova atualização da grade; marcadores explícitos de falha interrompem o fluxo. O limite de espera gera estado indeterminado, sem repetir a emissão. O download continua bloqueado até a confirmação explícita de sucesso.
+- O processo precisa ser identificado sem ambiguidade e informar conclusão com sucesso. A atualização é feita pelo sininho procAgendados, não pelo Find da grade, e a primeira leitura só ocorre depois do refresh e da espera de renderização. Mensagens intermediárias ou desconhecidas mantêm o acompanhamento ativo e provocam nova atualização. Marcadores explícitos de falha interrompem o fluxo. O limite de espera gera estado indeterminado, sem repetir a emissão. O download continua bloqueado até a confirmação explícita de sucesso.
+- As referências de sequência NXJ do título e da parcela são capturadas antes da escrita dos respectivos campos. Isso evita descartar uma confirmação enviada pelo ERP imediatamente após input/change, antes do blur.
 - O PDF só é baixado após revalidar o processo, a seleção da grade e a URL/relatório.
 - Existe reserva contra download duplicado. Se o navegador não confirmar se o download terminou, a reserva fica indeterminada; confira manualmente a pasta Downloads antes de tentar novamente.
 - `Esc` interrompe a automação local. Não cancela uma emissão já enviada ao ERP.
@@ -105,3 +106,11 @@ A rotina anterior classificava qualquer mensagem diferente da confirmação lite
 Na versão 1.0.4, somente marcadores explícitos de erro são classificados como falha. Mensagens vazias, intermediárias ou desconhecidas permanecem em acompanhamento: o userscript atualiza a grade e reanalisa o mesmo processo em intervalos de quatro segundos, por até três minutos. Se o controle Find não estiver disponível, ou o limite de espera terminar sem confirmação, o estado fica indeterminado e exige conferência manual. Nenhuma nova emissão é disparada. O PDF continua condicionado à confirmação literal de sucesso e à validação posterior do registro/relatório.
 
 A suíte automatizada inclui regressões para mensagem intermediária não vazia, falha explícita e disponibilidade do controle de atualização. A homologação no Systextil real continua necessária para confirmar os textos efetivamente retornados e a atualização da grade na estação operacional.
+
+## Correção do refresh e da primeira confirmação NXJ (v1.0.5)
+
+A atualização da tela Processos agendados usa o controle procAgendados (sininho). O userscript o aciona, aguarda a requisição NXJ quando observável e respeita ao menos quatro segundos para a renderização da grade. A primeira leitura da lista também ocorre somente depois dessa atualização inicial. O Find (btnFind.) não é usado para atualizar essa tela.
+
+Na Consulta de títulos, o limite de sequência do monitor NXJ passa a ser capturado antes da escrita de cada campo. A implementação anterior capturava o limite do título depois de escrever e aguardar 500 ms, podendo excluir uma confirmação já enviada nesse intervalo. A nova ordem permite reconhecer confirmações disparadas por input/change ou pelo blur, sem relaxar a comparação do valor nem permitir Find sem título e parcela confirmados.
+
+A validação operacional ainda precisa confirmar no ERP real a atualização pelo sininho e o primeiro preenchimento em uma operação real já prevista.
