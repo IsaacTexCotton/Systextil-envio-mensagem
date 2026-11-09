@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Segunda Via Automática CRM
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      1.0.4
+// @version      1.0.5
 // @description  Recebe o título do SmartTable, consulta, emite, acompanha o processo e baixa o PDF automaticamente.
 // @match        https://texhub.texcotton.com.br/crm/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -22,7 +22,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "1.0.4";
+  const VERSION = "1.0.5";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const DATA_VIEW_PROCESSOS = "forms.systextil.batch";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
@@ -718,6 +718,8 @@
       // funcional. Ele não bloqueia a escrita da parcela antes da sequência.
       monitor = criarMonitorComandosNxj(pagina, configuracaoTeste);
 
+      // Capture antes de editar: o NXJ pode confirmar no input/change, antes do blur.
+      const sequenciaAntesDoTitulo = monitor.obterSequencia();
       campoTitulo.focus();
       await pausa(atrasoFocoInicialMs);
 
@@ -733,7 +735,6 @@
 
       // A troca de foco confirma o título, mas não aguardamos uma classificação
       // específica do comando NXJ para liberar a inserção da parcela.
-      const sequenciaAntesDoTitulo = monitor.obterSequencia();
       campoParcela.focus();
       await pausa(atrasoAposSairCampoMs);
 
@@ -757,6 +758,9 @@
           "O Systextil recriou repetidamente o campo da parcela durante a ativação. A parcela não foi inserida."
         );
       }
+
+      // Capture antes de editar para não descartar confirmação NXJ imediata.
+      const sequenciaAntesDaParcela = monitor.obterSequencia();
 
       // O Systextil pode limpar ou redesenhar o input do título ao processar
       // a saída do campo. Não interrompa aqui: a sequência funcional precisa
@@ -787,7 +791,6 @@
         throw new Error("O campo atual do título não permite recuperar o foco.");
       }
 
-      const sequenciaAntesDaParcela = monitor.obterSequencia();
       campoTitulo.focus();
       await pausa(atrasoAposSairCampoMs);
 
@@ -2458,15 +2461,56 @@
   }
 
   async function atualizarGradeProcessos(pagina, monitor) {
-    const botaoFind = acharPorId("btnFind.");
-    if (!botaoFind || botaoFind.disabled === true) {
+    const botaoProcessos = acharPorId("procAgendados");
+    if (!botaoProcessos || botaoProcessos.disabled === true) {
       throw new Error(
-        "Não foi possível atualizar Processos agendados: o controle Find não está disponível. O resultado da emissão permanece indeterminado; confira a grade manualmente antes de qualquer nova tentativa."
+        "Não foi possível atualizar Processos agendados: o sininho (procAgendados) não está disponível. O resultado da emissão permanece indeterminado; confira a grade manualmente antes de qualquer nova tentativa."
       );
     }
 
-    botaoFind.click();
-    await aguardarOcioso(monitor, 20000);
+    const inicioAtualizacao = Date.now();
+    const totalRequisicoesAnterior = monitor.total;
+    const tempoMinimoAtualizacaoMs = 4000;
+
+    // O ERP atualiza a lista ao acionar novamente o sininho.
+    botaoProcessos.click();
+
+    // Aguarda a chamada NXJ de atualização quando ela for observável.
+    const limiteObservacaoMs = 5000;
+    while (
+      monitor.total === totalRequisicoesAnterior &&
+      Date.now() - inicioAtualizacao < limiteObservacaoMs
+    ) {
+      verificarCancelamento();
+      await pausa(100);
+    }
+
+    if (monitor.total > totalRequisicoesAnterior) {
+      try {
+        await aguardarOcioso(monitor, 20000);
+      } catch (erro) {
+        throw new Error(
+          "A atualização de Processos agendados ficou indeterminada: " +
+          erro.message +
+          " Não será iniciada outra emissão."
+        );
+      }
+    }
+
+    // Mesmo quando a grade atualiza sem uma chamada NXJ observável, respeita
+    // o tempo que o ERP precisa para recarregar e renderizar as linhas.
+    const restanteMs = tempoMinimoAtualizacaoMs - (Date.now() - inicioAtualizacao);
+    if (restanteMs > 0) await pausa(restanteMs);
+
+    const estado = lerEstadoSystextil(pagina);
+    if (estado?.visao !== VISAO_PROCESSOS) {
+      const visaoRecuperada = await aguardarVisao(pagina, VISAO_PROCESSOS, 10000);
+      if (!visaoRecuperada) {
+        throw new Error(
+          "A atualização do sininho não retornou à tela Processos agendados. O resultado da emissão permanece indeterminado; confira o ERP manualmente."
+        );
+      }
+    }
   }
 
   async function iniciarDownloadAutomatico(execucao, registro, pagina) {
@@ -2571,6 +2615,10 @@
       const inicio = Date.now();
       let registroConcluido = null;
 
+      // A primeira leitura também ocorre depois de atualizar pelo sininho:
+      // a grade pode abrir com registros anteriores à emissão.
+      await atualizarGradeProcessos(pagina, monitor);
+
       while (!registroConcluido) {
         verificarCancelamento();
         if (Date.now() - inicio >= 180000) {
@@ -2601,7 +2649,6 @@
           await publicarResultado({ id: execucao.pedidoId }, "processando", true, "O ERP ainda está processando a emissão. A consulta será atualizada automaticamente.");
         }
         await atualizarGradeProcessos(pagina, monitor);
-        await pausa(4000);
       }
 
       await iniciarDownloadAutomatico(execucao, registroConcluido, pagina);
