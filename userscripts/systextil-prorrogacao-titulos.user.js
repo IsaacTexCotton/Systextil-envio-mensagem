@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Prorrogação de Títulos
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      0.1.1
+// @version      0.1.2
 // @description  Prorroga títulos em lote com confirmação NXJ, gravação sequencial e releitura.
 // @match        https://systextil.texcotton.com.br/systextil/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -28,7 +28,7 @@
 function criarApi() {
   "use strict";
 
-  const VERSION = "0.1.1";
+  const VERSION = "0.1.2";
   const VISAO_CONSULTA = "forms.crec.crec_f090";
   const VISAO_HISTORICO = "forms.crec.crec_f030";
   const VISAO_PARCELAS = "forms.crec.crec_f035";
@@ -551,6 +551,7 @@ function criarApi() {
           descritorSend
         );
 
+        instalacoes.push(instalacao);
         Object.defineProperty(prototipo, "open", {
           ...descritorOpen,
           value: instalacao.openWrapper
@@ -559,7 +560,6 @@ function criarApi() {
           ...descritorSend,
           value: instalacao.sendWrapper
         });
-        instalacoes.push(instalacao);
       }
 
       if (!instalacoes.length) {
@@ -1354,6 +1354,8 @@ function criarApi() {
     selecionarLinhaPorParcela,
     obterLimiteCampo,
     encontrarElementoPorId,
+    coletarDocumentosMesmoDominio,
+    criarMonitorNxj,
     criarErroIndeterminado,
     iniciar
   });
