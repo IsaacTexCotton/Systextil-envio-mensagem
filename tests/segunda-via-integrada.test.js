@@ -36,7 +36,7 @@ function formatarDataHora(timestamp) {
 }
 
 test('expõe a versão unificada e valida a transferência recebida do SmartTable', () => {
-  assert.equal(api.VERSION, '1.0.5');
+  assert.equal(api.VERSION, '1.0.6');
   const pedido = api.validarPedido(pedidoValido());
   assert.equal(pedido.titulo, '00001234');
   assert.equal(pedido.parcela, '03');
@@ -128,6 +128,31 @@ test('expira apenas preenchimento abandonado e preserva estados de resultado inc
   assert.equal(api.obterExecucaoAtiva({ status: 'baixando', criadoEm: antigo }, agora), true);
   assert.equal(api.obterExecucaoAtiva({ status: 'indeterminado', criadoEm: antigo }, agora), true);
   assert.equal(api.obterExecucaoAtiva({ status: 'preenchendo' }, agora), true);
+});
+
+test('oferece recuperação manual do estado persistido sem expirar resultado incerto automaticamente', () => {
+  assert.match(SOURCE, /@grant\\s+GM_registerMenuCommand/);
+  assert.match(SOURCE, /Segunda via: liberar bloqueio após conferência manual/);
+
+  const inicio = SOURCE.indexOf('async function recuperarBloqueioManual');
+  const fim = SOURCE.indexOf('function registrarComandoRecuperacao', inicio);
+  const trecho = SOURCE.slice(inicio, fim);
+  const confirmacao = trecho.indexOf('window.confirm(resumo)');
+  const primeiraLimpeza = trecho.indexOf('await gravarChave(CHAVES.execucao, null)');
+  const revalidacao = trecho.indexOf('mesmoEstadoPersistido(execucaoInicial, execucaoAtual, pedidoInicial, pedidoAtual)');
+
+  assert.ok(inicio >= 0 && fim > inicio);
+  assert.ok(confirmacao >= 0 && primeiraLimpeza > confirmacao);
+  assert.ok(revalidacao >= 0 && primeiraLimpeza > revalidacao);
+  assert.match(trecho, /Processos agendados/);
+  assert.match(trecho, /pasta Downloads/);
+  assert.match(trecho, /CHAVES\\.consumidor/);
+  assert.match(trecho, /CHAVES\\.lockProcesso/);
+  assert.match(trecho, /CHAVES\\.resultado/);
+  assert.doesNotMatch(trecho, /executarConsultaCrm|botaoEmitir\\.click/);
+
+  assert.match(SOURCE, /registro persistido de execução anterior/);
+  assert.doesNotMatch(SOURCE, /Já existe uma segunda via em andamento ou com resultado pendente de conferência/);
 });
 
 test('identifica somente um processo concluído dentro da janela da solicitação', () => {
