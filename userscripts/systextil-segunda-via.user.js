@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Segunda Via Automática CRM
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      1.0.1
+// @version      1.0.2
 // @description  Recebe o título do SmartTable, consulta, emite, acompanha o processo e baixa o PDF automaticamente.
 // @match        https://texhub.texcotton.com.br/crm/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -22,7 +22,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "1.0.1";
+  const VERSION = "1.0.2";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const DATA_VIEW_PROCESSOS = "forms.systextil.batch";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
@@ -573,91 +573,42 @@
       }
     }
 
-    async function aguardarConfirmacao(valorEsperado, sequenciaMinima, rotulo) {
-      const inicio = Date.now();
-      let registro = null;
+    function confirmou(valorEsperado, sequenciaMinima) {
+      return requisicoes.some(requisicao =>
+        requisicao.sequencia > sequenciaMinima &&
+        requisicao.metodo === "POST" &&
+        COMANDOS_NXJ_CONFIRMACAO.has(requisicao.comando) &&
+        !requisicao.monitoramentoFalhou &&
+        requisicao.finalizado &&
+        requisicao.status >= 200 &&
+        requisicao.status < 300 &&
+        valorConfere(requisicao.valoresPendentes, valorEsperado)
+      );
+    }
 
-      while (!registro) {
-        validarVisaoConsultaTitulos(pagina);
-
-        registro = requisicoes.find(requisicao =>
+    function resumo(sequenciaMinima) {
+      const itens = requisicoes
+        .filter(requisicao =>
           requisicao.sequencia > sequenciaMinima &&
-          requisicao.metodo === "POST" &&
-          COMANDOS_NXJ_CONFIRMACAO.has(requisicao.comando) &&
-          requisicao.valoresPendentes.includes(valorEsperado)
-        ) || null;
-
-        if (registro) break;
-
-        if (Date.now() - inicio >= limiteEsperaMs) {
-          const requisicoesDaEtapa = requisicoes.filter(requisicao =>
-            requisicao.sequencia > sequenciaMinima
-          );
-          const postsDaEtapa = requisicoesDaEtapa.filter(requisicao =>
-            requisicao.metodo === "POST"
-          );
-          const comandosDeSaida = postsDaEtapa.filter(requisicao =>
-            COMANDOS_NXJ_CONFIRMACAO.has(requisicao.comando)
-          );
-          const valoresCorrespondentes = comandosDeSaida.filter(requisicao =>
-            requisicao.valoresPendentes.includes(valorEsperado)
-          );
-
-          throw new Error(
-            "O Systextil não confirmou o campo " + rotulo +
-            " pelo comando NXJ dentro de " +
-            Math.round(limiteEsperaMs / 1000) +
-            " segundos. Diagnóstico NXJ (sem expor os valores): " +
-            requisicoesDaEtapa.length + " requisição(ões) observada(s), " +
-            postsDaEtapa.length + " POST(s), " +
-            comandosDeSaida.length + " comando(s) de saída de campo e " +
-            valoresCorrespondentes.length + " valor(es) correspondente(s)."
-          );
-        }
-
-        await pausa(intervaloMs);
-      }
-
-      if (registro.monitoramentoFalhou) {
-        throw new Error(
-          "O comando de confirmação do campo " + rotulo +
-          " foi enviado, mas não pôde ser monitorado."
+          requisicao.metodo === "POST"
+        )
+        .slice(-8)
+        .map(requisicao =>
+          requisicao.comando + "[" +
+          requisicao.valoresPendentes.map(valor => valor.length).join(",") +
+          "]"
         );
-      }
 
-      while (!registro.finalizado) {
-        validarVisaoConsultaTitulos(pagina);
-
-        if (Date.now() - inicio >= limiteEsperaMs) {
-          throw new Error(
-            "O comando NXJ do campo " + rotulo + " não terminou dentro do limite de espera."
-          );
-        }
-
-        await pausa(intervaloMs);
-      }
-
-      if (registro.status < 200 || registro.status >= 300) {
-        throw new Error(
-          "O comando NXJ de confirmação do campo " + rotulo +
-          " retornou HTTP " + registro.status + "."
-        );
-      }
-
-      await aguardarOcioso();
-
-      return {
-        confirmado: true,
-        comando: registro.comando
-      };
+      return itens.join(" ") || "nenhum POST NXJ observado";
     }
 
     return {
       obterSequencia() {
         return estado.sequencia;
       },
+      confirmou,
+      resumo,
       aguardarOcioso,
-      aguardarConfirmacao,
       remover() {
         if (prototipo.open === abrirInterceptadoRef) {
           Object.defineProperty(prototipo, "open", descritorOpen);
@@ -831,34 +782,43 @@
       campoTitulo.focus();
       await pausa(atrasoAposSairCampoMs);
 
-      // As confirmações são verificadas somente depois que os dois valores já
-      // foram inseridos, para que um diagnóstico NXJ não impeça a escrita.
-      await monitor.aguardarConfirmacao(
-        titulo,
-        sequenciaAntesDoTitulo,
-        "número do título"
-      );
-      await monitor.aguardarConfirmacao(
-        parcela,
-        sequenciaAntesDaParcela,
-        "parcela"
-      );
+      // Aguarda a conclusão das chamadas NXJ. A presença literal do valor no
+      // payload é apenas diagnóstica: máscaras e prefixos podem alterar o texto.
+      // A confirmação definitiva será feita pelo resultado da consulta Find.
+      await monitor.aguardarOcioso();
+      const confirmacoesNxj = {
+        titulo: monitor.confirmou(titulo, sequenciaAntesDoTitulo),
+        parcela: monitor.confirmou(parcela, sequenciaAntesDaParcela)
+      };
+
+      if (!confirmacoesNxj.titulo || !confirmacoesNxj.parcela) {
+        statusOperacional(
+          "Aviso: valor não identificado literalmente no payload NXJ (" +
+          monitor.resumo(sequenciaAntesDoTitulo) +
+          "). A conferência definitiva será feita pelo resultado do Find."
+        );
+      }
 
       validarVisaoConsultaTitulos(pagina);
       campoTitulo = obterCampoAtual(CAMPOS.titulo);
       campoParcela = obterCampoAtual(CAMPOS.parcela);
 
-      // A confirmação NXJ exata é a fonte de verdade para o título: o ERP
-      // pode deixar o input vazio após processar o blur, embora tenha recebido
-      // o valor no comando. Um valor divergente (não vazio) continua sendo erro.
+      // O ERP pode limpar o título após o blur ou aplicar máscara/zeros à
+      // esquerda. Divergências reais continuam bloqueando a operação.
       const tituloVisivel = String(campoTitulo.value ?? "").trim();
-      if (tituloVisivel && tituloVisivel !== titulo) {
+      if (
+        tituloVisivel &&
+        normalizarCodigoComparacao(tituloVisivel) !== normalizarCodigoComparacao(titulo)
+      ) {
         throw new Error(
           "O valor exibido no campo do título diverge do valor confirmado pelo NXJ."
         );
       }
 
-      if (String(campoParcela.value ?? "").trim() !== parcela) {
+      if (
+        normalizarCodigoComparacao(String(campoParcela.value ?? "")) !==
+        normalizarCodigoComparacao(parcela)
+      ) {
         throw new Error(
           "O valor visível da parcela mudou após a confirmação NXJ."
         );
@@ -868,14 +828,14 @@
         titulo,
         parcela,
         confirmacoes: {
-          titulo: "NXJ",
-          parcela: "NXJ"
+          titulo: confirmacoesNxj.titulo ? "NXJ" : "FIND",
+          parcela: confirmacoesNxj.parcela ? "NXJ" : "FIND"
         }
       };
     } catch (erro) {
       if (valoresAlterados) {
         throw new Error(
-          "Preenchimento interrompido. NÃO pressione F7. Confira ou limpe manualmente os campos no ERP antes de tentar novamente. " +
+          "Preenchimento interrompido. NÃO execute a consulta manualmente. Confira ou limpe os campos no ERP antes de tentar novamente. " +
           erro.message
         );
       }
@@ -1982,6 +1942,24 @@
     return /^\d+$/.test(codigo) ? (codigo.replace(/^0+/, "") || "0") : codigo.toUpperCase();
   }
 
+  /**
+   * Compara valores do NXJ sem exigir o mesmo formato visual do campo.
+   * Aceita zeros à esquerda e prefixos de chave/valor, mas nunca substrings.
+   */
+  function valorConfere(valoresPendentes, esperado) {
+    const alvo = normalizarCodigoComparacao(esperado);
+    if (!alvo || !Array.isArray(valoresPendentes)) return false;
+
+    return valoresPendentes.some(valor => {
+      const limpo = String(valor ?? "").trim();
+      if (!limpo) return false;
+
+      const finalDoSegmento = limpo.split(/[=:]/).pop().trim();
+      return normalizarCodigoComparacao(limpo) === alvo ||
+        normalizarCodigoComparacao(finalDoSegmento) === alvo;
+    });
+  }
+
   function documentosDaPagina() {
     return coletarDocumentosMesmoDominio(
       typeof unsafeWindow !== "undefined" && unsafeWindow ? unsafeWindow : window
@@ -2105,41 +2083,10 @@
     };
   }
 
-  function pressionarF7(pagina) {
-    const documento = pagina?.document;
-    const campoTitulo = documento?.getElementsByName?.(CAMPOS.titulo)?.[0];
-    if (!campoTitulo || typeof campoTitulo.focus !== "function") {
-      throw new Error("Não foi possível localizar o campo do título para executar F7.");
-    }
-
-    // A sequência NXJ termina devolvendo o foco ao campo do título.
-    if (documento.activeElement !== campoTitulo) campoTitulo.focus();
-    if (documento.activeElement !== campoTitulo) {
-      throw new Error("O Systextil não manteve o foco no campo do título. F7 não foi enviado.");
-    }
-
-    const ConstrutorTeclado = pagina.KeyboardEvent || window.KeyboardEvent;
-    if (typeof ConstrutorTeclado !== "function") {
-      throw new Error("O navegador não disponibilizou KeyboardEvent para executar F7.");
-    }
-
-    const opcoes = {
-      key: "F7",
-      code: "F7",
-      keyCode: 118,
-      which: 118,
-      bubbles: true,
-      cancelable: true,
-      composed: true
-    };
-    campoTitulo.dispatchEvent(new ConstrutorTeclado("keydown", opcoes));
-    campoTitulo.dispatchEvent(new ConstrutorTeclado("keyup", opcoes));
-    statusOperacional("Tecla F7 enviada ao formulário do Systextil.");
-  }
-
   function clicarBarraConsulta(chave) {
     const ids = {
       limpar: "btnClearToFind.",
+      find: "btnFind.",
       processos: "procAgendados"
     };
     const id = ids[chave];
@@ -2188,12 +2135,34 @@
     throw new Error("O Systextil não confirmou o resultado da consulta.");
   }
 
-  function obterExecucaoAtiva(execucao) {
-    return Boolean(
-      execucao &&
-      typeof execucao === "object" &&
-      ["preenchendo", "emissao-solicitada", "processando", "baixando", "indeterminado"].includes(execucao.status)
-    );
+  function obterExecucaoAtiva(execucao, agora = Date.now()) {
+    if (!execucao || typeof execucao !== "object") return false;
+
+    const estadosAtivos = [
+      "preenchendo",
+      "emissao-solicitada",
+      "processando",
+      "baixando",
+      "indeterminado"
+    ];
+    if (!estadosAtivos.includes(execucao.status)) return false;
+
+    // Antes de "emissao-solicitada", nenhuma emissão foi acionada. Esse
+    // preenchimento pode expirar; estados posteriores nunca expiram sozinhos.
+    if (execucao.status !== "preenchendo") return true;
+
+    const criadoEm = Number(execucao.criadoEm);
+    const instanteAtual = Number(agora);
+    if (
+      !Number.isFinite(criadoEm) ||
+      criadoEm <= 0 ||
+      !Number.isFinite(instanteAtual) ||
+      instanteAtual < criadoEm
+    ) {
+      return true;
+    }
+
+    return instanteAtual - criadoEm <= MAX_IDADE_SOLICITACAO_MS;
   }
 
   async function executarConsultaCrm(pedido, pagina) {
@@ -2230,9 +2199,18 @@
     let emissaoClicada = false;
     try {
       let tela = lerEstadoSystextil(pagina);
-      if (!tela.busca) {
+      if (!tela) throw new Error("Não foi possível identificar o estado atual da Consulta de títulos.");
+
+      const camposComSobra = () =>
+        [CAMPOS.titulo, CAMPOS.parcela].some(nome =>
+          String(pagina.document?.getElementsByName?.(nome)?.[0]?.value ?? "").trim() !== ""
+        );
+
+      if (!tela.busca || camposComSobra()) {
         clicarBarraConsulta("limpar");
-        await aguardarVisao(pagina, VISAO_CONSULTA, 5000);
+        await pausa(200);
+        await aguardarOcioso(monitor, 20000);
+
         const inicioBusca = Date.now();
         while (Date.now() - inicioBusca < 5000) {
           if (lerEstadoSystextil(pagina)?.busca === true) break;
@@ -2241,6 +2219,9 @@
         if (lerEstadoSystextil(pagina)?.busca !== true) {
           throw new Error("Não foi possível preparar a tela para uma nova consulta.");
         }
+        if (camposComSobra()) {
+          throw new Error("O Systextil não limpou os campos de uma tentativa anterior. Consulta interrompida.");
+        }
       }
 
       statusOperacional("Preenchendo título e parcela diretamente nos campos do ERP.");
@@ -2248,16 +2229,15 @@
         titulo: pedido.titulo,
         parcela: pedido.parcela
       });
-      if (
-        !preenchimento ||
-        preenchimento.confirmacoes?.titulo !== "NXJ" ||
-        preenchimento.confirmacoes?.parcela !== "NXJ"
-      ) {
-        throw new Error("O Systextil não confirmou título e parcela pelos comandos NXJ.");
+      if (!preenchimento) {
+        throw new Error("O preenchimento não retornou resultado verificável.");
       }
 
       const antesFind = lerCamposConsulta();
-      if (!antesFind.parcela || antesFind.parcela !== pedido.parcela) {
+      if (
+        !antesFind.parcela ||
+        normalizarCodigoComparacao(antesFind.parcela) !== normalizarCodigoComparacao(pedido.parcela)
+      ) {
         throw new Error("A parcela não permaneceu correta no campo real do Systextil. A consulta foi bloqueada.");
       }
       if (
@@ -2267,13 +2247,23 @@
         throw new Error("O título exibido no Systextil diverge do título recebido do CRM. A consulta foi bloqueada.");
       }
 
-      const estadoAntesF7 = lerEstadoSystextil(pagina);
-      if (!estadoAntesF7?.busca) {
-        throw new Error("O Systextil não está em modo de consulta. F7 não foi enviado.");
+      const estadoAntesFind = lerEstadoSystextil(pagina);
+      if (!estadoAntesFind?.busca) {
+        throw new Error("O Systextil não está em modo de consulta. Find não foi acionado.");
       }
 
-      statusOperacional("Executando F7 para consultar o título no ERP.");
-      pressionarF7(pagina);
+      statusOperacional("Acionando Find para consultar o título no ERP.");
+      const totalAntesFind = monitor.total;
+      clicarBarraConsulta("find");
+
+      const inicioFind = Date.now();
+      while (monitor.total === totalAntesFind && Date.now() - inicioFind < 2500) {
+        await pausa(60);
+      }
+      if (monitor.total === totalAntesFind) {
+        throw new Error("O controle Find não gerou uma requisição NXJ. A emissão foi bloqueada.");
+      }
+
       await aguardarOcioso(monitor, 20000);
       const resultadoFind = await aguardarResultadoFind(pagina, 20000);
 
@@ -2285,7 +2275,10 @@
       }
 
       const campos = lerCamposConsulta();
-      if (!campos.parcela || campos.parcela !== pedido.parcela) {
+      if (
+        !campos.parcela ||
+        normalizarCodigoComparacao(campos.parcela) !== normalizarCodigoComparacao(pedido.parcela)
+      ) {
         throw new Error("A parcela retornada pelo Systextil não corresponde exatamente à parcela do CRM.");
       }
       if (!campos.titulo) {
@@ -2347,7 +2340,10 @@
     } catch (erro) {
       if (!emissaoClicada) {
         await gravarChave(CHAVES.execucao, null);
-        try { pagina.sessionStorage.removeItem(CHAVE_SOLICITACAO_EMISSAO); } catch (_) {}
+        try {
+          pagina.sessionStorage.removeItem(CHAVE_SOLICITACAO_EMISSAO);
+          pagina.sessionStorage.removeItem(chaveEmissao);
+        } catch (_) {}
       } else {
         const atual = await lerChave(CHAVES.execucao);
         if (atual) {
@@ -2694,7 +2690,8 @@
       VERSION,
       validarPedido,
       extrairValoresPendentesNxj,
-      pressionarF7,
+      valorConfere,
+      obterExecucaoAtiva,
       analisarProcessos,
       interpretarDataHoraProcesso,
       normalizarCodigoComparacao,
@@ -2712,7 +2709,6 @@
 
   window.__systextilSegundaViaAutomatica = Object.freeze({
     version: VERSION,
-    preencherCamposConsulta,
     analisarProcessos,
     validarPedido,
     validarUrlPdf,
