@@ -14,7 +14,7 @@ const api = require(path.join(
 test('monta Compl.hist no formato operacional com motivo e autorização', () => {
   assert.equal(
     api.montarComplementoHistorico({
-      data: '09/11/2026',
+      dataAtual: new Date(2026, 10, 9),
       motivo: 'PEDIDO CLIENTE',
       autorizacao: 'GISELA',
       executor: 'IT'
@@ -26,7 +26,7 @@ test('monta Compl.hist no formato operacional com motivo e autorização', () =>
 test('monta Compl.hist sem motivo e sem autorização', () => {
   assert.equal(
     api.montarComplementoHistorico({
-      data: '2026-11-09',
+      dataAtual: new Date(2026, 10, 9),
       motivo: '',
       autorizacao: '',
       executor: 'AB'
@@ -43,12 +43,12 @@ test('rejeita data inexistente e formatos ambíguos', () => {
 
 test('exige sigla do executor e valida siglas opcionais', () => {
   assert.throws(
-    () => api.montarComplementoHistorico({ data: '09/11/2026', executor: '' }),
+    () => api.montarComplementoHistorico({ dataAtual: new Date(2026, 10, 9), executor: '' }),
     /executor/i
   );
   assert.throws(
     () => api.montarComplementoHistorico({
-      data: '09/11/2026',
+      dataAtual: new Date(2026, 10, 9),
       executor: 'IT',
       autorizacao: 'SIGLA COM ESPAÇO'
     }),
@@ -58,7 +58,7 @@ test('exige sigla do executor e valida siglas opcionais', () => {
 
 test('não trunca Compl.hist acima dos 60 caracteres', () => {
   const texto = api.montarComplementoHistorico({
-    data: '09/11/2026',
+    dataAtual: new Date(2026, 10, 9),
     motivo: 'SOLICITACAO CLIENTE',
     autorizacao: 'GISELA',
     executor: 'IT'
@@ -66,7 +66,7 @@ test('não trunca Compl.hist acima dos 60 caracteres', () => {
   assert.ok(texto.length <= 60);
   assert.throws(
     () => api.montarComplementoHistorico({
-      data: '09/11/2026',
+      dataAtual: new Date(2026, 10, 9),
       motivo: 'MOTIVO MUITO LONGO '.repeat(5),
       executor: 'IT'
     }),
@@ -78,22 +78,26 @@ test('analisa lote com data comum e data específica por linha', () => {
   const itens = api.analisarLote(
     '00012345;03\n00012346;01;15/11/2026',
     '2026-11-10',
-    { motivo: 'PEDIDO CLIENTE', autorizacao: 'AB', executor: 'IT' }
+    { motivo: 'PEDIDO CLIENTE', autorizacao: 'AB', executor: 'IT' },
+    new Date(2026, 10, 9)
   );
 
   assert.equal(itens.length, 2);
   assert.equal(itens[0].data, '10/11/2026');
   assert.equal(itens[1].data, '15/11/2026');
-  assert.equal(itens[0].historico, '10/11/2026 - PEDIDO CLIENTE - PRORROG - AUT AB - IT');
+  assert.equal(itens[0].historico, '09/11/2026 - PEDIDO CLIENTE - PRORROG - AUT AB - IT');
+  assert.equal(itens[1].historico, '09/11/2026 - PEDIDO CLIENTE - PRORROG - AUT AB - IT');
 });
 
 test('permite data por linha sem data comum', () => {
   const itens = api.analisarLote(
     '00012345;03;12/11/2026',
     '',
-    { executor: 'IT' }
+    { executor: 'IT' },
+    new Date(2026, 10, 9)
   );
   assert.equal(itens[0].data, '12/11/2026');
+  assert.equal(itens[0].historico, '09/11/2026 - PRORROG - IT');
 });
 
 test('rejeita linhas malformadas e data ausente', () => {
@@ -249,6 +253,110 @@ test('monitora comandos NXJ iniciados na janela principal e em frame', async () 
     await monitor.aguardarComando('FIND', 1, 3000);
 
     assert.equal(monitor.obterSequencia(), 2);
+  } finally {
+    monitor.remover();
+  }
+});
+
+test('formata a data atual pelo calendário local do navegador', () => {
+  assert.equal(api.formatarDataLocal(new Date(2026, 10, 9)), '09/11/2026');
+  assert.throws(() => api.formatarDataLocal(new Date('invalid')), /data atual/i);
+});
+
+test('captura todas as entradas repetidas de fieldValues no NXJ', async () => {
+  function criarClasseFakeXHR() {
+    return class FakeXHR {
+      constructor() {
+        this.listeners = {};
+        this.status = 0;
+      }
+      open(metodo, url) {
+        this.metodo = metodo;
+        this.url = url;
+      }
+      addEventListener(nome, callback) {
+        this.listeners[nome] = callback;
+      }
+      send(body) {
+        this.status = 200;
+        this.body = body;
+        this.listeners.loadend?.();
+      }
+    };
+  }
+
+  const janela = {
+    document: {},
+    frames: [],
+    URLSearchParams,
+    XMLHttpRequest: criarClasseFakeXHR()
+  };
+  const monitor = api.criarMonitorNxj(janela);
+
+  try {
+    const parametros = new URLSearchParams();
+    parametros.append('commandName', 'ADD_UPDATE');
+    parametros.append('fieldValues', '09/11/2026 - PRORROG - IT');
+    parametros.append('fieldValues', '26/11/2026');
+    parametros.append('fieldValues', '01');
+
+    const xhr = new janela.XMLHttpRequest();
+    xhr.open('POST', '/systextil/UnifyNXJ.jsp');
+    xhr.send(parametros);
+
+    const registro = await monitor.aguardarComando('ADD_UPDATE', 0, 3000);
+    assert.deepEqual(registro.segmentos, [
+      '09/11/2026 - PRORROG - IT',
+      '26/11/2026',
+      '01'
+    ]);
+  } finally {
+    monitor.remover();
+  }
+});
+
+test('captura todas as entradas repetidas de fieldValues em FormData', async () => {
+  function criarClasseFakeXHR() {
+    return class FakeXHR {
+      constructor() {
+        this.listeners = {};
+        this.status = 0;
+      }
+      open(metodo, url) {
+        this.metodo = metodo;
+        this.url = url;
+      }
+      addEventListener(nome, callback) {
+        this.listeners[nome] = callback;
+      }
+      send(body) {
+        this.status = 200;
+        this.listeners.loadend?.();
+      }
+    };
+  }
+
+  const janela = {
+    document: {},
+    frames: [],
+    URLSearchParams,
+    XMLHttpRequest: criarClasseFakeXHR()
+  };
+  const monitor = api.criarMonitorNxj(janela);
+
+  try {
+    const formulario = new FormData();
+    formulario.append('commandName', 'ADD_UPDATE');
+    formulario.append('fieldValues', 'COMPL HIST');
+    formulario.append('fieldValues', 'DATA PRORROG');
+    formulario.append('fieldValues', 'MOTIVO');
+
+    const xhr = new janela.XMLHttpRequest();
+    xhr.open('POST', '/systextil/UnifyNXJ.jsp');
+    xhr.send(formulario);
+
+    const registro = await monitor.aguardarComando('ADD_UPDATE', 0, 3000);
+    assert.deepEqual(registro.segmentos, ['COMPL HIST', 'DATA PRORROG', 'MOTIVO']);
   } finally {
     monitor.remover();
   }
