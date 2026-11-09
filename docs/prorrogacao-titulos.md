@@ -1,7 +1,7 @@
 # Prorrogação de títulos — evidências e operação
 
 **Userscript:** \`userscripts/systextil-prorrogacao-titulos.user.js\`  
-**Versão:** 0.1.1  
+**Versão:** 0.1.2  
 **Branch de implementação:** \`feat/prorrogacao-titulos\`  
 **Base técnica:** sonda somente leitura 0.1.2, captura de 09/11/2026 entre 19:03:52 e 19:04:39 UTC.
 
@@ -145,3 +145,14 @@ A v0.1.1 usa os limites já observados pela sonda nas telas investigadas quando 
 Quando a tela declara um limite não negativo, esse limite declarado continua prevalecendo. Nenhum dígito é truncado ou removido.
 
 A mensagem de interrupção também foi ajustada: se o erro ocorrer antes de qualquer F9 do item, o painel informa que nenhuma gravação foi iniciada. A orientação para não repetir F9 fica reservada aos casos parciais ou indeterminados.
+
+
+## 10. Localização de controles e monitoramento por frames — v0.1.2
+
+O botão Find não estava sendo encontrado quando seu elemento estava em um documento de frame, pois a primeira implementação consultava exclusivamente o documento raiz.
+
+A v0.1.2 percorre a janela principal e os frames same-origin acessíveis para localizar \`btnClearToFind.\`, \`btnFind.\` e os controles de navegação. A localização exige exatamente um elemento correspondente; ausência ou duplicidade interrompe a execução.
+
+O monitor NXJ também é instalado nos protótipos \`XMLHttpRequest\` de cada contexto same-origin acessível. Assim, comandos iniciados por um frame continuam observáveis. Os protótipos originais são restaurados ao encerrar a execução; em falha parcial na instalação, o script tenta restaurar os hooks já instalados antes de interromper.
+
+Os testes simulam o botão em um segundo documento e comandos NXJ originados tanto na janela principal quanto em um frame. Isso valida a lógica de busca e instrumentação em ambientes simulados, mas não substitui o teste no navegador/ERP real.
