@@ -1,7 +1,7 @@
 # Prorrogação de títulos — evidências e operação
 
 **Userscript:** \`userscripts/systextil-prorrogacao-titulos.user.js\`  
-**Versão:** 0.1.2  
+**Versão:** 0.1.3  
 **Branch de implementação:** \`feat/prorrogacao-titulos\`  
 **Base técnica:** sonda somente leitura 0.1.2, captura de 09/11/2026 entre 19:03:52 e 19:04:39 UTC.
 
@@ -156,3 +156,11 @@ A v0.1.2 percorre a janela principal e os frames same-origin acessíveis para lo
 O monitor NXJ também é instalado nos protótipos \`XMLHttpRequest\` de cada contexto same-origin acessível. Assim, comandos iniciados por um frame continuam observáveis. Os protótipos originais são restaurados ao encerrar a execução; em falha parcial na instalação, o script tenta restaurar os hooks já instalados antes de interromper.
 
 Os testes simulam o botão em um segundo documento e comandos NXJ originados tanto na janela principal quanto em um frame. Isso valida a lógica de busca e instrumentação em ambientes simulados, mas não substitui o teste no navegador/ERP real.
+
+## 11. Data atual do Compl.hist e entradas NXJ repetidas — v0.1.3
+
+A data de `Compl.hist` é a data local atual do navegador no momento da validação do lote. A data informada na linha ou no campo comum continua sendo exclusivamente a data de prorrogação da parcela. Se a data local mudar entre a validação e o início, a prévia é recalculada e a confirmação anterior é invalidada.
+
+O monitor NXJ passou a ler todas as ocorrências de `fieldValues` por `getAll()`, tanto em `URLSearchParams` quanto em `FormData`. A versão anterior lia somente a primeira ocorrência. Quando o NXJ distribuía os campos em entradas repetidas, essa leitura parcial podia produzir uma divergência artificial no verificador do payload.
+
+A proteção contra repetição permanece: cada tela recebe no máximo um F9 por tentativa. A resposta HTTP, os valores presentes em todas as entradas NXJ e o estado `UPDATED` são verificados; a confirmação definitiva do item continua sendo a releitura dos campos na Consulta. Um retorno indeterminado continua exigindo conferência manual e nunca dispara novo F9 automaticamente.
