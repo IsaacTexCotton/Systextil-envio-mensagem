@@ -3,6 +3,7 @@
 // @namespace    https://texcotton.com.br/tampermonkey
 // @version      0.9.0
 // @description  Calcula e preenche, mediante ação explícita, parâmetros de datas da régua no Systextil.
+// @match        http://systextil.texcotton.com.br/systextil/*
 // @match        https://systextil.texcotton.com.br/systextil/*
 // @updateURL    https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-parametros-regua.user.js
 // @downloadURL  https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-parametros-regua.user.js
