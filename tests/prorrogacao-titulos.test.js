@@ -157,6 +157,66 @@ test('erro de gravação indeterminada mantém marcador explícito', () => {
 });
 
 
+test('aceita confirmação NXJ no blur quando ADD_UPDATE não repete fieldValues', () => {
+  const historico = '09/11/2026 - PEDIDO CLIENTE - PRORROG - IT';
+  const confirmacao = {
+    valor: historico,
+    comando: 'NEXT_FIELD',
+    sequencia: 7,
+    finalizado: true,
+    falhaMonitoramento: false,
+    status: 200,
+    segmentos: [historico]
+  };
+
+  assert.deepEqual(
+    api.valoresNaoConfirmados({ segmentos: [] }, [historico], [confirmacao]),
+    []
+  );
+});
+
+test('continua exigindo confirmação quando payload e comando de saída não contêm o valor', () => {
+  const historico = '09/11/2026 - PRORROG - IT';
+  assert.deepEqual(
+    api.valoresNaoConfirmados(
+      { segmentos: ['outro valor'] },
+      [historico],
+      []
+    ),
+    [historico]
+  );
+});
+
+test('não aceita confirmação de campo com comando ou resposta NXJ inválidos', () => {
+  const historico = '09/11/2026 - PRORROG - IT';
+  const base = {
+    valor: historico,
+    sequencia: 7,
+    finalizado: true,
+    falhaMonitoramento: false,
+    segmentos: [historico]
+  };
+
+  for (const confirmacao of [
+    { ...base, comando: 'DELETE_RECORD', status: 200 },
+    { ...base, comando: 'NEXT_FIELD', status: 500 },
+    { ...base, comando: 'NEXT_FIELD', status: 200, falhaMonitoramento: true }
+  ]) {
+    assert.deepEqual(
+      api.valoresNaoConfirmados({ segmentos: [] }, [historico], [confirmacao]),
+      [historico]
+    );
+  }
+});
+
+test('continua aceitando o valor quando o próprio ADD_UPDATE o contém', () => {
+  const historico = '09/11/2026 - PRORROG - IT';
+  assert.deepEqual(
+    api.valoresNaoConfirmados({ segmentos: [historico] }, [historico], []),
+    []
+  );
+});
+
 test('usa largura comprovada da sonda quando maxLength é -1', () => {
   assert.equal(api.obterLimiteCampo(-1, 9), 9);
   assert.equal(api.obterLimiteCampo(-1, 2), 2);
