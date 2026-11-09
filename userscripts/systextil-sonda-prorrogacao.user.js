@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Diagnóstico de Prorrogação (somente leitura)
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      0.1.1
+// @version      0.1.2
 // @description  Registra metadados de telas e comandos NXJ durante uma operação manual; não altera o ERP.
 // @match        http://systextil.texcotton.com.br/systextil/*
 // @match        https://systextil.texcotton.com.br/systextil/*
@@ -18,7 +18,10 @@
   const LIMITE_CONTROLES_POR_FORM = 250;
   const COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp$/i;
   const ROTULOS_CONHECIDOS = /^(?:nr\.?\s*t[ií]tulo|n[uú]mero\s+do\s+t[ií]tulo|parcela|seq(?:u[eê]ncia)?|compl\.?\s*hist\.?|compl(?:emento)?\s+hist[oó]rico|prorrog(?:a[cç][aã]o)?|mot(?:ivo)?|data(?:\s+da)?\s+prorrog(?:a[cç][aã]o])?)\s*:?$/i;
-  const TECLAS_RELEVANTES = new Set(["F2", "F7", "F9", "Enter"]);
+  const TECLAS_RELEVANTES = new Set([
+    "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+    "Escape", "Enter", "Tab"
+  ]);
   const ETAPAS = [
     "Consulta de títulos — tela aberta, antes do F7",
     "Consulta de títulos — após F7 e carregamento do título",
@@ -461,6 +464,12 @@
       codigoNumerico: Number.isInteger(evento.which) && evento.which > 0
         ? evento.which
         : (Number.isInteger(evento.keyCode) && evento.keyCode > 0 ? evento.keyCode : null),
+      modificadores: {
+        alt: Boolean(evento.altKey),
+        ctrl: Boolean(evento.ctrlKey),
+        shift: Boolean(evento.shiftKey),
+        meta: Boolean(evento.metaKey)
+      },
       controle: alvo && /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(String(alvo.tagName || ""))
         ? {
           tag: String(alvo.tagName || "").toLowerCase(),
@@ -635,7 +644,7 @@
   function montarRelatorio() {
     return {
       produto: "Systextil — sonda de diagnóstico de prorrogação",
-      versaoSonda: "0.1.1",
+      versaoSonda: "0.1.2",
       modo: "somente leitura; não envia comandos nem altera campos",
       iniciadoEm,
       encerradoEm,
