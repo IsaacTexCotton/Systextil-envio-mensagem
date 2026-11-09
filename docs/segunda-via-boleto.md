@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-> **Atualização da arquitetura (v1.0.4):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. Elas não são mais instruções de instalação/operação. A implementação vigente em revisão é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte `docs/transferencia-crm-systextil.md` para as instruções atuais.
+> **Atualização da arquitetura (v1.0.5):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. Elas não são mais instruções de instalação/operação. A implementação vigente em revisão é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte `docs/transferencia-crm-systextil.md` para as instruções atuais.
 
 
 **Base histórica:** a rotina NXJ v0.4.9 foi validada no Systextil real e evoluiu até o helper-base v0.6.0 na `main`. Esta branch propõe o helper-base v0.6.1, a ponte v0.2.0 e o orquestrador v0.2.0 para automatizar a cadeia completa. Ainda não integrada nem homologada operacionalmente.  
@@ -1266,3 +1266,20 @@ A análise classificava como falha qualquer mensagem diferente de `Processo conc
 ### Testes e validação
 
 Foram adicionados testes para mensagem intermediária não vazia, erro explícito e existência do mecanismo de atualização. Os testes automatizados simulam a regra de classificação; a confirmação da lista de mensagens e do comportamento de atualização depende de homologação no Systextil real.
+
+## 30. Atualização pelo sininho e baseline das confirmações NXJ (v1.0.5 — 09/11/2026)
+
+### Correção de Processos agendados
+
+- O controle de atualização da tela é procAgendados (sininho); btnFind. pertence à consulta e não deve ser usado nessa grade.
+- O script aciona novamente procAgendados, aguarda a requisição NXJ quando observável e respeita ao menos quatro segundos para renderização.
+- A leitura inicial da grade ocorre depois do primeiro refresh. Nas iterações seguintes, o mesmo refresh é repetido antes da próxima leitura.
+- Falha ao atualizar ou retorno inesperado de visão preserva o resultado como indeterminado; não há nova emissão.
+
+### Correção da primeira busca
+
+O baseline de sequência NXJ era capturado depois de atribuir o valor e esperar 500 ms. Se o ERP enviasse o comando de confirmação nesse período, ele ficava antes do baseline e não era contabilizado. O baseline agora é capturado antes da escrita de cada campo, incluindo título e parcela. As validações de valor, HTTP 2xx e comandos de confirmação permanecem obrigatórias.
+
+### Testes e validação
+
+Foram incluídas regressões de ordem do baseline antes da escrita, uso de procAgendados, espera de atualização e refresh antes da primeira leitura. O teste automatizado não substitui a homologação do comportamento na grade real do Systextil.
