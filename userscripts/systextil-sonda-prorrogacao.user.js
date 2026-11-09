@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Diagnóstico de Prorrogação (somente leitura)
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      0.1.0
+// @version      0.1.1
 // @description  Registra metadados de telas e comandos NXJ durante uma operação manual; não altera o ERP.
 // @match        http://systextil.texcotton.com.br/systextil/*
 // @match        https://systextil.texcotton.com.br/systextil/*
@@ -635,7 +635,7 @@
   function montarRelatorio() {
     return {
       produto: "Systextil — sonda de diagnóstico de prorrogação",
-      versaoSonda: "0.1.0",
+      versaoSonda: "0.1.1",
       modo: "somente leitura; não envia comandos nem altera campos",
       iniciadoEm,
       encerradoEm,
