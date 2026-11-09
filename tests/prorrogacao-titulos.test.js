@@ -163,3 +163,91 @@ test('respeita maxLength positivo ou zero declarado na tela', () => {
   assert.equal(api.obterLimiteCampo(9, 9), 9);
   assert.equal(api.obterLimiteCampo(0, 9), 0);
 });
+
+
+test('localiza controle por ID em documento de frame same-origin', () => {
+  const controle = { id: 'btnFind.', click() {} };
+  const documentoRaiz = { getElementById: () => null };
+  const documentoFrame = { getElementById: id => id === 'btnFind.' ? controle : null };
+
+  assert.equal(
+    api.encontrarElementoPorId([documentoRaiz, documentoFrame], 'btnFind.'),
+    controle
+  );
+});
+
+test('bloqueia controle ausente ou duplicado entre documentos', () => {
+  assert.throws(
+    () => api.encontrarElementoPorId([{ getElementById: () => null }], 'btnFind.'),
+    /não encontrado/
+  );
+
+  const primeiro = { id: 'btnFind.' };
+  const segundo = { id: 'btnFind.' };
+  assert.throws(
+    () => api.encontrarElementoPorId([
+      { getElementById: () => primeiro },
+      { getElementById: () => segundo }
+    ], 'btnFind.'),
+    /duplicado/
+  );
+});
+
+test('coleta documentos da janela principal e dos frames same-origin', () => {
+  const docRaiz = {};
+  const docFilho = {};
+  const filho = { document: docFilho, frames: [] };
+  const raiz = { document: docRaiz, frames: [filho] };
+
+  assert.deepEqual(api.coletarDocumentosMesmoDominio(raiz), [docRaiz, docFilho]);
+});
+
+test('monitora comandos NXJ iniciados na janela principal e em frame', async () => {
+  class FakeXHR {
+    constructor() {
+      this.listeners = {};
+      this.status = 0;
+    }
+    open(metodo, url) {
+      this.metodo = metodo;
+      this.url = url;
+    }
+    addEventListener(nome, callback) {
+      this.listeners[nome] = callback;
+    }
+    send() {
+      this.status = 200;
+      this.listeners.loadend?.();
+    }
+  }
+
+  const frame = {
+    document: {},
+    frames: [],
+    URLSearchParams,
+    XMLHttpRequest: class FrameXHR extends FakeXHR {}
+  };
+  const raiz = {
+    document: {},
+    frames: [frame],
+    URLSearchParams,
+    XMLHttpRequest: class RootXHR extends FakeXHR {}
+  };
+
+  const monitor = api.criarMonitorNxj(raiz);
+  try {
+    const xhrRaiz = new raiz.XMLHttpRequest();
+    xhrRaiz.open('POST', '/systextil/UnifyNXJ.jsp');
+    xhrRaiz.send('commandName=CLEAR_TO_FIND&fieldValues=');
+    await monitor.aguardarComando('CLEAR_TO_FIND', 0, 3000);
+
+    const xhrFrame = new frame.XMLHttpRequest();
+    xhrFrame.open('POST', '/systextil/UnifyNXJ.jsp');
+    xhrFrame.send('commandName=FIND&fieldValues=');
+    await monitor.aguardarComando('FIND', 1, 3000);
+
+    assert.equal(monitor.obterSequencia(), 2);
+  } finally {
+    monitor.remover();
+  }
+});
