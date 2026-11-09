@@ -203,35 +203,37 @@ test('coleta documentos da janela principal e dos frames same-origin', () => {
 });
 
 test('monitora comandos NXJ iniciados na janela principal e em frame', async () => {
-  class FakeXHR {
-    constructor() {
-      this.listeners = {};
-      this.status = 0;
-    }
-    open(metodo, url) {
-      this.metodo = metodo;
-      this.url = url;
-    }
-    addEventListener(nome, callback) {
-      this.listeners[nome] = callback;
-    }
-    send() {
-      this.status = 200;
-      this.listeners.loadend?.();
-    }
+  function criarClasseFakeXHR() {
+    return class FakeXHR {
+      constructor() {
+        this.listeners = {};
+        this.status = 0;
+      }
+      open(metodo, url) {
+        this.metodo = metodo;
+        this.url = url;
+      }
+      addEventListener(nome, callback) {
+        this.listeners[nome] = callback;
+      }
+      send() {
+        this.status = 200;
+        this.listeners.loadend?.();
+      }
+    };
   }
 
   const frame = {
     document: {},
     frames: [],
     URLSearchParams,
-    XMLHttpRequest: class FrameXHR extends FakeXHR {}
+    XMLHttpRequest: criarClasseFakeXHR()
   };
   const raiz = {
     document: {},
     frames: [frame],
     URLSearchParams,
-    XMLHttpRequest: class RootXHR extends FakeXHR {}
+    XMLHttpRequest: criarClasseFakeXHR()
   };
 
   const monitor = api.criarMonitorNxj(raiz);
