@@ -258,6 +258,104 @@ function criarApi() {
     throw new Error("O Systextil não abriu a tela esperada: " + esperada + ".");
   }
 
+  function coletarDocumentosMesmoDominio(janelaRaiz) {
+    const documentos = [];
+    const janelasVisitadas = new Set();
+
+    function visitar(janelaAtual) {
+      if (!janelaAtual || janelasVisitadas.has(janelaAtual)) return;
+      janelasVisitadas.add(janelaAtual);
+
+      try {
+        if (janelaAtual.document) documentos.push(janelaAtual.document);
+      } catch (_) {
+        return;
+      }
+
+      let totalFrames = 0;
+      try {
+        totalFrames = janelaAtual.frames.length;
+      } catch (_) {
+        return;
+      }
+
+      for (let indice = 0; indice < totalFrames; indice += 1) {
+        try {
+          visitar(janelaAtual.frames[indice]);
+        } catch (_) {
+          // Frames de outra origem não são acessados.
+        }
+      }
+    }
+
+    visitar(janelaRaiz);
+    return documentos;
+  }
+
+  function encontrarElementoPorId(documentos, id) {
+    const encontrados = [];
+    const vistos = new Set();
+
+    for (const documento of Array.isArray(documentos) ? documentos : []) {
+      const elemento = documento?.getElementById?.(id);
+      if (elemento && !vistos.has(elemento)) {
+        vistos.add(elemento);
+        encontrados.push(elemento);
+      }
+    }
+
+    if (encontrados.length !== 1) {
+      throw new Error(
+        encontrados.length === 0
+          ? "Controle não encontrado nos documentos acessíveis: " + id + "."
+          : "Controle duplicado entre documentos acessíveis: " + id + "."
+      );
+    }
+
+    return encontrados[0];
+  }
+
+  function localizarElementoPorId(pagina, id) {
+    return encontrarElementoPorId(
+      coletarDocumentosMesmoDominio(pagina),
+      id
+    );
+  }
+
+  function localizarControlePorNomeOuId(pagina, nome, id) {
+    const encontrados = [];
+    const vistos = new Set();
+
+    for (const documento of coletarDocumentosMesmoDominio(pagina)) {
+      if (nome) {
+        for (const elemento of Array.from(documento.getElementsByName?.(nome) || [])) {
+          if (elemento && !vistos.has(elemento)) {
+            vistos.add(elemento);
+            encontrados.push(elemento);
+          }
+        }
+      }
+
+      if (id) {
+        const elemento = documento.getElementById?.(id);
+        if (elemento && !vistos.has(elemento)) {
+          vistos.add(elemento);
+          encontrados.push(elemento);
+        }
+      }
+    }
+
+    if (encontrados.length !== 1 || typeof encontrados[0]?.click !== "function") {
+      throw new Error(
+        encontrados.length === 0
+          ? "Controle de navegação não encontrado nos documentos acessíveis: " + (nome || id) + "."
+          : "Controle de navegação ambíguo entre documentos acessíveis: " + (nome || id) + "."
+      );
+    }
+
+    return encontrados[0];
+  }
+
   function obterCampo(pagina, nome, configuracao) {
     const opcoes = configuracao || {};
     const encontrados = Array.from(pagina.document.getElementsByName(nome) || [])
@@ -616,10 +714,7 @@ function criarApi() {
     const parcela = String(pagina.document.getElementsByName("seq_duplicatas.")?.[0]?.value ?? "").trim();
 
     if (!estado.busca || titulo || parcela) {
-      const botaoLimpar = pagina.document.getElementById("btnClearToFind.");
-      if (!botaoLimpar) {
-        throw new Error("O controle Limpar/Consulta não foi encontrado. Nenhum campo foi alterado.");
-      }
+      const botaoLimpar = localizarElementoPorId(pagina, "btnClearToFind.");
 
       const antes = monitor.obterSequencia();
       botaoLimpar.click();
@@ -656,8 +751,7 @@ function criarApi() {
       throw new Error("A tela deixou o modo de consulta antes do Find.");
     }
 
-    const botaoFind = pagina.document.getElementById("btnFind.");
-    if (!botaoFind) throw new Error("O botão Find não foi encontrado.");
+    const botaoFind = localizarElementoPorId(pagina, "btnFind.");
 
     const sequenciaFind = monitor.obterSequencia();
     botaoFind.click();
@@ -693,14 +787,7 @@ function criarApi() {
   }
 
   async function clicarControle(pagina, nome, id, comandoEsperado, visaoEsperada, monitor) {
-    const encontrados = nome
-      ? Array.from(pagina.document.getElementsByName(nome) || [])
-      : [];
-    let controle = encontrados.length === 1 ? encontrados[0] : null;
-    if (!controle && id) controle = pagina.document.getElementById(id);
-    if (!controle || typeof controle.click !== "function") {
-      throw new Error("Controle de navegação não encontrado: " + (nome || id) + ".");
-    }
+    const controle = localizarControlePorNomeOuId(pagina, nome, id);
 
     const sequencia = monitor.obterSequencia();
     controle.click();
@@ -1216,6 +1303,7 @@ function criarApi() {
     analisarLote,
     selecionarLinhaPorParcela,
     obterLimiteCampo,
+    encontrarElementoPorId,
     criarErroIndeterminado,
     iniciar
   });
