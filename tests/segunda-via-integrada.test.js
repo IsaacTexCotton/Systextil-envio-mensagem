@@ -90,6 +90,7 @@ test('reconhece payload NXJ com zeros à esquerda e prefixo de campo', () => {
   assert.equal(api.valorConfere(['00012346'], '12345'), false);
   assert.equal(api.valorConfere(['123456'], '12345'), false);
 });
+
 test('bloqueia a consulta quando o NXJ não confirma título e parcela', () => {
   assert.equal(
     api.validarConfirmacoesNxj({ titulo: 'NXJ', parcela: 'NXJ' }),
