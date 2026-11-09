@@ -21,6 +21,8 @@ Não são criados painéis flutuantes, campos auxiliares, janelas de conferênci
 
 **Instalação e atualização:** instale somente `systextil-segunda-via.user.js` no Tampermonkey e habilite-o no CRM e no Systextil. Os três userscripts antigos foram desativados por metadados e não devem ser reativados. Depois de instalar o novo, remova ou desative as entradas antigas no Tampermonkey para evitar confusão.
 
+**Conferência da versão instalada:** o cabeçalho do arquivo na `main` declara `@version 1.0.4`. Se o Tampermonkey ainda mostrar `1.0`, confira o cabeçalho do código da entrada instalada, atualize a entrada correta e desative/remova cópias antigas. A versão exibida não deve ser inferida pelo nome do arquivo.
+
 **Proteções operacionais:** confirmação NXJ obrigatória dos dois campos antes do Find, correspondência única, conferência de título/parcela/cliente, trava contra emissão repetida, identificação inequívoca do processo, validação do PDF e bloqueio de repetição quando o resultado do download é indeterminado. Um timeout após clicar em **Emite boleto** não prova que a emissão falhou; nesses casos o fluxo não emite novamente. Um resultado de download indeterminado exige conferir a pasta Downloads antes de uma nova tentativa.
 
 Documentação da integração: [docs/transferencia-crm-systextil.md](docs/transferencia-crm-systextil.md). Histórico técnico e riscos: [docs/segunda-via-boleto.md](docs/segunda-via-boleto.md).
