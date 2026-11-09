@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Prorrogação de Títulos
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      0.1.0
+// @version      0.1.1
 // @description  Prorroga títulos em lote com confirmação NXJ, gravação sequencial e releitura.
 // @match        https://systextil.texcotton.com.br/systextil/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -28,7 +28,7 @@
 function criarApi() {
   "use strict";
 
-  const VERSION = "0.1.0";
+  const VERSION = "0.1.1";
   const VISAO_CONSULTA = "forms.crec.crec_f090";
   const VISAO_HISTORICO = "forms.crec.crec_f030";
   const VISAO_PARCELAS = "forms.crec.crec_f035";
@@ -287,7 +287,7 @@ function criarApi() {
   // declarados no próprio campo sempre prevalecem.
   function obterLimiteCampo(maxLength, limiteConfirmado) {
     const declarado = Number(maxLength);
-    return Number.isInteger(declarado) && declarado > 0
+    return Number.isInteger(declarado) && declarado >= 0
       ? declarado
       : limiteConfirmado;
   }
