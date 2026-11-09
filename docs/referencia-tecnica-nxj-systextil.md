@@ -32,6 +32,7 @@ Quando duas fontes divergirem, registre a divergência e faça uma sonda/teste q
 - O fluxo atual atualiza a grade pelo controle Find a cada quatro segundos, até o limite de três minutos. Se não puder atualizar ou não houver confirmação explícita de sucesso no prazo, o resultado fica indeterminado.
 - A emissão não é repetida automaticamente e o download depende da mensagem explícita de sucesso, da identificação inequívoca do processo e da validação posterior do PDF.
 - A integração na main **não significa homologação operacional** na estação de trabalho. A validação no Chrome/Tampermonkey/Systextil real continua pendente.
+- O userscript da main declara `@version 1.0.4`, com `@updateURL` e `@downloadURL` apontando para o arquivo estável em `main`. Se o Tampermonkey continuar exibindo versão `1.0`, confira o cabeçalho do script efetivamente instalado, desative/remova cópias antigas e atualize a entrada correta. O nome do arquivo ou a descrição não comprovam a versão instalada.
 - A PR #37 registrou parse sintático e dez verificações direcionadas aprovadas. `npm run verify` não foi executado naquela sessão.
 
 ### 2.2 Limite de evidência após o merge
@@ -85,7 +86,7 @@ Trate comandos de inclusão, alteração, exclusão ou encerramento como não au
 
 ### 3.4 fieldValues e confirmação de campos
 
-- fieldValues foi observado como valores separados por form feed (\\f).
+- fieldValues foi observado como valores separados por form feed (\f).
 - Em testes manuais anteriores, o valor pendente apareceu como último segmento da lista. Isso é uma observação do cenário testado, **não uma garantia universal**.
 - A implementação atual percorre todos os segmentos, pois um POST pode serializar mais de um valor. Não escreva automação que assuma que o último segmento sempre corresponde ao campo esperado.
 - A confirmação depende do comando correto, da requisição concluída, do valor correspondente e da sequência temporal da ação. Uma leitura de .value no DOM só prova o que o navegador está exibindo.
