@@ -151,3 +151,15 @@ test('erro de gravação indeterminada mantém marcador explícito', () => {
   assert.equal(erro.indeterminado, true);
   assert.equal(erro.code, 'COMANDO_TIMEOUT');
 });
+
+
+test('usa largura comprovada da sonda quando maxLength é -1', () => {
+  assert.equal(api.obterLimiteCampo(-1, 9), 9);
+  assert.equal(api.obterLimiteCampo(-1, 2), 2);
+});
+
+test('respeita maxLength positivo ou zero declarado na tela', () => {
+  assert.equal(api.obterLimiteCampo(5, 9), 5);
+  assert.equal(api.obterLimiteCampo(9, 9), 9);
+  assert.equal(api.obterLimiteCampo(0, 9), 0);
+});
