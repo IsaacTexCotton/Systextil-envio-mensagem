@@ -2,7 +2,7 @@
 
 **Userscript único:** `userscripts/systextil-segunda-via.user.js`  
 **Versão:** 1.0.5  
-**Status:** v1.0.4 integrada à main pela PR #37; v1.0.5 proposta na PR #39, ainda em revisão. A homologação operacional no Chrome/Tampermonkey/Systextil real permanece pendente.
+**Status:** v1.0.4 integrada à main pela PR #37; as correções da v1.0.5 estão registradas na PR #39. A homologação operacional no Chrome/Tampermonkey/Systextil real permanece pendente.
 
 ## Objetivo e autorização
 
@@ -96,7 +96,7 @@ A homologação precisa confirmar:
 6. O download validado do PDF para a pasta Downloads sem janela de destino, incluindo o comportamento de nome duplicado.
 7. O retorno do resultado ao SmartTable e o bloqueio seguro em timeout/falha.
 
-**Estado atual:** a PR #37 integrou a v1.0.4 à `main`; a PR #39 propõe a atualização para 1.0.5. Antes de distribuir a versão 1.0.5 como homologada, execute `npm run verify` e conclua a homologação operacional no ERP real, sem gerar emissão extra para teste.
+**Estado atual:** a PR #37 integrou a v1.0.4 à `main`; a PR #39 registra as correções da versão 1.0.5. Antes de distribuir a automação como homologada, execute `npm run verify` e conclua a homologação operacional no ERP real, sem gerar emissão extra para teste.
 
 
 ## Correção do acompanhamento de Processos agendados (v1.0.4)
@@ -107,7 +107,7 @@ Na versão 1.0.4, somente marcadores explícitos de erro são classificados como
 
 A suíte automatizada inclui regressões para mensagem intermediária não vazia, falha explícita e disponibilidade do controle de atualização. A homologação no Systextil real continua necessária para confirmar os textos efetivamente retornados e a atualização da grade na estação operacional.
 
-## Correções propostas na versão 1.0.5 — PR #39
+## Correções da versão 1.0.5 — PR #39
 
 A tela Processos agendados é atualizada pelo controle `procAgendados` (sininho). O userscript aciona esse controle antes da primeira leitura e novamente antes de cada releitura, aguarda a requisição NXJ quando observável e respeita ao menos quatro segundos para a grade renderizar. O controle `btnFind.` continua reservado à Consulta de títulos e não é usado para atualizar Processos agendados.
 
