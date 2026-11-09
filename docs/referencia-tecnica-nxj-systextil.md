@@ -424,7 +424,7 @@ Sondas referenciadas na investigação: probe_page.js (estrutura), network_tap.j
 
 ## 17. Correções do userscript de segunda via na v1.0.5 — PR #39
 
-Esta seção registra as alterações da PR #39 sobre a base integrada v1.0.4. Diferencie o comportamento da base `main` usada pela PR do comportamento proposto no código v1.0.5; a validação operacional no Systextil real ainda precisa confirmar a implementação.
+A PR #39 integrou as alterações da v1.0.5 à `main` em 09/11/2026. O comportamento segue sujeito à homologação operacional no Systextil real.
 
 ### 17.1 Atualização de Processos agendados
 
@@ -444,3 +444,23 @@ Esta seção registra as alterações da PR #39 sobre a base integrada v1.0.4. D
 - O identificador `procAgendados` e o comportamento de clicar novamente no sininho foram informados pelo operador da instalação.
 - Os testes direcionados verificam a ordem do baseline NXJ, o seletor do sininho, o tempo mínimo de espera e o refresh antes da primeira leitura.
 - Esses testes não comprovam que a tela real atualiza em todas as execuções nem que a primeira busca sempre será confirmada. Homologar com um título já previsto em operação real; não gerar uma emissão exclusivamente para teste.
+
+## 18. Recuperação manual de estado persistido — v1.0.6 proposta
+
+### 18.1 Causa do bloqueio aparente
+
+- A integração CRM/Systextil compartilha o registro `smarttable.systextil.title-transfer.v1.execucao` pelo armazenamento GM do Tampermonkey.
+- `emissao-solicitada`, `processando`, `baixando` e `indeterminado` são tratados como estados que exigem conferência e não expiram automaticamente. Isso evita permitir uma segunda emissão quando a primeira pode ter sido acionada, mas não teve resultado confirmado.
+- Um registro persistido informa o último estado conhecido do userscript; não comprova, por si só, que o Systextil ainda esteja processando algo. Se a aba for fechada, perder a navegação ou falhar antes de limpar o estado, a chave pode continuar bloqueando novas transferências.
+
+### 18.2 Recuperação proposta
+
+- A v1.0.6 acrescenta o comando Tampermonkey **Segunda via: liberar bloqueio após conferência manual**, usando a permissão específica `GM_registerMenuCommand`.
+- O comando apresenta status e horário registrados, exige confirmação explícita e relê a execução e o pedido antes da limpeza. Se os dados mudarem durante a confirmação, aborta sem apagar as chaves.
+- Após a confirmação, limpa as chaves compartilhadas de execução, pedido, consumidor, trava de Processos agendados e resultado. Não clica em controles do ERP, não consulta a grade, não cancela processo e não reexecuta emissão.
+- O operador deve conferir manualmente **Processos agendados** e a pasta **Downloads** antes de confirmar. A limpeza não deve ser usada como forma de contornar um resultado realmente indeterminado.
+
+### 18.3 Limites de validação
+
+- Testes automatizados verificam a presença do comando, a ordem da confirmação e a revalidação das chaves antes da limpeza.
+- Isso não comprova a renderização do item no menu do Tampermonkey nem a leitura/escrita do armazenamento na instalação real. Validar em Chrome/Tampermonkey com estado de teste, sem criar emissão adicional.

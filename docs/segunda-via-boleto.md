@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-> **Atualização da arquitetura (main v1.0.4 como base da PR #39; correções da v1.0.5 registradas em 09/11/2026):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. A implementação integrada é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte [transferencia-crm-systextil.md](transferencia-crm-systextil.md) e [referencia-tecnica-nxj-systextil.md](referencia-tecnica-nxj-systextil.md) para as instruções atuais.
+> **Atualização da arquitetura (main v1.0.5 integrada pela PR #39 em 09/11/2026; v1.0.6 proposta nesta branch):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. A implementação integrada é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. A v1.0.6 acrescenta recuperação manual de bloqueios locais persistidos, sem expiração automática de estados indeterminados. Consulte [transferencia-crm-systextil.md](transferencia-crm-systextil.md) e [referencia-tecnica-nxj-systextil.md](referencia-tecnica-nxj-systextil.md) para as instruções atuais.
 
 
 **Base histórica:** a rotina NXJ v0.4.9 foi validada no Systextil real e evoluiu até o helper-base v0.6.0 na `main`. Esta branch propõe o helper-base v0.6.1, a ponte v0.2.0 e o orquestrador v0.2.0 para automatizar a cadeia completa. Ainda não integrada nem homologada operacionalmente.  
@@ -1280,13 +1280,13 @@ A PR #37 registrou parse sintático e dez verificações direcionadas aprovadas.
 
 ## 31. Correções da v1.0.5 — PR #39 (09/11/2026)
 
-A main permanece na versão 1.0.4, integrada pelas PRs #36 e #37. A PR #39 propõe a versão 1.0.5 e não deve ser tratada como homologada até a revisão e a validação operacional.
+A v1.0.5 foi integrada à `main` pela PR #39 em 09/11/2026. A integração não equivale à homologação operacional no Systextil real.
 
 ### Atualização de Processos agendados
 
 - O operador informou que o botão `procAgendados` (sininho) é o controle que deve ser acionado novamente para atualizar a grade de Processos agendados.
 - O código anterior usava `btnFind.`, que pertence à Consulta de títulos e não está disponível nessa tela.
-- A v1.0.5 proposta aciona `procAgendados` antes da primeira leitura e antes de cada releitura, aguarda a requisição NXJ quando observável e respeita pelo menos quatro segundos para a renderização da grade.
+- A v1.0.5 integrada aciona `procAgendados` antes da primeira leitura e antes de cada releitura, aguarda a requisição NXJ quando observável e respeita pelo menos quatro segundos para a renderização da grade.
 - Mensagens vazias, intermediárias ou desconhecidas continuam em acompanhamento. O processo só é baixado após a mensagem explícita de sucesso; falha explícita, ambiguidade ou timeout não provocam uma segunda emissão.
 
 ### Primeira busca do título
@@ -1297,4 +1297,11 @@ A barreira NXJ permanece obrigatória: o Find não é acionado sem confirmação
 
 ### Validação
 
-Foram aprovadas 18 verificações direcionadas e o parse sintático dos arquivos alterados nesta revisão. `npm run verify` não foi executado. A validação operacional no Chrome/Tampermonkey/Systextil real continua pendente; não criar emissão extra apenas para homologar.
+Foram aprovadas 20 verificações direcionadas e o parse sintático dos arquivos alterados nesta revisão. `npm run verify` não foi executado. A validação operacional no Chrome/Tampermonkey/Systextil real continua pendente; não criar emissão extra apenas para homologar.
+## 32. Recuperação de bloqueio persistido — v1.0.6 proposta
+
+A execução anterior pode deixar um registro na chave compartilhada `smarttable.systextil.title-transfer.v1.execucao`. Os estados `emissao-solicitada`, `processando`, `baixando` e `indeterminado` são preservados sem expiração automática porque podem representar uma emissão já acionada cujo resultado não foi confirmado. Essa persistência não prova que o ERP continua processando; significa apenas que a última execução não foi encerrada com uma confirmação conclusiva.
+
+A v1.0.6 propõe o comando de menu Tampermonkey **Segunda via: liberar bloqueio após conferência manual**. O operador deve conferir Processos agendados e Downloads, ler o estado informado pelo comando e confirmar explicitamente. O comando relê as chaves antes de limpar pedido, execução, locks locais e resultado; se o estado mudar durante a confirmação, interrompe a limpeza.
+
+A ação não acessa nem altera o ERP, não cancela processos e não aciona outra emissão. Ela apenas remove o bloqueio compartilhado local para permitir uma nova transferência após a conferência humana. A existência e o comportamento do item de menu e a gravação no armazenamento GM ainda exigem validação em Chrome/Tampermonkey reais, sem criar emissão adicional.
