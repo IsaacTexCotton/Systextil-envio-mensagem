@@ -215,7 +215,7 @@ function criarApi() {
       ? unsafeWindow
       : window;
 
-    if (!pagina?.document || !pagina?.XMLHttpRequest || !pagina?.curDataView) {
+    if (!pagina?.document || !pagina?.XMLHttpRequest) {
       throw new Error("Abra uma tela do Systextil no documento principal.");
     }
     return pagina;
