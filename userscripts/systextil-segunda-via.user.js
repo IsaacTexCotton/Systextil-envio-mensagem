@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Systextil — Segunda Via Automática CRM
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      1.0.5
-// @description  Recebe o título do SmartTable, consulta, emite, acompanha o processo e baixa o PDF automaticamente.
+// @version      1.0.6
+// @description  Recebe títulos do SmartTable e automatiza a segunda via com recuperação manual de bloqueio persistido.
 // @match        https://texhub.texcotton.com.br/crm/*
 // @match        http://systextil.texcotton.com.br/systextil/*
 // @match        https://systextil.texcotton.com.br/systextil/*
@@ -12,6 +12,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_addValueChangeListener
+// @grant        GM_registerMenuCommand
 // @grant        GM_download
 // @grant        GM_xmlhttpRequest
 // @connect      systextil.texcotton.com.br
@@ -22,7 +23,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "1.0.5";
+  const VERSION = "1.0.6";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const DATA_VIEW_PROCESSOS = "forms.systextil.batch";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
@@ -1964,6 +1965,83 @@
     }
   }
 
+  function formatarDataEstado(valor) {
+    const timestamp = Number(valor);
+    return Number.isFinite(timestamp) && timestamp > 0
+      ? new Date(timestamp).toLocaleString("pt-BR")
+      : "não registrada";
+  }
+
+  function mesmoEstadoPersistido(execucaoA, execucaoB, pedidoA, pedidoB) {
+    return (
+      (execucaoA?.pedidoId ?? null) === (execucaoB?.pedidoId ?? null) &&
+      (execucaoA?.status ?? null) === (execucaoB?.status ?? null) &&
+      (execucaoA?.criadoEm ?? null) === (execucaoB?.criadoEm ?? null) &&
+      (execucaoA?.solicitadoEm ?? null) === (execucaoB?.solicitadoEm ?? null) &&
+      (pedidoA?.id ?? null) === (pedidoB?.id ?? null) &&
+      (pedidoA?.createdAt ?? null) === (pedidoB?.createdAt ?? null)
+    );
+  }
+
+  async function recuperarBloqueioManual() {
+    try {
+      const [execucaoInicial, pedidoInicial] = await Promise.all([
+        lerChave(CHAVES.execucao),
+        lerChave(CHAVES.pedido)
+      ]);
+
+      if (!execucaoInicial && !pedidoInicial) {
+        window.alert("Nenhum estado de execução ou pedido pendente foi encontrado no armazenamento compartilhado.");
+        return;
+      }
+
+      const resumo = [
+        "RECUPERAÇÃO MANUAL DO BLOQUEIO",
+        "",
+        "Registro de execução: " + (execucaoInicial ? "presente" : "ausente"),
+        "Estado registrado: " + (execucaoInicial?.status || "não informado"),
+        "Criado em: " + formatarDataEstado(execucaoInicial?.criadoEm),
+        "Pedido aguardando: " + (pedidoInicial ? "presente" : "ausente"),
+        "",
+        "Antes de continuar, confira manualmente no Systextil se não existe emissão correspondente em Processos agendados e verifique a pasta Downloads.",
+        "",
+        "Esta ação remove somente os estados locais compartilhados do userscript. Ela NÃO cancela, consulta ou altera um processo dentro do ERP.",
+        "",
+        "Confirma a liberação manual?"
+      ].join("\n");
+
+      if (!window.confirm(resumo)) return;
+
+      const [execucaoAtual, pedidoAtual] = await Promise.all([
+        lerChave(CHAVES.execucao),
+        lerChave(CHAVES.pedido)
+      ]);
+
+      if (!mesmoEstadoPersistido(execucaoInicial, execucaoAtual, pedidoInicial, pedidoAtual)) {
+        window.alert("O estado compartilhado mudou durante a conferência. Nada foi removido; atualize a tela e confira novamente.");
+        return;
+      }
+
+      await gravarChave(CHAVES.execucao, null);
+      await gravarChave(CHAVES.pedido, null);
+      await gravarChave(CHAVES.consumidor, null);
+      await gravarChave(CHAVES.lockProcesso, null);
+      await gravarChave(CHAVES.resultado, null);
+
+      window.alert("Bloqueio local removido. Nenhuma ação foi executada no Systextil. Uma nova solicitação poderá ser enviada.");
+    } catch (erro) {
+      window.alert("Não foi possível remover o bloqueio local: " + String(erro?.message || "falha no armazenamento Tampermonkey"));
+    }
+  }
+
+  function registrarComandoRecuperacao() {
+    if (typeof GM_registerMenuCommand !== "function") return;
+    GM_registerMenuCommand(
+      "Segunda via: liberar bloqueio após conferência manual",
+      () => { void recuperarBloqueioManual(); }
+    );
+  }
+
   function normalizarCodigoComparacao(valor) {
     const codigo = String(valor ?? "").trim();
     return /^\d+$/.test(codigo) ? (codigo.replace(/^0+/, "") || "0") : codigo.toUpperCase();
@@ -2431,7 +2509,12 @@
 
       const execucaoAtual = await lerChave(CHAVES.execucao);
       if (obterExecucaoAtiva(execucaoAtual)) {
-        await publicarResultado(pedido, "erro", false, "Já existe uma segunda via em andamento. Aguarde a conclusão antes de enviar outro título.");
+        await publicarResultado(
+          pedido,
+          "erro",
+          false,
+          "Existe um registro persistido de execução anterior (estado: " + String(execucaoAtual.status || "desconhecido") + "). Confira Processos agendados e Downloads antes de tentar novamente. Se não houver emissão pendente, use o comando do Tampermonkey para liberar o bloqueio após conferência manual."
+        );
         return;
       }
 
@@ -2695,7 +2778,11 @@
 
       const execucaoAnterior = await lerChave(CHAVES.execucao);
       if (obterExecucaoAtiva(execucaoAnterior)) {
-        throw new Error("Já existe uma segunda via em andamento ou com resultado pendente de conferência.");
+        throw new Error(
+          "Existe um registro persistido de execução anterior (estado: " +
+          String(execucaoAnterior.status || "desconhecido") +
+          "). Confira Processos agendados e Downloads antes de tentar novamente. Se não houver emissão pendente, use o comando do Tampermonkey para liberar o bloqueio após conferência manual."
+        );
       }
 
       await gravarChave(CHAVES.pedido, pedido);
@@ -2819,9 +2906,11 @@
   });
 
   if (NA_PAGINA_CRM) {
+    registrarComandoRecuperacao();
     void instalarBridgeCrm();
     return;
   }
 
+  registrarComandoRecuperacao();
   void iniciarSystextil();
 })();
