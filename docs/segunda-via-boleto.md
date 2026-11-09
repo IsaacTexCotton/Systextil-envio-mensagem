@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-> **Atualização da arquitetura (v1.0.3):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. Elas não são mais instruções de instalação/operação. A implementação vigente em revisão é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte `docs/transferencia-crm-systextil.md` para as instruções atuais.
+> **Atualização da arquitetura (v1.0.4):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. Elas não são mais instruções de instalação/operação. A implementação vigente em revisão é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte `docs/transferencia-crm-systextil.md` para as instruções atuais.
 
 
 **Base histórica:** a rotina NXJ v0.4.9 foi validada no Systextil real e evoluiu até o helper-base v0.6.0 na `main`. Esta branch propõe o helper-base v0.6.1, a ponte v0.2.0 e o orquestrador v0.2.0 para automatizar a cadeia completa. Ainda não integrada nem homologada operacionalmente.  
@@ -1247,3 +1247,22 @@ A suíte de integração verifica confirmação completa, título pendente, parc
 - Se a confirmação NXJ não ocorrer, o fluxo deve parar e não se deve executar a consulta manualmente até conferir/limpar os campos.
 
 **Estado:** correção preparada em branch de revisão. A suíte completa e a homologação operacional no ERP real ainda não foram executadas.
+
+
+## 29. Acompanhamento de mensagens intermediárias em Processos agendados (v1.0.4 — 09/11/2026)
+
+### Causa
+
+A análise classificava como falha qualquer mensagem diferente de `Processo concluído com sucesso.`. A rotina encerrava o ciclo antes de chamar `atualizarGradeProcessos` quando o ERP retornava um texto intermediário ou desconhecido.
+
+### Correção
+
+- Somente mensagens com marcadores explícitos de erro, falha, cancelamento, rejeição, interrupção, invalidação ou negação são classificadas como falha terminal.
+- Mensagens vazias, intermediárias ou desconhecidas permanecem como `em-andamento`.
+- O ciclo atualiza a grade com o controle Find e reanalisa o processo a cada quatro segundos, respeitando o limite existente de três minutos.
+- Se o controle de atualização não estiver disponível, ou o tempo terminar sem confirmação, o resultado é preservado como indeterminado.
+- A emissão não é repetida automaticamente. O download só ocorre após confirmação literal de sucesso e revalidação do registro.
+
+### Testes e validação
+
+Foram adicionados testes para mensagem intermediária não vazia, erro explícito e existência do mecanismo de atualização. Os testes automatizados simulam a regra de classificação; a confirmação da lista de mensagens e do comportamento de atualização depende de homologação no Systextil real.
