@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-> **Atualização da arquitetura (main v1.0.4; PR #39 propõe v1.0.5, 09/11/2026):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. A implementação integrada é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte [transferencia-crm-systextil.md](transferencia-crm-systextil.md) e [referencia-tecnica-nxj-systextil.md](referencia-tecnica-nxj-systextil.md) para as instruções atuais.
+> **Atualização da arquitetura (main v1.0.4 como base da PR #39; correções da v1.0.5 registradas em 09/11/2026):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. A implementação integrada é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte [transferencia-crm-systextil.md](transferencia-crm-systextil.md) e [referencia-tecnica-nxj-systextil.md](referencia-tecnica-nxj-systextil.md) para as instruções atuais.
 
 
 **Base histórica:** a rotina NXJ v0.4.9 foi validada no Systextil real e evoluiu até o helper-base v0.6.0 na `main`. Esta branch propõe o helper-base v0.6.1, a ponte v0.2.0 e o orquestrador v0.2.0 para automatizar a cadeia completa. Ainda não integrada nem homologada operacionalmente.  
@@ -1278,7 +1278,7 @@ Enquanto o processo não chega a um estado terminal, a grade é atualizada pelo 
 
 A PR #37 registrou parse sintático e dez verificações direcionadas aprovadas. A suíte completa `npm run verify` não foi executada naquela sessão e a homologação no Chrome/Tampermonkey/Systextil real continua pendente. A lista de marcadores de falha precisa ser confrontada com mensagens reais da instalação.
 
-## 31. Correções propostas na v1.0.5 — PR #39 (09/11/2026)
+## 31. Correções da v1.0.5 — PR #39 (09/11/2026)
 
 A main permanece na versão 1.0.4, integrada pelas PRs #36 e #37. A PR #39 propõe a versão 1.0.5 e não deve ser tratada como homologada até a revisão e a validação operacional.
 
