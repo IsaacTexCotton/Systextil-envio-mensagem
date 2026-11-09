@@ -1,7 +1,7 @@
 # Prorrogação de títulos — evidências e operação
 
 **Userscript:** \`userscripts/systextil-prorrogacao-titulos.user.js\`  
-**Versão inicial:** 0.1.0  
+**Versão:** 0.1.1  
 **Branch de implementação:** \`feat/prorrogacao-titulos\`  
 **Base técnica:** sonda somente leitura 0.1.2, captura de 09/11/2026 entre 19:03:52 e 19:04:39 UTC.
 
@@ -131,3 +131,17 @@ npm run verify
 \`\`\`
 
 O comando verifica a sintaxe de todos os userscripts e executa a suíte completa com o runner nativo do Node.js. O repositório não deve receber CI/CD ou GitHub Actions para esta alteração.
+
+
+## 9. Correção de compatibilidade do atributo maxlength — v0.1.1
+
+O navegador pode retornar \`HTMLInputElement.maxLength = -1\` quando o atributo HTML \`maxlength\` não está declarado no elemento. A versão 0.1.0 interpretava esse valor como uma largura negativa e rejeitava qualquer título.
+
+A v0.1.1 usa os limites já observados pela sonda nas telas investigadas quando o navegador retorna valor negativo ou não numérico:
+
+- \`num_duplicata.\`: 9 caracteres;
+- \`seq_duplicatas.\`: 2 caracteres.
+
+Quando a tela declara um limite não negativo, esse limite declarado continua prevalecendo. Nenhum dígito é truncado ou removido.
+
+A mensagem de interrupção também foi ajustada: se o erro ocorrer antes de qualquer F9 do item, o painel informa que nenhuma gravação foi iniciada. A orientação para não repetir F9 fica reservada aos casos parciais ou indeterminados.
