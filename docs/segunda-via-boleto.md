@@ -1297,7 +1297,7 @@ A barreira NXJ permanece obrigatória: o Find não é acionado sem confirmação
 
 ### Validação
 
-Foram aprovadas 18 verificações direcionadas e o parse sintático dos arquivos alterados nesta revisão. `npm run verify` não foi executado. A validação operacional no Chrome/Tampermonkey/Systextil real continua pendente; não criar emissão extra apenas para homologar.
+Foram aprovadas 20 verificações direcionadas e o parse sintático dos arquivos alterados nesta revisão. `npm run verify` não foi executado. A validação operacional no Chrome/Tampermonkey/Systextil real continua pendente; não criar emissão extra apenas para homologar.
 ## 32. Recuperação de bloqueio persistido — v1.0.6 proposta
 
 A execução anterior pode deixar um registro na chave compartilhada `smarttable.systextil.title-transfer.v1.execucao`. Os estados `emissao-solicitada`, `processando`, `baixando` e `indeterminado` são preservados sem expiração automática porque podem representar uma emissão já acionada cujo resultado não foi confirmado. Essa persistência não prova que o ERP continua processando; significa apenas que a última execução não foi encerrada com uma confirmação conclusiva.
