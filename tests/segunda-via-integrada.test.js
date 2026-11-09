@@ -64,7 +64,7 @@ test('rejeita solicitação expirada, CNPJ inválido e códigos com caracteres n
 });
 
 test('encontra o valor exato do campo NXJ mesmo quando outros segmentos vêm depois', () => {
-  const segmentos = api.extrairValoresPendentesNxj('\\f936520\\fMETADADO\\fOUTRO');
+  const segmentos = api.extrairValoresPendentesNxj('\f936520\fMETADADO\fOUTRO');
   assert.deepEqual(segmentos, ['936520', 'METADADO', 'OUTRO']);
   assert.ok(segmentos.includes('936520'));
   assert.equal(segmentos.includes('93652'), false);
