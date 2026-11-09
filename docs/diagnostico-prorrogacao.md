@@ -41,8 +41,8 @@ O registro de \`fieldValues\` contém apenas contagens. Os valores transportados
    - após alterar \`Prorrog\` e \`Mot\` e salvar com F9;
    - retorno à Consulta de títulos.
 7. Não mude a sequência manual por causa da sonda. Ela apenas observa as ações executadas pelo operador.
-8. Clique em **Encerrar e restaurar** antes de sair da tela. Isso remove os listeners e restaura os métodos XHR originais quando ainda pertencem à sonda.
-9. Clique em **Baixar relatório JSON** e envie o arquivo gerado para revisão.
+8. Clique em **Baixar relatório JSON**. A exportação encerra automaticamente a captura, restaura os listeners e os métodos XHR originais (quando ainda pertencem à sonda) e define o horário de encerramento. Também é possível encerrar manualmente em **Encerrar e restaurar** antes de exportar.
+9. Envie o arquivo gerado para revisão.
 
 A sonda pode registrar até 1.200 eventos; quando o limite é atingido, informa quantos foram descartados. Ela observa XHR para \`UnifyNXJ.jsp\`; não captura outras tecnologias de transporte.
 
