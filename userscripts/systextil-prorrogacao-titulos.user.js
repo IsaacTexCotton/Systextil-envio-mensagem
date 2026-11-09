@@ -604,6 +604,7 @@ function criarApi() {
 
       const antes = monitor.obterSequencia();
       botaoLimpar.click();
+      await monitor.aguardarComando("CLEAR_TO_FIND", antes);
       await monitor.aguardarOcioso();
       await aguardarCondicao(() => {
         const atual = obterEstado(pagina);
@@ -611,10 +612,6 @@ function criarApi() {
         const p = String(pagina.document.getElementsByName("seq_duplicatas.")?.[0]?.value ?? "").trim();
         return atual?.busca === true && !t && !p;
       }, 5000, "A Consulta não foi limpa corretamente.");
-
-      if (monitor.obterSequencia() === antes) {
-        throw new Error("O botão de limpar não gerou comando NXJ; consulta interrompida.");
-      }
     }
 
     if (obterEstado(pagina)?.busca !== true) {
