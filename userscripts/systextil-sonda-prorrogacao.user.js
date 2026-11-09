@@ -270,6 +270,21 @@
     };
   }
 
+  function campoTecnicoPresenteNaTela(valor, win) {
+    const nome = identificadorSeguro(valor);
+    if (!nome || !/[A-Za-z_]/.test(nome)) return null;
+
+    try {
+      const controles = win.document.querySelectorAll("input[name], select[name], textarea[name], input[id], select[id], textarea[id]");
+      for (const controle of controles) {
+        if (controle.name === nome || controle.id === nome) return nome;
+      }
+    } catch (_) {
+      // Se a tela estiver em atualização, o dado é omitido.
+    }
+    return null;
+  }
+
   function resumirFieldValues(parametros) {
     const valores = parametros.getAll("fieldValues");
     let segmentos = 0;
@@ -314,7 +329,7 @@
 
     return {
       commandName: identificadorSeguro(parametros.get("commandName")),
-      clickedOnField: identificadorSeguro(parametros.get("clickedOnField")),
+      clickedOnField: campoTecnicoPresenteNaTela(parametros.get("clickedOnField"), win),
       fieldValues: resumirFieldValues(parametros)
     };
   }
@@ -334,7 +349,7 @@
     try {
       prototipo = win.XMLHttpRequest && win.XMLHttpRequest.prototype;
     } catch (_) {
-      return;
+      return false;
     }
     if (!prototipo) return false;
     if (contextosInstalados.has(win)) return true;
