@@ -1,7 +1,7 @@
 # Prorrogação de títulos — evidências e operação
 
 **Userscript:** \`userscripts/systextil-prorrogacao-titulos.user.js\`  
-**Versão:** 0.1.4  
+**Versão:** 0.1.5  
 **Branch de implementação:** \`feat/prorrogacao-titulos\`  
 **Base técnica:** sonda somente leitura 0.1.2, captura de 09/11/2026 entre 19:03:52 e 19:04:39 UTC.
 
@@ -178,3 +178,14 @@ A v0.1.4 preserva duas evidências independentes:
 Para cada valor esperado, basta que ele esteja no payload do `ADD_UPDATE` ou na confirmação NXJ válida de saída daquele próprio campo. A leitura visual do input, isoladamente, não é aceita. A releitura final na Consulta continua obrigatória para confirmar a persistência da data e do `Compl.hist`.
 
 Se nenhuma dessas fontes confirmar o valor, a automação interrompe o lote como indeterminado e não repete F9. Nenhuma validação foi removida: a alteração corrige somente a exigência duplicada de que o mesmo valor precise aparecer nos dois comandos.
+
+
+## 13. Saída do campo por Tab e diagnóstico sem valores — v0.1.5
+
+A v0.1.4 ainda utilizava somente `focus()` no próximo controle para provocar a saída do campo. Essa ação visual não garante que o handler NXJ tenha recebido a tecla Tab nem que o valor pendente tenha sido transportado.
+
+A v0.1.5 envia `keydown` de Tab ao campo editado e, depois, ativa o próximo controle caso o próprio evento não tenha movido o foco. A automação continua aguardando a confirmação por `CLICKONFIELD` ou `NEXT_FIELD`, com HTTP 2xx e correspondência do valor esperado. A etapa seguinte e o F9 não são executados quando a confirmação não chega.
+
+Se a confirmação continuar ausente, a mensagem apresenta um resumo técnico dos POSTs NXJ observados desde o início da edição: nome do comando, quantidade/tamanho dos segmentos, status HTTP e indicação de correspondência com o valor esperado. O resumo não imprime o conteúdo do histórico, identificadores de sessão, URL completa ou outros valores de negócio.
+
+A tecla Tab sintética ainda depende de homologação no handler legado do Systextil real. O teste automatizado comprova o mapeamento e o formato do diagnóstico; não comprova que o ERP aceite o evento sintético.
