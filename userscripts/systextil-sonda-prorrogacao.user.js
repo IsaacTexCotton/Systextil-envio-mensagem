@@ -628,6 +628,7 @@
     pagina.document.body.appendChild(link);
     link.click();
     link.remove();
+    pagina.setTimeout(() => pagina.URL.revokeObjectURL(url), 1000);
     relatorioGerado = true;
     atualizarStatus("Download do relatório solicitado ao navegador.");
   }
