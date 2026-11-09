@@ -209,21 +209,25 @@ Portanto:
 
 ### 7.3 Regra de confirmação NXJ na rotina unificada
 
-A versão histórica 0.4.9 exigia a confirmação literal do valor no payload NXJ. Na rotina unificada 1.0.2, o monitor continua aguardando a conclusão das requisições e inspecionando os segmentos de `fieldValues`, mas a comparação literal é diagnóstica: máscaras, zeros à esquerda e prefixos de campo podem alterar a representação enviada.
+A regra atual da versão **1.0.3 integrada à main** é mais restritiva do que a implementação histórica 1.0.2. O monitor observa o endpoint NXJ e os comandos de confirmação de saída/foco. A rotina precisa reconhecer os valores esperados de **título e parcela** em comandos concluídos com HTTP 2xx antes de permitir o Find.
 
-A ausência de correspondência literal no payload não libera a emissão. A confirmação autoritativa é feita em uma etapa independente:
+Pontos importantes:
 
-- o controle **Find** precisa disparar uma requisição NXJ;
-- o ERP precisa concluir a busca e retornar exatamente um registro;
-- título e parcela devem corresponder aos códigos solicitados após normalização de zeros à esquerda apenas para comparação;
-- o cliente precisa estar identificado;
-- qualquer ausência, divergência, ambiguidade ou timeout bloqueia a emissão.
+- o parser percorre todos os segmentos de `fieldValues` separados por form feed; não presuma que o valor relevante seja sempre o último segmento;
+- a comparação admite normalização controlada de zeros à esquerda e prefixos explícitos, mas não aceita correspondência parcial/substrings;
+- o título visualmente vazio após blur só é tolerado quando o NXJ já confirmou o valor correspondente;
+- existe uma segunda barreira no orquestrador imediatamente antes do Find;
+- se qualquer confirmação estiver pendente, o Find é bloqueado. Não tente contornar o bloqueio pressionando F7 manualmente, pois isso pode executar uma consulta sem os filtros completos.
 
-A sequência de foco, edição, setter nativo e eventos `input/change` permanece preservada. O monitor temporário deve aguardar a ociosidade e ser removido ao final do preenchimento. Mensagens de diagnóstico podem exibir somente nomes de comandos e comprimentos dos segmentos, nunca os valores.
+A resposta HTTP 2xx, isoladamente, não é confirmação suficiente: associe endpoint, método, comando, segmentos e sequência temporal à etapa de preenchimento. A leitura de `.value` prova apenas o valor atualmente mostrado pelo DOM.
+
+A sequência de foco, edição, setter nativo e eventos `input/change` permanece dependente da tela. O monitor temporário deve aguardar a ociosidade e ser removido ao final. Mensagens de diagnóstico exibem apenas metadados mínimos, nunca título, parcela, cliente, cookies, tokens ou payload integral.
 
 ### 7.4 Limite da automação
 
-No fluxo assistido histórico, o operador executava F7 manualmente. Na automação completa SmartTable → Systextil, o clique explícito em **Enviar ao Systextil** é a autorização para executar a consulta e solicitar a emissão do título escolhido. O orquestrador usa o comando **Find** observado na barra do ERP, não simula F7 nem submete o formulário. Antes da emissão, exige confirmação NXJ exata de título e parcela, valor de parcela presente e idêntico, uma única linha retornada e identificação do cliente. Não estenda essa autorização a outras ações ou fluxos.
+No fluxo integrado SmartTable → Systextil, o clique explícito em **Enviar ao Systextil** autoriza somente o processamento do título escolhido. O userscript unificado usa o controle **Find** da barra, não simula F7 nem submete o formulário. Antes da emissão, exige confirmação NXJ dos dois filtros, exatamente um registro e conferência de título, parcela e cliente. A emissão ocorre uma única vez, após a trava de repetição.
+
+A confirmação de sucesso em Processos agendados continua obrigatória para liberar o PDF. Atenção à diferença de versão: a main 1.0.3 classifica uma mensagem não vazia diferente do texto de sucesso esperado como falha terminal; a PR #37 (v1.0.4, ainda pendente) propõe manter mensagens desconhecidas/intermediárias em acompanhamento e atualizar a grade novamente. Não atribua o comportamento proposto à main antes do merge e da homologação.
 
 ## 8. Interceptação e monitoramento de requisições
 
@@ -456,3 +460,8 @@ Priorize documentação oficial e mantenha as referências atualizadas:
 - [MDN — HTMLInputElement.value](https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement/value) — propriedade de valor de campos de entrada.
 
 Tutoriais de terceiros podem ajudar a compreender conceitos, mas não substituem a documentação oficial nem a inspeção do Systextil. Exemplos antigos devem ser tratados como material didático, não como código pronto para produção.
+
+
+## Referência técnica detalhada por tela
+
+Para nomes de visões, mapa de campos, comandos NXJ observados, sequência de foco, sinais de ociosidade, regras da Baixa de Títulos por Seleção, Consulta de títulos e Processos agendados, consulte [referencia-tecnica-nxj-systextil.md](referencia-tecnica-nxj-systextil.md). Esse documento marca cada achado como confirmado, inferido ou não testado e descreve a diferença entre a main v1.0.3 e a PR #37 pendente.
