@@ -1,7 +1,7 @@
 # Prorrogação de títulos — evidências e operação
 
 **Userscript:** \`userscripts/systextil-prorrogacao-titulos.user.js\`  
-**Versão:** 0.1.3  
+**Versão:** 0.1.4  
 **Branch de implementação:** \`feat/prorrogacao-titulos\`  
 **Base técnica:** sonda somente leitura 0.1.2, captura de 09/11/2026 entre 19:03:52 e 19:04:39 UTC.
 
@@ -163,4 +163,18 @@ A data de `Compl.hist` é a data local atual do navegador no momento da validaç
 
 O monitor NXJ passou a ler todas as ocorrências de `fieldValues` por `getAll()`, tanto em `URLSearchParams` quanto em `FormData`. A versão anterior lia somente a primeira ocorrência. Quando o NXJ distribuía os campos em entradas repetidas, essa leitura parcial podia produzir uma divergência artificial no verificador do payload.
 
-A proteção contra repetição permanece: cada tela recebe no máximo um F9 por tentativa. A resposta HTTP, os valores presentes em todas as entradas NXJ e o estado `UPDATED` são verificados; a confirmação definitiva do item continua sendo a releitura dos campos na Consulta. Um retorno indeterminado continua exigindo conferência manual e nunca dispara novo F9 automaticamente.
+A proteção contra repetição permanece: cada tela recebe no máximo um F9 por tentativa. O monitor lê todas as ocorrências repetidas de `fieldValues` no payload `ADD_UPDATE`. A confirmação de cada valor também pode vir do comando `CLICKONFIELD` ou `NEXT_FIELD` emitido ao sair do campo, desde que a requisição tenha sido concluída com HTTP 2xx e contenha exatamente o valor esperado. Isso evita exigir que o `ADD_UPDATE` repita um valor que o NXJ já transportou no comando de saída do campo. O estado `UPDATED` continua obrigatório e a confirmação definitiva do item continua sendo a releitura dos campos na Consulta. Um retorno indeterminado continua exigindo conferência manual e nunca dispara novo F9 automaticamente.
+
+
+## 12. Confirmação do campo antes do F9 — v0.1.4
+
+A versão 0.1.3 ainda exigia que cada valor alterado aparecesse novamente no payload do comando `ADD_UPDATE`. Isso gerava falso negativo quando o NXJ já havia transportado e confirmado o conteúdo no comando de saída do campo, mas não repetia esse valor no payload de gravação.
+
+A v0.1.4 preserva duas evidências independentes:
+
+1. Antes do F9, o comando `CLICKONFIELD` ou `NEXT_FIELD` precisa concluir com HTTP 2xx e conter o valor exato do campo alterado. A confirmação é guardada em memória e vinculada ao valor que estava sendo editado.
+2. Depois, o F9 é enviado uma única vez. O monitor exige um único `ADD_UPDATE` concluído com HTTP 2xx e a tela precisa entrar em `recordAction = UPDATED`.
+
+Para cada valor esperado, basta que ele esteja no payload do `ADD_UPDATE` ou na confirmação NXJ válida de saída daquele próprio campo. A leitura visual do input, isoladamente, não é aceita. A releitura final na Consulta continua obrigatória para confirmar a persistência da data e do `Compl.hist`.
+
+Se nenhuma dessas fontes confirmar o valor, a automação interrompe o lote como indeterminado e não repete F9. Nenhuma validação foi removida: a alteração corrige somente a exigência duplicada de que o mesmo valor precise aparecer nos dois comandos.
