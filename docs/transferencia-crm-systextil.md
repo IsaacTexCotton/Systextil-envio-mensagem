@@ -1,8 +1,8 @@
 # Segunda via automática — SmartTable → Systextil
 
 **Userscript único:** `userscripts/systextil-segunda-via.user.js`  
-**Versão:** 1.0.5  
-**Status:** v1.0.4 integrada à main pela PR #37; as correções da v1.0.5 estão registradas na PR #39. A homologação operacional no Chrome/Tampermonkey/Systextil real permanece pendente.
+**Versão:** 1.0.6 (proposta nesta branch)  
+**Status:** v1.0.5 integrada à `main` pela PR #39 em 09/11/2026. A v1.0.6 acrescenta recuperação manual de estado persistido. A homologação operacional no Chrome/Tampermonkey/Systextil real permanece pendente.
 
 ## Objetivo e autorização
 
@@ -14,7 +14,7 @@ Depois da autorização, o mesmo userscript conduz todo o processo no Systextil.
 
 1. No Tampermonkey, instale somente `userscripts/systextil-segunda-via.user.js`.
 2. Mantenha o userscript habilitado nos dois domínios: CRM (`texhub.texcotton.com.br/crm/*`) e Systextil (`systextil.texcotton.com.br/systextil/*`).
-3. Aceite as permissões `GM_getValue`, `GM_setValue`, `GM_addValueChangeListener`, `GM_xmlhttpRequest` e `GM_download` solicitadas pelo Tampermonkey.
+3. Aceite as permissões `GM_getValue`, `GM_setValue`, `GM_addValueChangeListener`, `GM_registerMenuCommand`, `GM_xmlhttpRequest` e `GM_download` solicitadas pelo Tampermonkey.
 4. Confirme que o Chrome permite downloads automáticos para a pasta padrão. Para não abrir o diálogo de destino a cada PDF, desative **Perguntar onde salvar cada arquivo** nas configurações de Downloads do Chrome.
 5. Desative ou remova as antigas entradas `systextil-crm-bridge.user.js`, `systextil-segunda-via-automatica.user.js` e `systextil-segunda-via-boleto.user.js`. Elas foram aposentadas e não devem ser usadas em conjunto com o novo arquivo.
 
@@ -65,6 +65,7 @@ Os dados de referência do CRM são usados para conduzir a operação e nomear o
 - O Find só é acionado após confirmação NXJ de título e parcela, precisa retornar uma única correspondência e tem título, parcela e cliente conferidos antes da emissão.
 - A emissão recebe uma trava de cinco minutos por título/parcela. Se houver timeout depois do clique, o script não clica novamente: o resultado é tratado como incerto.
 - Somente o estado `preenchendo`, anterior ao acionamento da emissão, expira após 30 minutos. Estados `emissao-solicitada`, `processando`, `baixando` e `indeterminado` permanecem bloqueados até recuperação/conferência.
+- Um estado persistido não comprova que há um processo ativo no ERP. Em bloqueio sem execução pendente, o operador pode usar o menu Tampermonkey **Segunda via: liberar bloqueio após conferência manual**. O comando mostra o estado registrado, exige confirmação, relê as chaves para evitar apagar um estado que mudou durante a conferência e remove somente as chaves locais de pedido/execução/trava/resultado. Não cancela nem consulta processos no ERP.
 - O processo precisa ser identificado sem ambiguidade e informar conclusão com sucesso. A atualização da grade é feita pelo sininho `procAgendados`, não pelo Find da tela de consulta. A primeira leitura ocorre após o refresh inicial e a espera de renderização. Mensagens intermediárias ou desconhecidas mantêm o acompanhamento ativo e provocam nova atualização; marcadores explícitos de falha interrompem o fluxo. O limite de espera gera estado indeterminado, sem repetir a emissão. O download continua bloqueado até a confirmação explícita de sucesso.
 - Os marcos de sequência NXJ do título e da parcela são capturados antes da escrita dos respectivos campos. Isso evita descartar uma confirmação enviada imediatamente por `input/change` antes do blur, sem enfraquecer a barreira de confirmação antes do Find.
 - O PDF só é baixado após revalidar o processo, a seleção da grade e a URL/relatório.
@@ -73,6 +74,12 @@ Os dados de referência do CRM são usados para conduzir a operação e nomear o
 - O script clica no controle **Find** (`btnFind.`) da barra de consulta e aguarda a confirmação da requisição e do resultado do ERP. Não simula eventos de teclado F7 nem usa `.submit()`.
 
 Se a tela não for **Consulta de títulos** quando a solicitação chegar, o userscript informa a falha ao CRM e não emite. Abra a tela correta e envie o título novamente. Não repita uma solicitação quando o resultado da emissão ou do download estiver indeterminado sem antes conferir Processos agendados e a pasta Downloads.
+
+## Recuperação manual de bloqueio persistido
+
+A chave compartilhada `smarttable.systextil.title-transfer.v1.execucao` pode permanecer preenchida se uma aba for fechada ou o acompanhamento terminar sem confirmação. Por segurança, estados posteriores ao acionamento da emissão não expiram automaticamente; por isso, uma tentativa antiga pode bloquear uma nova transferência mesmo sem processo atualmente em andamento.
+
+Para liberar esse bloqueio, primeiro abra **Processos agendados** no Systextil, confira que não existe emissão correspondente em execução e verifique a pasta **Downloads**. Depois, no menu do Tampermonkey, selecione **Segunda via: liberar bloqueio após conferência manual** e leia o estado apresentado antes de confirmar. A ação limpa apenas o estado compartilhado local do userscript; não cancela, consulta nem altera o ERP. Não confirme enquanto houver qualquer dúvida sobre uma emissão anterior.
 
 ## Testes e homologação
 
@@ -84,7 +91,7 @@ Com Node.js 18 ou superior, execute na raiz:
 npm run verify
 ```
 
-A execução dos testes não comprova a integração operacional. A v1.0.4 já está na `main`; a v1.0.5 permanece em revisão na PR #39. A homologação no Chrome/Tampermonkey e Systextil reais continua pendente. Aproveite um título que já esteja previsto em uma operação real; não gere emissão extra apenas para testar.
+A execução dos testes não comprova a integração operacional. A v1.0.5 está na `main` pela PR #39; a v1.0.6 permanece em revisão nesta branch. A homologação no Chrome/Tampermonkey e Systextil reais continua pendente. Aproveite um título que já esteja previsto em uma operação real; não gere emissão extra apenas para testar.
 
 A homologação precisa confirmar:
 
