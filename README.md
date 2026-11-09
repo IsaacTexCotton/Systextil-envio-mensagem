@@ -5,12 +5,13 @@ Userscripts para reduzir trabalho repetitivo no Systextil, mantendo uma autoriza
 
 ## Prorrogação de títulos — lote
 
-**Userscript independente:** [userscripts/systextil-prorrogacao-titulos.user.js](userscripts/systextil-prorrogacao-titulos.user.js) · v0.1.2.
+**Userscript independente:** [userscripts/systextil-prorrogacao-titulos.user.js](userscripts/systextil-prorrogacao-titulos.user.js) · v0.1.3.
 
 - Recebe uma linha por título/parcela no formato \`TITULO;PARCELA\`; a data pode ser comum ao lote ou individual por linha.
 - Substitui \`Compl.hist\` em \`forms.crec.crec_f030\` e grava a data de prorrogação e Mot \`01\` na linha encontrada em \`forms.crec.crec_f035\`.
 - Exige correspondência única da parcela na grade, confirmação NXJ e releitura na Consulta antes de avançar ao próximo item.
-- O executor é uma sigla configurável, não fixa. Motivo e autorização são opcionais. O texto de histórico não pode ultrapassar 60 caracteres.
+- A data do `Compl.hist` é sempre a data atual do processamento; a data informada na linha/campo comum é apenas a data de prorrogação. O executor é uma sigla configurável. Motivo e autorização são opcionais. O texto de histórico não pode ultrapassar 60 caracteres.
+- O monitor NXJ lê todas as entradas repetidas de `fieldValues`, evitando validar somente a primeira parte do payload.
 - Não bloqueia títulos vencidos. A gravação ocorre em duas telas e não tem rollback automático; qualquer estado parcial ou indeterminado interrompe o lote.
 
 Documentação, evidências de telas/atalhos, formato do histórico e pendências de homologação: [docs/prorrogacao-titulos.md](docs/prorrogacao-titulos.md).
