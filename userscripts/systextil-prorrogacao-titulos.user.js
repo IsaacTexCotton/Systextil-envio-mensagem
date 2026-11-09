@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Prorrogação de Títulos
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      0.1.2
+// @version      0.1.3
 // @description  Prorroga títulos em lote com confirmação NXJ, gravação sequencial e releitura.
 // @match        https://systextil.texcotton.com.br/systextil/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -28,7 +28,7 @@
 function criarApi() {
   "use strict";
 
-  const VERSION = "0.1.2";
+  const VERSION = "0.1.3";
   const VISAO_CONSULTA = "forms.crec.crec_f090";
   const VISAO_HISTORICO = "forms.crec.crec_f030";
   const VISAO_PARCELAS = "forms.crec.crec_f035";
@@ -101,6 +101,18 @@ function criarApi() {
     return data;
   }
 
+  function formatarDataLocal(dataAtual) {
+    const data = dataAtual === undefined ? new Date() : dataAtual;
+    if (!(data instanceof Date) || Number.isNaN(data.getTime())) {
+      throw new Error("Não foi possível determinar a data atual do Compl.hist.");
+    }
+
+    const dia = String(data.getDate()).padStart(2, "0");
+    const mes = String(data.getMonth() + 1).padStart(2, "0");
+    const ano = String(data.getFullYear());
+    return dia + "/" + mes + "/" + ano;
+  }
+
   function validarSigla(valor, rotulo, obrigatoria) {
     const sigla = normalizarEspacos(valor).toUpperCase();
     if (!sigla && !obrigatoria) return "";
@@ -112,7 +124,7 @@ function criarApi() {
   }
 
   function montarComplementoHistorico(configuracao) {
-    const data = validarData(configuracao?.data);
+    const data = formatarDataLocal(configuracao?.dataAtual);
     const motivo = normalizarEspacos(configuracao?.motivo);
     const autorizacao = validarSigla(configuracao?.autorizacao, "Sigla da autorização", false);
     const executor = validarSigla(configuracao?.executor, "Sigla do executor", true);
@@ -133,7 +145,7 @@ function criarApi() {
     return texto;
   }
 
-  function analisarLote(texto, dataComum, configuracao) {
+  function analisarLote(texto, dataComum, configuracao, dataAtual = new Date()) {
     const linhas = String(texto ?? "")
       .split(/\r?\n/)
       .map((linha, indice) => ({ texto: linha.trim(), numero: indice + 1 }))
@@ -145,6 +157,7 @@ function criarApi() {
     }
 
     const dataPadrao = dataComum ? validarData(dataComum) : "";
+    const dataHistorico = formatarDataLocal(dataAtual);
     const resultado = [];
     const identificadores = new Set();
 
@@ -174,7 +187,7 @@ function criarApi() {
       identificadores.add(chave);
 
       const historico = montarComplementoHistorico({
-        data,
+        dataAtual,
         motivo: configuracao?.motivo,
         autorizacao: configuracao?.autorizacao,
         executor: configuracao?.executor
@@ -439,7 +452,10 @@ function criarApi() {
         if (body && typeof body.get === "function") {
           return {
             comando: String(body.get("commandName") ?? "").trim().toUpperCase(),
-            segmentos: String(body.get("fieldValues") ?? "").split("\f")
+            segmentos: (typeof body.getAll === "function"
+              ? body.getAll("fieldValues")
+              : [body.get("fieldValues")])
+              .flatMap(valor => String(valor ?? "").split("\f"))
           };
         }
         if (typeof body !== "string") return { comando: "", segmentos: [] };
@@ -448,7 +464,8 @@ function criarApi() {
         const parametros = new Parametros(body);
         return {
           comando: String(parametros.get("commandName") ?? "").trim().toUpperCase(),
-          segmentos: String(parametros.get("fieldValues") ?? "").split("\f")
+          segmentos: parametros.getAll("fieldValues")
+            .flatMap(valor => String(valor ?? "").split("\f"))
         };
       } catch (_) {
         return { comando: "", segmentos: [] };
@@ -1121,8 +1138,8 @@ function criarApi() {
       '<div class="stp-conteudo">' +
         '<label class="stp-label" for="stp-itens">Títulos e parcelas</label>' +
         '<textarea id="stp-itens" rows="5" spellcheck="false" placeholder="00012345;03&#10;00012346;01;15/11/2026"></textarea>' +
-        '<div class="stp-ajuda">Uma linha por título: TITULO;PARCELA. A data pode ser informada na linha.</div>' +
-        '<label class="stp-label" for="stp-data">Data comum (quando não houver data na linha)</label>' +
+        '<div class="stp-ajuda">Uma linha por título: TITULO;PARCELA. A data informada na linha é a data da prorrogação; o Compl.hist usa automaticamente a data atual.</div>' +
+        '<label class="stp-label" for="stp-data">Data da prorrogação comum (quando não houver data na linha)</label>' +
         '<input id="stp-data" type="date" />' +
         '<label class="stp-label" for="stp-motivo">Motivo (opcional)</label>' +
         '<input id="stp-motivo" type="text" maxlength="100" placeholder="Ex.: PEDIDO CLIENTE" />' +
@@ -1250,6 +1267,20 @@ function criarApi() {
         return;
       }
 
+      const dataHistoricoMudou = itens.length !== loteValidado.length ||
+        itens.some((item, indice) => item.historico !== loteValidado[indice]?.historico);
+      if (dataHistoricoMudou) {
+        loteValidado = itens;
+        renderizarResultados(loteValidado);
+        campoConfirmacao.checked = false;
+        botaoIniciar.disabled = true;
+        mostrarStatus(
+          "A data atual do Compl.hist mudou desde a validação. Revise a prévia e confirme novamente.",
+          true
+        );
+        return;
+      }
+
       const estado = obterEstado(pagina);
       if (estado?.visao !== VISAO_CONSULTA) {
         mostrarStatus("Abra a Consulta de títulos antes de iniciar. Nenhuma gravação foi feita.", true);
@@ -1349,6 +1380,7 @@ function criarApi() {
     VERSION,
     normalizarCodigoComparacao,
     validarData,
+    formatarDataLocal,
     montarComplementoHistorico,
     analisarLote,
     selecionarLinhaPorParcela,
