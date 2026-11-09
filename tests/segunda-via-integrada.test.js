@@ -36,7 +36,7 @@ function formatarDataHora(timestamp) {
 }
 
 test('expõe a versão unificada e valida a transferência recebida do SmartTable', () => {
-  assert.equal(api.VERSION, '1.0.2');
+  assert.equal(api.VERSION, '1.0.3');
   const pedido = api.validarPedido(pedidoValido());
   assert.equal(pedido.titulo, '00001234');
   assert.equal(pedido.parcela, '03');
@@ -89,6 +89,31 @@ test('reconhece payload NXJ com zeros à esquerda e prefixo de campo', () => {
   assert.equal(api.valorConfere(['campo:00012345'], '12345'), true);
   assert.equal(api.valorConfere(['00012346'], '12345'), false);
   assert.equal(api.valorConfere(['123456'], '12345'), false);
+});
+test('bloqueia a consulta quando o NXJ não confirma título e parcela', () => {
+  assert.equal(
+    api.validarConfirmacoesNxj({ titulo: 'NXJ', parcela: 'NXJ' }),
+    true
+  );
+  assert.throws(
+    () => api.validarConfirmacoesNxj({ titulo: 'PENDENTE', parcela: 'NXJ' }),
+    /número do título.*Find foi bloqueado/
+  );
+  assert.throws(
+    () => api.validarConfirmacoesNxj({ titulo: 'NXJ', parcela: 'PENDENTE' }),
+    /parcela.*Find foi bloqueado/
+  );
+  assert.throws(
+    () => api.validarConfirmacoesNxj({ titulo: 'PENDENTE', parcela: 'PENDENTE' }),
+    /número do título e parcela.*Find foi bloqueado/
+  );
+});
+
+test('exige a confirmação NXJ dos dois campos antes de acionar Find', () => {
+  const confirmacao = SOURCE.indexOf('validarConfirmacoesNxj(preenchimento.confirmacoes)');
+  const find = SOURCE.indexOf('clicarBarraConsulta("find")');
+  assert.ok(confirmacao >= 0, 'barreira NXJ precisa existir');
+  assert.ok(find > confirmacao, 'Find não pode ser acionado antes da barreira NXJ');
 });
 
 test('expira apenas preenchimento abandonado e preserva estados de resultado incerto', () => {
