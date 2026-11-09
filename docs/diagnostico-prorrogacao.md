@@ -23,7 +23,7 @@ O registro de \`fieldValues\` contém apenas contagens. Os valores transportados
 
 ## Arquivo
 
-\`userscripts/systextil-sonda-prorrogacao.user.js\` — versão 0.1.0.
+\`userscripts/systextil-sonda-prorrogacao.user.js\` — versão 0.1.1.
 
 ## Como executar sem recarregar a sessão
 
