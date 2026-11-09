@@ -11,4 +11,4 @@ Diferencie teste unitário/mocado de validação operacional real no Systextil. 
 Todo código assistido por IA precisa de revisão e aprovação humana antes do merge. Não faça merge, release ou publicação por conta própria.
 
 
-Para automações Tampermonkey, consulte também `docs/guia-automacao-tampermonkey-systextil.md`. Aplique os padrões conforme a evidência da tarefa; não copie exemplos genéricos sem validar o contexto, os campos, a integração e os limites operacionais do Systextil.
+Para automações Tampermonkey, consulte também `docs/guia-automacao-tampermonkey-systextil.md` e `docs/referencia-tecnica-nxj-systextil.md`. A segunda referência registra o que foi observado no NXJ, nas visões e em telas concretas, além de distinguir a `main` da PR #37 ainda pendente. Aplique os padrões somente quando a evidência corresponder à tela/ambiente da tarefa; não copie nomes de campos, teclas, tempos ou APIs para outra tela sem confirmação manual.
