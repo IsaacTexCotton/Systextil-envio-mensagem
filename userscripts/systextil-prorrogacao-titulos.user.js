@@ -282,6 +282,16 @@ function criarApi() {
     return String(obterCampo(pagina, nome).value ?? "").trim();
   }
 
+  // HTMLInputElement.maxLength retorna -1 quando o atributo maxlength não existe.
+  // Nessas telas usamos os limites confirmados pela sonda; limites positivos
+  // declarados no próprio campo sempre prevalecem.
+  function obterLimiteCampo(maxLength, limiteConfirmado) {
+    const declarado = Number(maxLength);
+    return Number.isInteger(declarado) && declarado > 0
+      ? declarado
+      : limiteConfirmado;
+  }
+
   function atribuirValor(campo, valor, pagina) {
     const prototipo = pagina.HTMLInputElement?.prototype;
     const setter = prototipo
@@ -545,11 +555,20 @@ function criarApi() {
     let campoTitulo = obterCampo(pagina, "num_duplicata.", { editavel: true });
     let campoParcela = obterCampo(pagina, "seq_duplicatas.", { editavel: true });
 
-    if (item.titulo.length > Number(campoTitulo.maxLength || 9)) {
-      throw new Error("O título excede a largura real do campo do Systextil.");
+    const limiteTitulo = obterLimiteCampo(campoTitulo.maxLength, 9);
+    const limiteParcela = obterLimiteCampo(campoParcela.maxLength, 2);
+
+    if (item.titulo.length > limiteTitulo) {
+      throw new Error(
+        "O título possui " + item.titulo.length + " caracteres, mas o campo num_duplicata. " +
+        "aceita até " + limiteTitulo + ". O limite foi conferido sem remover dígitos."
+      );
     }
-    if (item.parcela.length > Number(campoParcela.maxLength || 2)) {
-      throw new Error("A parcela excede a largura real do campo do Systextil.");
+    if (item.parcela.length > limiteParcela) {
+      throw new Error(
+        "A parcela possui " + item.parcela.length + " caracteres, mas o campo seq_duplicatas. " +
+        "aceita até " + limiteParcela + "."
+      );
     }
 
     const sequenciaTitulo = monitor.obterSequencia();
@@ -1135,10 +1154,12 @@ function criarApi() {
               : (erro.parcial ? "PARCIAL — confira os dois salvamentos" : "INTERROMPIDO");
             linha.textContent = "Item " + (indice + 1) + "/" + itens.length +
               " — " + item.titulo + " / " + item.parcela + ": " + estadoItem + ".";
+            const orientacaoFalha = (erro.indeterminado || erro.parcial)
+              ? "\nNão repita F9. Confira o título/parcela no Systextil antes de nova tentativa."
+              : "\nA falha ocorreu antes de qualquer F9 deste item; nenhuma gravação foi iniciada.";
             mostrarStatus(
               "Lote interrompido após " + concluidos + " item(ns) confirmado(s).\n" +
-              estadoItem + ": " + erro.message +
-              "\nNão repita F9. Confira o título/parcela no Systextil antes de nova tentativa.",
+              estadoItem + ": " + erro.message + orientacaoFalha,
               true
             );
             throw erro;
@@ -1194,6 +1215,7 @@ function criarApi() {
     montarComplementoHistorico,
     analisarLote,
     selecionarLinhaPorParcela,
+    obterLimiteCampo,
     criarErroIndeterminado,
     iniciar
   });
