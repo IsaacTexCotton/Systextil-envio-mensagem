@@ -21,11 +21,11 @@ Os userscripts são independentes. Não misture comportamento de uma funcionalid
 
 ## 3. Fonte da verdade
 
-O guia [docs/guia-automacao-tampermonkey-systextil.md](docs/guia-automacao-tampermonkey-systextil.md) complementa estas instruções com padrões de automação web adaptados ao Systextil. Consulte-o ao criar ou revisar userscripts. Ele é referência técnica suplementar: não substitui as regras deste arquivo, a documentação específica da funcionalidade, nem as evidências do código/testes e da operação real.
+O guia [docs/guia-automacao-tampermonkey-systextil.md](docs/guia-automacao-tampermonkey-systextil.md) define os padrões transversais de userscripts. A referência [docs/referencia-tecnica-nxj-systextil.md](docs/referencia-tecnica-nxj-systextil.md) reúne evidências de protocolo NXJ, visões, campos e telas já investigadas. Consulte ambos ao criar ou revisar automações no Systextil, além da documentação específica da funcionalidade. A referência NXJ é contextual: seus campos, teclas, tempos e propriedades só valem para as telas/ambientes em que foram observados; não substitui a sequência manual nem a homologação real.
 
 Antes de alterar código:
 
-1. Leia este arquivo, o README e a documentação relacionada à tarefa.
+1. Leia este arquivo, o README, o guia transversal, a referência técnica NXJ e a documentação específica da tarefa. Identifique se a informação consultada é confirmada, inferida, não testada ou específica de uma tela/ambiente.
 2. Inspecione o código atual e os testes; não confie apenas em versões, resumos ou trechos de conversas.
 3. Diferencie fatos confirmados no ERP, hipóteses técnicas e regras ainda pendentes de validação.
 4. Quando documentação e código divergirem, não escolha silenciosamente uma versão. Investigue qual estado está ativo, corrija a informação afetada e registre a incerteza restante.
