@@ -1,6 +1,6 @@
 # Segunda via de boleto — levantamento técnico
 
-> **Atualização da arquitetura (v1.0.1):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. Elas não são mais instruções de instalação/operação. A implementação vigente em revisão é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte `docs/transferencia-crm-systextil.md` para as instruções atuais.
+> **Atualização da arquitetura (v1.0.2):** as seções anteriores deste documento registram decisões e implementações históricas das versões 0.x. Elas não são mais instruções de instalação/operação. A implementação vigente em revisão é o userscript único `userscripts/systextil-segunda-via.user.js`: não há painéis flutuantes, ponte separada, helper userscript ou auxiliar Windows. O PDF validado é enviado à pasta Downloads padrão do navegador. Consulte `docs/transferencia-crm-systextil.md` para as instruções atuais.
 
 
 **Base histórica:** a rotina NXJ v0.4.9 foi validada no Systextil real e evoluiu até o helper-base v0.6.0 na `main`. Esta branch propõe o helper-base v0.6.1, a ponte v0.2.0 e o orquestrador v0.2.0 para automatizar a cadeia completa. Ainda não integrada nem homologada operacionalmente.  
@@ -1174,7 +1174,7 @@ Isso evita que a ausência do campo de parcela seja mascarada como divergência 
 - Não fazer merge nem publicar os userscripts até a validação operacional e revisão humana.
 
 
-## 27. Userscript único e download para Downloads (v1.0.1 — 06/11/2026)
+## 27. Userscript único e download para Downloads (v1.0.2 — 09/11/2026)
 
 ### Objetivo
 
@@ -1187,9 +1187,9 @@ O clique explícito em **Enviar ao Systextil** no SmartTable continua sendo a ú
 ### Mudanças em relação às versões 0.x
 
 - Integra no mesmo userscript as funções anteriormente distribuídas entre bridge, orquestrador e helper-base.
-- A confirmação NXJ procura o valor exato em todos os segmentos separados por `\\f` no `fieldValues`, pois o ERP pode incluir outros valores no mesmo POST. Em seguida, o userscript envia F7 ao campo do título e espera a confirmação da consulta.
+- O monitor NXJ percorre os segmentos separados por `\\f` em `fieldValues`, mas trata a confirmação literal como diagnóstico tolerante a máscaras, zeros à esquerda e prefixos. A conclusão da operação é decidida pelo resultado do controle Find, não pela igualdade literal do payload.
 - Preenche diretamente `num_duplicata.` e `seq_duplicatas.` no formulário real do Systextil; remove os campos duplicados e os painéis flutuantes.
-- Mantém a sequência NXJ de foco, edição e confirmação, além das validações independentes da parcela antes e depois do Find.
+- Mantém a sequência NXJ de foco e edição, aguarda a ociosidade das requisições e valida título/parcela antes e depois do Find com normalização de zeros à esquerda apenas para comparação.
 - Exige um único registro de Find e confere título, parcela e cliente antes de clicar uma única vez em **Emite boleto**.
 - Acompanha Processos agendados, identifica uma correspondência única por tipo de processo e horário, seleciona a linha conferida e valida a URL/relatório.
 - Substitui o serviço Windows por download no navegador. O userscript obtém o PDF autenticado com `GM_xmlhttpRequest`, valida origem, caminho, relatório, assinatura `%PDF-`, marcador `%%EOF` e limite de 25 MB, e só então chama `GM_download` com `saveAs: false` e `conflictAction: "uniquify"`.
@@ -1207,14 +1207,15 @@ Use Tampermonkey 5.4.6226 ou superior, que oferece suporte a Blob/File em `GM_do
 - `GM_download` não permite ao userscript escolher um caminho absoluto do Windows. O destino é a pasta padrão definida pelo navegador.
 - Uma política corporativa do Chrome/Tampermonkey pode bloquear downloads ou solicitar confirmação. Homologar esse comportamento na estação operacional.
 - Timeout depois do clique em **Emite boleto** não comprova falha da emissão; o código não repete automaticamente.
+- Apenas execuções no estado `preenchendo` podem expirar após 30 minutos. Estados posteriores, inclusive `indeterminado`, nunca são liberados automaticamente.
 - Quando o resultado de `GM_download` é indeterminado, conferir a pasta Downloads antes de qualquer nova tentativa.
 - `Esc` interrompe a automação local, mas não cancela uma emissão já submetida ao ERP.
 - O mecanismo de lock entre abas é cooperativo no armazenamento GM; reduz disputas, mas não oferece exclusão mútua transacional.
 
 ### Testes e validação
 
-Foi adicionada a suíte `tests/segunda-via-integrada.test.js` para contrato CRM, validação dos dados, comparação de códigos, identificação de processo, ambiguidade, URL/PDF e ausência de painéis/serviço Windows. Permanecem as suítes anteriores de NXJ e regressão de regras.
+Foi adicionada a suíte `tests/segunda-via-integrada.test.js` para contrato CRM, comparação tolerante do payload NXJ, expiração exclusiva de preenchimentos abandonados, consulta via Find, validação dos dados, identificação única de processo, ambiguidade e validação de URL/PDF. Permanecem as suítes anteriores de NXJ e regressão de regras.
 
-Executar `npm run verify` com Node.js 18 ou superior. A suíte automatizada não substitui a homologação operacional.
+Executar `npm run verify` com Node.js 18 ou superior. A suíte automatizada não substitui a homologação operacional; a nova cobertura inclui payload NXJ com máscara/prefixo, uso do controle Find e preservação de estados indeterminados.
 
 **Estado:** implementação em branch de revisão. A suíte completa e a validação no Chrome/Tampermonkey/Systextil reais ainda não foram confirmadas. Não integrar à `main` até verificar a transferência do CRM, a troca de visão para Processos agendados, a identificação do processo e o download real para Downloads. A primeira homologação deve utilizar um título já previsto para operação, sem criar uma emissão exclusivamente para teste.
