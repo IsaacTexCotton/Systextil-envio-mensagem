@@ -110,7 +110,7 @@ test('insere quebra de linha ao pressionar Enter no campo de títulos', () => {
   }
 
   assert.equal(api.interceptarEnterNoCampoLote(evento, campo, { Event: EventoFake }), true);
-  assert.equal(campo.value, '00012345;03\\n');
+  assert.equal(campo.value, '00012345;03\n');
   assert.equal(campo.selectionStart, 12);
   assert.deepEqual(flags, {
     preventDefault: true,
