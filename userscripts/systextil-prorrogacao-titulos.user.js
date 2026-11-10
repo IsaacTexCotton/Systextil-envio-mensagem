@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Prorrogação de Títulos
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      0.1.6
+// @version      0.1.7
 // @description  Prorroga títulos em lote com confirmação NXJ, gravação sequencial e releitura.
 // @match        https://systextil.texcotton.com.br/systextil/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -28,7 +28,7 @@
 function criarApi() {
   "use strict";
 
-  const VERSION = "0.1.6";
+  const VERSION = "0.1.7";
   const VISAO_CONSULTA = "forms.crec.crec_f090";
   const VISAO_HISTORICO = "forms.crec.crec_f030";
   const VISAO_PARCELAS = "forms.crec.crec_f035";
@@ -923,7 +923,7 @@ function criarApi() {
   }
 
   function dispararTecla(pagina, tecla, alvoPreferencial) {
-    const codigo = obterCodigoTecla(tecla);
+    const codigo = obterCodigoTeclaComModo(tecla, modoTesteAtivo);
     const alvo = alvoPreferencial ||
       (pagina.document.activeElement &&
       pagina.document.activeElement !== pagina.document.body
@@ -1000,6 +1000,11 @@ function criarApi() {
       throw new Error("Bloqueio de segurança: o modo de teste não permite executar F9.");
     }
     return true;
+  }
+
+  function obterCodigoTeclaComModo(tecla, modoTeste) {
+    if (String(tecla).toUpperCase() === "F9") exigirF9Permitido(modoTeste);
+    return obterCodigoTecla(tecla);
   }
 
   function validarQuantidadeItensModoTeste(modoTeste, quantidade) {
@@ -1163,6 +1168,15 @@ function criarApi() {
       "seq_duplicatas." + linha.indice
     );
 
+    if (modoTesteAtivo) {
+      return {
+        modoTeste: true,
+        dataConfirmada: true,
+        motivoConfirmado: true,
+        f9Executado: false
+      };
+    }
+
     await salvarUmaVez(
       pagina,
       monitor,
@@ -1170,6 +1184,12 @@ function criarApi() {
       [item.data, CODIGO_MOTIVO_PRORROGACAO],
       [confirmacaoData, confirmacaoMotivo]
     );
+    return {
+      modoTeste: false,
+      dataConfirmada: true,
+      motivoConfirmado: true,
+      f9Executado: true
+    };
   }
 
   async function retornarConsulta(pagina, monitor) {
@@ -1220,35 +1240,43 @@ function criarApi() {
 
       callbacks?.status?.(
         modoTesteAtivo
-          ? "Modo de teste: preenchendo e validando Compl.hist. sem gravar."
+          ? "Modo de teste: preenchendo e confirmando Compl.hist sem executar F9."
           : "Gravando Compl.hist."
       );
       const resultadoHistorico = await gravarHistorico(pagina, monitor, item);
+      if (!resultadoHistorico.modoTeste) historicoSalvo = true;
 
-      if (resultadoHistorico.modoTeste) {
-        callbacks?.status?.(
-          "Teste concluído: Compl.hist foi preenchido e confirmado pelo NXJ. " +
-          "F9 não foi enviado; a execução parou antes da primeira gravação."
-        );
+      callbacks?.status?.(
+        modoTesteAtivo
+          ? "Modo de teste: navegando para a grade sem executar F9."
+          : "Abrindo grade de parcelas."
+      );
+      await navegarTecla(
+        pagina, monitor, "F2", "CMDNEXTFORM", VISAO_HISTORICO, VISAO_PARCELAS
+      );
+
+      callbacks?.status?.(
+        modoTesteAtivo
+          ? "Modo de teste: preenchendo e confirmando data e motivo sem executar F9."
+          : "Gravando data e motivo da prorrogação."
+      );
+      const resultadoProrrogacao = await gravarProrrogacao(pagina, monitor, item);
+
+      if (resultadoProrrogacao.modoTeste) {
         return {
           ok: true,
           modoTeste: true,
           historicoSalvo: false,
           prorrogacaoSalva: false,
+          historicoConfirmado: resultadoHistorico.campoConfirmado === true,
+          dataConfirmada: resultadoProrrogacao.dataConfirmada === true,
+          motivoConfirmado: resultadoProrrogacao.motivoConfirmado === true,
           verificado: false,
-          f9Executado: false
+          f9Executado: false,
+          visaoFinal: VISAO_PARCELAS
         };
       }
 
-      historicoSalvo = true;
-
-      callbacks?.status?.("Abrindo grade de parcelas.");
-      await navegarTecla(
-        pagina, monitor, "F2", "CMDNEXTFORM", VISAO_HISTORICO, VISAO_PARCELAS
-      );
-
-      callbacks?.status?.("Gravando data e motivo da prorrogação.");
-      await gravarProrrogacao(pagina, monitor, item);
       prorrogacaoSalva = true;
 
       callbacks?.status?.("Retornando à Consulta para releitura.");
@@ -1285,7 +1313,7 @@ function criarApi() {
           '<div><label class="stp-label" for="stp-aut">Autorização (sigla, opcional)</label><input id="stp-aut" type="text" maxlength="8" placeholder="Ex.: GISELA" /></div>' +
           '<div><label class="stp-label" for="stp-executor">Executor (sigla)</label><input id="stp-executor" type="text" maxlength="8" placeholder="Sua sigla" /></div>' +
         '</div>' +
-        '<label class="stp-modo-teste"><input id="stp-modo-teste" type="checkbox" /> <span><strong>Modo de teste — não executar F9</strong><small>Testa um único título até confirmar o Compl.hist e para antes de salvar. Não testa a grade de parcelas.</small></span></label>' +
+        '<label class="stp-modo-teste"><input id="stp-modo-teste" type="checkbox" /> <span><strong>Modo de teste — não executar F9</strong><small>Testa um único título: consulta, histórico, navegação e preenchimento da data e do motivo. Não envia F9 em nenhuma tela.</small></span></label>' +
         '<div class="stp-acoes"><button type="button" id="stp-validar">Validar lote</button><button type="button" id="stp-iniciar" disabled>Iniciar lote</button></div>' +
         '<label class="stp-consentimento"><input id="stp-confirmar" type="checkbox" /> Revisei os títulos, parcelas, datas e o histórico.</label>' +
         '<div id="stp-status" role="status" aria-live="polite">Aguardando validação.</div>' +
@@ -1480,9 +1508,11 @@ function criarApi() {
                 " — " + item.titulo + " / " + item.parcela +
                 ": TESTE concluído; F9 não enviado.";
               mostrarStatus(
-                "Modo de teste concluído. O Compl.hist foi preenchido e confirmado pelo NXJ, " +
-                "mas não foi gravado. O script não enviou F9 nem avançou para a grade de parcelas.\n\n" +
-                "O campo pode permanecer alterado e não salvo na tela. Não pressione F9 manualmente.",
+                "Modo de teste concluído. O script consultou o título, confirmou o Compl.hist, " +
+                "navegou até a grade e confirmou a data e o motivo da prorrogação.\n\n" +
+                "Nenhum F9 foi enviado. A execução terminou na grade de parcelas, antes da gravação. " +
+                "Os campos podem permanecer alterados e pendentes na sessão do ERP. " +
+                "Não pressione F9 manualmente.",
                 false
               );
               break;
@@ -1497,9 +1527,11 @@ function criarApi() {
               : (erro.parcial ? "PARCIAL — confira os dois salvamentos" : "INTERROMPIDO");
             linha.textContent = "Item " + (indice + 1) + "/" + itens.length +
               " — " + item.titulo + " / " + item.parcela + ": " + estadoItem + ".";
-            const orientacaoFalha = (erro.indeterminado || erro.parcial)
-              ? "\nNão repita F9. Confira o título/parcela no Systextil antes de nova tentativa."
-              : "\nA falha ocorreu antes de qualquer F9 deste item; nenhuma gravação foi iniciada.";
+            const orientacaoFalha = modoTeste
+              ? "\nModo de teste: o script não deve enviar F9. Os campos já visitados podem permanecer pendentes; confira a tela antes de limpar ou iniciar outra execução."
+              : ((erro.indeterminado || erro.parcial)
+                ? "\nNão repita F9. Confira o título/parcela no Systextil antes de nova tentativa."
+                : "\nA falha ocorreu antes de qualquer F9 deste item; nenhuma gravação foi iniciada.");
             mostrarStatus(
               "Lote interrompido após " + concluidos + " item(ns) confirmado(s).\n" +
               estadoItem + ": " + erro.message + orientacaoFalha,
@@ -1566,6 +1598,7 @@ function criarApi() {
     obterLimiteCampo,
     obterCodigoTecla,
     exigirF9Permitido,
+    obterCodigoTeclaComModo,
     validarQuantidadeItensModoTeste,
     valoresNaoConfirmados,
     encontrarElementoPorId,
