@@ -1002,6 +1002,15 @@ function criarApi() {
     return true;
   }
 
+  function validarQuantidadeItensModoTeste(modoTeste, quantidade) {
+    if (modoTeste && quantidade !== 1) {
+      throw new Error(
+        "O modo de teste aceita somente um título/parcela por execução."
+      );
+    }
+    return true;
+  }
+
   async function salvarUmaVez(
     pagina,
     monitor,
@@ -1419,10 +1428,11 @@ function criarApi() {
       }
 
       const modoTeste = campoModoTeste.checked;
-      if (modoTeste && itens.length !== 1) {
+      try {
+        validarQuantidadeItensModoTeste(modoTeste, itens.length);
+      } catch (erro) {
         mostrarStatus(
-          "O modo de teste aceita somente um título/parcela por execução. " +
-          "Deixe apenas uma linha no lote e valide novamente.",
+          erro.message + " Deixe apenas uma linha no lote e valide novamente.",
           true
         );
         return;
@@ -1552,6 +1562,7 @@ function criarApi() {
     obterLimiteCampo,
     obterCodigoTecla,
     exigirF9Permitido,
+    validarQuantidadeItensModoTeste,
     valoresNaoConfirmados,
     encontrarElementoPorId,
     coletarDocumentosMesmoDominio,
