@@ -171,9 +171,9 @@ function criarApi() {
         : inicio;
 
       if (typeof campo.setRangeText === "function") {
-        campo.setRangeText("\\n", inicio, fim, "end");
+        campo.setRangeText("\n", inicio, fim, "end");
       } else {
-        campo.value = valor.slice(0, inicio) + "\\n" + valor.slice(fim);
+        campo.value = valor.slice(0, inicio) + "\n" + valor.slice(fim);
         const cursor = inicio + 1;
         campo.setSelectionRange?.(cursor, cursor);
       }
