@@ -72,6 +72,10 @@ test('rejeita receita sem campos, com nomes de campo inválidos ou campos duplic
     /Identificador.*inválido/
   );
   assert.throws(
+    () => api.validarReceita(receitaValida({ schema: 2 })),
+    /Versão de receita não suportada/
+  );
+  assert.throws(
     () => api.validarReceita(receitaValida({ visao: 'forms.crec;other' })),
     /visão inválido/
   );
