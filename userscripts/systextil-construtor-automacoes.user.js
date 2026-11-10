@@ -28,9 +28,20 @@
       throw new Error("A receita precisa ser um objeto JSON.");
     }
 
-    const id = String(entrada.id ?? "").trim();
-    const nome = String(entrada.nome ?? "").trim();
-    const visao = String(entrada.visao ?? "").trim();
+    if (entrada.schema !== 1) {
+      throw new Error("Versão de receita não suportada.");
+    }
+    if (
+      typeof entrada.id !== "string" ||
+      typeof entrada.nome !== "string" ||
+      typeof entrada.visao !== "string"
+    ) {
+      throw new Error("Identificador, nome e visão devem ser textos.");
+    }
+
+    const id = entrada.id.trim();
+    const nome = entrada.nome.trim();
+    const visao = entrada.visao.trim();
 
     if (!/^[a-z0-9][a-z0-9-]{2,63}$/.test(id)) {
       throw new Error("Identificador da receita inválido.");
@@ -343,7 +354,7 @@
       " <header class='head'><div><strong>Construtor de Automações</strong><div class='muted'>Receitas locais · modo somente leitura · v" + VERSION + "</div></div><button type='button' data-action='fechar' aria-label='Fechar painel'>Fechar</button></header>",
       " <div class='body'>",
       "  <div class='card'><div class='row between'><strong style='font-size:13px'>Tela detectada</strong><button type='button' data-action='atualizar'>Atualizar tela</button></div><div class='status' data-role='visao'>Lendo visão atual…</div><div class='muted' data-role='formularios'></div></div>",
-      "  <div class='card'><label for='st-receita-salva'>Receitas salvas neste navegador</label><div class='row'><select id='st-receita-salva' aria-label='Receitas salvas' style='flex:1;min-width:180px'></select><button type='button' data-action='carregar'>Abrir</button><button type='button' class='danger' data-action='excluir'>Excluir</button></div></div>",
+      "  <div class='card'><label for='st-receita-salva'>Receitas salvas neste navegador</label><div class='row'><select id='st-receita-salva' aria-label='Receitas salvas' style='flex:1;min-width:180px'></select><button type='button' class='danger' data-action='excluir'>Excluir</button></div></div>",
       "  <div class='card'><label for='st-nome-receita'>Nome da automação</label><input id='st-nome-receita' type='text' maxlength='80' placeholder='Ex.: Leitura de títulos em aberto'><label for='st-descricao-receita' style='margin-top:9px'>Descrição (opcional)</label><textarea id='st-descricao-receita' maxlength='240' placeholder='O que esta receita deve ler?'></textarea><div class='muted' data-role='visao-receita' style='margin-top:7px'></div></div>",
       "  <div class='card'><div class='row between'><strong style='font-size:13px'>Campos que serão lidos</strong><span class='muted' data-role='contagem-campos'>0 selecionados</span></div><div class='field-list' data-role='campos'><div class='empty'>Atualize a tela para listar os campos.</div></div></div>",
       "  <div class='notice'>Este MVP apenas lê os campos selecionados do formulário atual. Ele não preenche filtros, não aciona Find/F7, não navega registros e não grava dados no ERP. Faça a consulta manualmente no Systextil antes de capturar os dados.</div>",
@@ -708,7 +719,6 @@
       try {
         if (acao === "atualizar") atualizarTela(camposMarcados());
         if (acao === "nova") novaReceita();
-        if (acao === "carregar") carregarReceitaSelecionada();
         if (acao === "salvar") salvarReceitaAtual();
         if (acao === "simular") simularReceita();
         if (acao === "executar") capturarDados();
@@ -722,7 +732,11 @@
     });
 
     seletorReceitas.addEventListener("change", () => {
-      receitaAtivaId = seletorReceitas.value;
+      try {
+        carregarReceitaSelecionada();
+      } catch (erro) {
+        tratarErro(erro);
+      }
     });
 
     arquivoJson.addEventListener("change", () => {
