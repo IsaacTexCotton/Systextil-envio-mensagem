@@ -1,0 +1,258 @@
+# Prorrogação de títulos — evidências e operação
+
+**Userscript:** \`userscripts/systextil-prorrogacao-titulos.user.js\`  
+**Versão:** 0.1.9  
+**Branch de implementação:** \`feat/prorrogacao-titulos\`  
+**Base técnica:** sonda somente leitura 0.1.2, captura de 09/11/2026 entre 19:03:52 e 19:04:39 UTC.
+
+## 1. Objetivo
+
+Processar uma lista de títulos/parcelas em sequência, preenchendo:
+
+- \`Compl.hist\` na visão \`forms.crec.crec_f030\`;
+- \`data_prorrogacao.N\` na linha da parcela;
+- \`nr_mtv_prorrogacao.N\` com o código fixo \`01\`, na visão \`forms.crec.crec_f035\`.
+
+Cada item só é considerado concluído depois de retornar à Consulta, refazer o Find e conferir a data e o complemento do histórico lidos no formulário.
+
+A funcionalidade é um userscript independente. Não altera o userscript de segunda via, a ponte SmartTable ou a sonda diagnóstica.
+
+## 2. Evidências observadas
+
+A sonda 0.1.2 registrou 22 eventos, sem comandos de gravação e sem alterações de campos. A captura confirmou:
+
+| Tela | \`curDataView.name\` | Campos/controles relevantes |
+|---|---|---|
+| Consulta de títulos | \`forms.crec.crec_f090\` | \`num_duplicata.\`, \`seq_duplicatas.\`, \`data_prorrogacao.\`, \`compl_historico.\` |
+| Manutenção de títulos a receber | \`forms.crec.crec_f030\` | \`num_duplicata.\`, \`seq_duplicatas.\`, \`compl_historico.\` |
+| Manutenção de títulos | \`forms.crec.crec_f035\` | \`seq_duplicatas.N\`, \`data_prorrogacao.N\`, \`nr_mtv_prorrogacao.N\` |
+
+### Navegação confirmada
+
+| Origem | Ação manual observada | Comando NXJ | Destino |
+|---|---|---|---|
+| \`crec_f090\` | Clique em \`cmdBtnTitulos\` | \`cmdBtnTitulos\` | \`crec_f030\` |
+| \`crec_f030\` | F2 | \`cmdNextForm\` | \`crec_f035\` |
+| \`crec_f035\` | F1 | \`PREVIOUS_FORM\` | \`crec_f030\` |
+| \`crec_f030\` | F1 | \`PREVIOUS_FORM\` | \`crec_f090\` |
+
+Os quatro comandos tiveram resposta HTTP 200 na captura. Os atalhos F1/F2 foram observados sem Alt, Ctrl, Shift ou Meta.
+
+### Campos e limites observados
+
+- \`forms.crec.crec_f030\`: \`compl_historico.\` editável, \`maxLength = 60\`.
+- \`forms.crec.crec_f035\`: grade com até dez posições observadas. O índice da parcela fica no nome do campo, por exemplo \`seq_duplicatas.0\`; os campos editáveis correspondentes são \`data_prorrogacao.0\` e \`nr_mtv_prorrogacao.0\`.
+- As posições superiores a 2 estavam desabilitadas no snapshot observado. A implementação verifica \`disabled\` e \`readOnly\` no momento da execução.
+- O campo sem sufixo \`seq_duplicatas.\` também aparece em \`crec_f035\`; a seleção usa somente os campos com sufixo numérico e compara o valor da parcela. Não usa \`currentRow\` nem presume que a parcela esteja na primeira linha.
+
+### Gravação manual observada
+
+- F9 em \`crec_f030\` enviou \`ADD_UPDATE\`, HTTP 200, e a visão passou a \`recordAction = UPDATED\`.
+- F9 em \`crec_f035\` enviou \`ADD_UPDATE\`, HTTP 200, e a visão passou a \`recordAction = UPDATED\`.
+- A evidência de F9 repetido em \`crec_f030\` mostra por que a automação envia exatamente um F9 por tela e não tenta repetir quando o resultado é ambíguo.
+- A captura não exportou valores de campos ou conteúdos de registros. Portanto, não prova por si só quais valores foram persistidos nem substitui releitura.
+
+## 3. Formato de Compl.hist
+
+O texto é montado nesta ordem:
+
+\`DD/MM/AAAA - [MOTIVO] - PRORROG - [AUT SIGLA] - [EXECUTOR]\`
+
+Motivo e autorização são opcionais. A sigla do executor é obrigatória e configurável; não existe sigla fixa no código. O código do motivo da prorrogação na grade é sempre \`01\`.
+
+Exemplos:
+
+- \`09/11/2026 - PRORROG - IT\`
+- \`09/11/2026 - PEDIDO CLIENTE - PRORROG - AUT GISELA - IT\`
+
+O limite é de 60 caracteres. O script rejeita o texto que exceder esse tamanho; não trunca e não substitui silenciosamente o histórico.
+
+## 4. Entrada do lote
+
+Digite um título/parcela por linha no campo **Títulos e parcelas**. Pressione **Enter** para criar a próxima linha; também é possível colar várias linhas copiadas de uma planilha ou arquivo texto. O campo aceita quebras de linha LF e CRLF.
+
+O painel intercepta Enter em fase de captura no contexto da página, insere a quebra diretamente no `textarea` e impede que o evento chegue aos atalhos globais do Systextil. O Enter não é convertido em espaços. Linhas não devem ser separadas por vários espaços: use uma quebra real de linha.
+
+Uma linha por título/parcela:
+
+```text
+00012345;03
+00012346;01;15/11/2026
+```
+
+A primeira linha usa a data comum informada no painel. A segunda usa a data individual, que prevalece sobre a data comum. A data individual deve estar no formato `DD/MM/AAAA`.
+
+No painel, informe também o motivo (opcional), a sigla de autorização (opcional) e a sigla do executor (obrigatória). Clique em **Validar lote**, revise os itens e marque a confirmação antes de **Iniciar lote**.
+
+O script permite títulos vencidos: não aplica bloqueio por atraso.
+## 5. Fluxo implementado
+
+Para cada título/parcela:
+
+1. Exige a visão Consulta e prepara o modo Find com o controle \`btnClearToFind.\`.
+2. Preenche título e parcela nos campos reais, usando o setter nativo e eventos \`input\`/\`change\`.
+3. Aguarda confirmação NXJ de cada identificador, executa Find uma vez e exige um único registro correspondente.
+4. Abre \`crec_f030\` por \`cmdBtnTitulos\`, confere título e parcela, substitui \`compl_historico.\` e executa um único F9.
+5. Exige POST \`ADD_UPDATE\` HTTP 2xx, payload contendo o texto esperado e \`recordAction = UPDATED\`.
+6. Entra em \`crec_f035\` por F2, procura a parcela por seu valor nos campos \`seq_duplicatas.N\`, exige uma única correspondência e preenche data e código \`01\`.
+7. Executa um único F9 e exige a mesma confirmação do comando, payload e estado \`UPDATED\`.
+8. Retorna à Consulta por F1 duas vezes, refaz a consulta e confere \`data_prorrogacao.\` e \`compl_historico.\`.
+9. Só então inicia o próximo item.
+
+A sequência é serial. Não há paralelismo entre títulos.
+
+## 6. Segurança operacional e falhas
+
+- A gravação do histórico e a gravação da prorrogação são dois salvamentos independentes. Não existe transação única nem rollback automático.
+- Se a primeira gravação for confirmada e a segunda falhar, o item fica parcial e o lote é interrompido.
+- Se o comando F9 for disparado e a confirmação ficar ausente, o estado é tratado como indeterminado. Não pressione F9 novamente nem inicie nova tentativa antes de conferir o título no ERP.
+- Se a parcela não existir, aparecer duplicada, estiver desabilitada ou não tiver os campos correspondentes, o item é bloqueado.
+- Se o Find não retornar exatamente um registro, o item é bloqueado.
+- Se a releitura não confirmar a data e o histórico, o lote é interrompido.
+- Não há tentativa automática de desfazer uma alteração já gravada.
+- O monitor registra somente metadados necessários ao fluxo e os segmentos NXJ em memória para conferir os valores; não grava payload, dados de cliente, cookies ou tokens em armazenamento ou console.
+
+## 7. Pendências de homologação
+
+A sonda comprovou as teclas e os comandos quando acionados manualmente. A implementação dispara F1, F2 e F9 por eventos \`KeyboardEvent\` sintéticos e exige a resposta NXJ correspondente. **A aceitação desses eventos sintéticos pelo handler legado do Systextil ainda precisa ser homologada no navegador real.** Se a aplicação rejeitar eventos sintéticos, o monitor deve interromper o fluxo; não há fallback que envie comandos NXJ manualmente.
+
+Também dependem de homologação:
+
+1. confirmar que a edição direta dos campos da grade, seguida de mudança de foco, envia os valores pelo NXJ no ambiente de produção;
+2. confirmar que \`data_prorrogacao.\` e \`compl_historico.\` na releitura de \`crec_f090\` refletem os valores persistidos para a parcela pesquisada;
+3. executar primeiro um único título/parcela de teste autorizado e conferir manualmente os dois campos no ERP;
+4. testar depois um lote com duas parcelas, somente após a primeira execução estar confirmada.
+
+Não use títulos reais sem autorização do responsável pelo processo. O resultado dos testes automatizados não comprova a gravação operacional no Systextil.
+
+## 8. Verificação local
+
+Na raiz do repositório, com Node.js 18 ou superior:
+
+\`\`\`powershell
+npm run verify
+\`\`\`
+
+O comando verifica a sintaxe de todos os userscripts e executa a suíte completa com o runner nativo do Node.js. O repositório não deve receber CI/CD ou GitHub Actions para esta alteração.
+
+
+## 9. Correção de compatibilidade do atributo maxlength — v0.1.1
+
+O navegador pode retornar \`HTMLInputElement.maxLength = -1\` quando o atributo HTML \`maxlength\` não está declarado no elemento. A versão 0.1.0 interpretava esse valor como uma largura negativa e rejeitava qualquer título.
+
+A v0.1.1 usa os limites já observados pela sonda nas telas investigadas quando o navegador retorna valor negativo ou não numérico:
+
+- \`num_duplicata.\`: 9 caracteres;
+- \`seq_duplicatas.\`: 2 caracteres.
+
+Quando a tela declara um limite não negativo, esse limite declarado continua prevalecendo. Nenhum dígito é truncado ou removido.
+
+A mensagem de interrupção também foi ajustada: se o erro ocorrer antes de qualquer F9 do item, o painel informa que nenhuma gravação foi iniciada. A orientação para não repetir F9 fica reservada aos casos parciais ou indeterminados.
+
+
+## 10. Localização de controles e monitoramento por frames — v0.1.2
+
+O botão Find não estava sendo encontrado quando seu elemento estava em um documento de frame, pois a primeira implementação consultava exclusivamente o documento raiz.
+
+A v0.1.2 percorre a janela principal e os frames same-origin acessíveis para localizar \`btnClearToFind.\`, \`btnFind.\` e os controles de navegação. A localização exige exatamente um elemento correspondente; ausência ou duplicidade interrompe a execução.
+
+O monitor NXJ também é instalado nos protótipos \`XMLHttpRequest\` de cada contexto same-origin acessível. Assim, comandos iniciados por um frame continuam observáveis. Os protótipos originais são restaurados ao encerrar a execução; em falha parcial na instalação, o script tenta restaurar os hooks já instalados antes de interromper.
+
+Os testes simulam o botão em um segundo documento e comandos NXJ originados tanto na janela principal quanto em um frame. Isso valida a lógica de busca e instrumentação em ambientes simulados, mas não substitui o teste no navegador/ERP real.
+
+## 11. Data atual do Compl.hist e entradas NXJ repetidas — v0.1.3
+
+A data de `Compl.hist` é a data local atual do navegador no momento da validação do lote. A data informada na linha ou no campo comum continua sendo exclusivamente a data de prorrogação da parcela. Se a data local mudar entre a validação e o início, a prévia é recalculada e a confirmação anterior é invalidada.
+
+O monitor NXJ passou a ler todas as ocorrências de `fieldValues` por `getAll()`, tanto em `URLSearchParams` quanto em `FormData`. A versão anterior lia somente a primeira ocorrência. Quando o NXJ distribuía os campos em entradas repetidas, essa leitura parcial podia produzir uma divergência artificial no verificador do payload.
+
+A proteção contra repetição permanece: cada tela recebe no máximo um F9 por tentativa. O monitor lê todas as ocorrências repetidas de `fieldValues` no payload `ADD_UPDATE`. A confirmação de cada valor também pode vir do comando `CLICKONFIELD` ou `NEXT_FIELD` emitido ao sair do campo, desde que a requisição tenha sido concluída com HTTP 2xx e contenha exatamente o valor esperado. Isso evita exigir que o `ADD_UPDATE` repita um valor que o NXJ já transportou no comando de saída do campo. O estado `UPDATED` continua obrigatório e a confirmação definitiva do item continua sendo a releitura dos campos na Consulta. Um retorno indeterminado continua exigindo conferência manual e nunca dispara novo F9 automaticamente.
+
+
+## 12. Confirmação do campo antes do F9 — v0.1.4
+
+A versão 0.1.3 ainda exigia que cada valor alterado aparecesse novamente no payload do comando `ADD_UPDATE`. Isso gerava falso negativo quando o NXJ já havia transportado e confirmado o conteúdo no comando de saída do campo, mas não repetia esse valor no payload de gravação.
+
+A v0.1.4 preserva duas evidências independentes:
+
+1. Antes do F9, o comando `CLICKONFIELD` ou `NEXT_FIELD` precisa concluir com HTTP 2xx e conter o valor exato do campo alterado. A confirmação é guardada em memória e vinculada ao valor que estava sendo editado.
+2. Depois, o F9 é enviado uma única vez. O monitor exige um único `ADD_UPDATE` concluído com HTTP 2xx e a tela precisa entrar em `recordAction = UPDATED`.
+
+Para cada valor esperado, basta que ele esteja no payload do `ADD_UPDATE` ou na confirmação NXJ válida de saída daquele próprio campo. A leitura visual do input, isoladamente, não é aceita. A releitura final na Consulta continua obrigatória para confirmar a persistência da data e do `Compl.hist`.
+
+Se nenhuma dessas fontes confirmar o valor, a automação interrompe o lote como indeterminado e não repete F9. Nenhuma validação foi removida: a alteração corrige somente a exigência duplicada de que o mesmo valor precise aparecer nos dois comandos.
+
+
+## 13. Saída do campo por Tab e diagnóstico sem valores — v0.1.5
+
+A v0.1.4 ainda utilizava somente `focus()` no próximo controle para provocar a saída do campo. Essa ação visual não garante que o handler NXJ tenha recebido a tecla Tab nem que o valor pendente tenha sido transportado.
+
+A v0.1.5 envia `keydown` de Tab ao campo editado e, depois, ativa o próximo controle caso o próprio evento não tenha movido o foco. A automação continua aguardando a confirmação por `CLICKONFIELD` ou `NEXT_FIELD`, com HTTP 2xx e correspondência do valor esperado. A etapa seguinte e o F9 não são executados quando a confirmação não chega.
+
+Se a confirmação continuar ausente, a mensagem apresenta um resumo técnico dos POSTs NXJ observados desde o início da edição: nome do comando, quantidade/tamanho dos segmentos, status HTTP e indicação de correspondência com o valor esperado. O resumo não imprime o conteúdo do histórico, identificadores de sessão, URL completa ou outros valores de negócio.
+
+A tecla Tab sintética ainda depende de homologação no handler legado do Systextil real. O teste automatizado comprova o mapeamento e o formato do diagnóstico; não comprova que o ERP aceite o evento sintético.
+
+
+## 14. Modo de teste inicial sem F9 — v0.1.6 (substituído na v0.1.7)
+
+O painel possui a opção **Modo de teste — não executar F9**. Ela serve para testar a consulta do título, a abertura da manutenção, o preenchimento de `Compl.hist` e a confirmação NXJ do campo sem disparar o comando de gravação.
+
+Regras do modo:
+
+1. Aceita somente um título/parcela por execução.
+2. Executa a consulta e abre `forms.crec.crec_f030`.
+3. Preenche `compl_historico.`, envia Tab e aguarda confirmação NXJ válida do valor.
+4. Interrompe imediatamente antes do primeiro F9. Não executa `ADD_UPDATE`, não abre `crec_f035`, não altera a data/motivo da grade e não inicia outro item.
+5. O painel informa que o teste terminou sem gravação.
+
+Há uma trava adicional em `salvarUmaVez`: mesmo que algum caminho futuro tente chamar a rotina de gravação enquanto o modo de teste estiver ativo, a execução é bloqueada antes de enviar F9.
+
+**Limite importante:** o modo não é uma simulação offline. A consulta, o clique de navegação e os comandos de foco/Tab continuam sendo enviados ao NXJ para testar a interação real. O valor pode permanecer visível como alteração pendente na tela/sessão do ERP. A automação não envia F9, mas o operador não deve pressionar F9 manualmente após o teste. Confira ou limpe o campo manualmente antes de iniciar uma execução real.
+
+O modo de teste cobre o primeiro salvamento (`Compl.hist`) porque sair dessa tela para testar a grade sem salvar poderia descartar ou transportar alterações pendentes de forma não homologada. O preenchimento de data e motivo em `crec_f035` permanece reservado à execução operacional autorizada.
+
+## 15. Modo de teste do fluxo completo sem F9 — v0.1.7 (sem retorno à Consulta)
+
+A v0.1.7 amplia o modo de teste. A opção continua aceitando somente um título/parcela por execução, mas agora percorre as etapas de consulta e preenchimento nas duas telas.
+
+No modo de teste, o script:
+
+1. Prepara a Consulta, confirma título e parcela pelo NXJ, executa Find uma vez e exige um único registro correspondente.
+2. Abre `forms.crec.crec_f030`, confere título/parcela e preenche `compl_historico.`; envia Tab e exige a confirmação NXJ exata do conteúdo.
+3. Navega para `forms.crec.crec_f035` por F2 e exige a confirmação da visão de destino.
+4. Localiza a parcela por correspondência única na grade.
+5. Preenche `data_prorrogacao.N` e `nr_mtv_prorrogacao.N`, enviando Tab e exigindo confirmação NXJ individual para os dois campos.
+6. Encerra na grade de parcelas. Não executa F9 em nenhuma das telas, não chama `salvarUmaVez` nem aciona explicitamente `ADD_UPDATE`, não retorna à Consulta e não tenta reler dados como se estivessem persistidos.
+
+A proteção contra F9 passou a existir em dois níveis: a rotina de gravação continua verificando o modo de teste, e o próprio despacho de teclas rejeita F9 enquanto o modo estiver ativo. F1, F2 e Tab continuam permitidos para testar foco e navegação.
+
+**O que o teste comprova:** a consulta encontrou o título/parcela esperados; o script percorreu as telas previstas; e os três campos de negócio foram aceitos/confirmados pelos comandos NXJ de saída de campo observados.
+
+**O que o teste não comprova:** persistência dos valores, resultado de F9, estado `UPDATED`, releitura final na Consulta ou rollback. Por não executar F9, a automação para antes dessas verificações.
+
+**Atenção operacional:** o modo não é offline. Find, clique de navegação, F2 e comandos de foco/Tab continuam sendo enviados ao NXJ. Os campos podem permanecer alterados e pendentes na sessão do Systextil. Ao concluir, a tela fica na grade de parcelas; não pressione F9 manualmente. Confira ou limpe o estado pendente antes de iniciar uma execução real. A aceitação dos eventos sintéticos e o comportamento da navegação com campos ainda não gravados continuam dependendo de homologação no ERP real.
+
+## 16. Retorno à Consulta no modo de teste — v0.1.8
+
+Após confirmar os três campos pelo NXJ, o modo de teste agora executa também a navegação de retorno:
+
+1. Envia F1 em `forms.crec.crec_f035` e exige `PREVIOUS_FORM` com destino `forms.crec.crec_f030`.
+2. Envia F1 em `forms.crec.crec_f030` e exige `PREVIOUS_FORM` com destino `forms.crec.crec_f090` (Consulta de títulos).
+3. Valida novamente o nome da visão atual antes de marcar o teste como concluído.
+
+O fluxo continua bloqueando F9 durante todo o processamento. O retorno à Consulta é somente navegação; não executa Find novamente, não confirma persistência nem substitui a releitura feita no fluxo real após os salvamentos.
+
+Se qualquer um dos dois F1 não for confirmado pelo NXJ ou a visão final não for `forms.crec.crec_f090`, o teste termina como interrompido, não como concluído. O usuário deve conferir a tela atual antes de qualquer ação manual.
+
+O modo continua limitado a um título/parcela. Os campos podem permanecer pendentes na sessão do ERP, e o comportamento da navegação para fora de formulários com alterações ainda não gravadas precisa ser homologado no ambiente real.
+
+## 17. Quebras de linha no campo de títulos — v0.1.9
+
+O Systextil pode capturar Enter em handlers globais da página antes do comportamento padrão do `textarea`. Isso impedia inserir registros consecutivos mesmo com o cursor no campo de lote.
+
+A v0.1.9 registra listeners de captura no contexto da página para `keydown`, `keypress` e `keyup`, restritos ao Enter cujo alvo é exatamente o campo `#stp-itens`. No `keydown`, cancela a ação padrão, insere explicitamente `\\n` na posição do cursor (substituindo a seleção, se houver), atualiza o cursor e emite o evento `input`. Os eventos Enter são interrompidos antes de alcançarem os atalhos globais do Systextil. Outras teclas e outros campos não são afetados.
+
+O parser já separava registros por LF/CRLF; a correção restaura a forma de produzir essas quebras diretamente no painel. Colar múltiplas linhas continua aceito. Espaços repetidos não substituem separadores de linha.
+
+Os testes simulam a inserção de quebra no cursor/seleção, verificam cancelamento e propagação dos eventos e garantem que teclas/campos distintos não sejam interceptados. A validação automatizada não substitui a conferência de Enter no Chrome/Tampermonkey com a tela real aberta.

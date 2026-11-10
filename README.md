@@ -2,6 +2,23 @@
 
 Userscripts para reduzir trabalho repetitivo no Systextil, mantendo uma autorização explícita para ações comerciais.
 
+
+## Prorrogação de títulos — lote
+
+**Userscript independente:** [userscripts/systextil-prorrogacao-titulos.user.js](userscripts/systextil-prorrogacao-titulos.user.js) · v0.1.9.
+
+- Recebe uma linha por título/parcela no formato \`TITULO;PARCELA\`; Enter cria uma nova linha sem acionar atalhos do Systextil, e também aceita colar listas com quebras LF/CRLF. A data pode ser comum ao lote ou individual por linha.
+- Substitui \`Compl.hist\` em \`forms.crec.crec_f030\` e grava a data de prorrogação e Mot \`01\` na linha encontrada em \`forms.crec.crec_f035\`.
+- Exige correspondência única da parcela na grade, confirmação NXJ e releitura na Consulta antes de avançar ao próximo item.
+- A data do `Compl.hist` é sempre a data atual do processamento; a data informada na linha/campo comum é apenas a data de prorrogação. O executor é uma sigla configurável. Motivo e autorização são opcionais. O texto de histórico não pode ultrapassar 60 caracteres.
+- O monitor NXJ lê todas as entradas repetidas de `fieldValues`. A saída do campo envia Tab e exige confirmação em `CLICKONFIELD`/`NEXT_FIELD` ou no payload `ADD_UPDATE`; o F9 também exige HTTP 2xx, estado `UPDATED` e releitura na Consulta. Falhas de confirmação exibem diagnóstico sem conteúdo dos campos.
+- O modo de teste aceita um único título/parcela e percorre consulta, preenchimento/validação de `Compl.hist`, navegação até `crec_f035`, preenchimento/validação da data e do motivo e retorno por F1 até a Consulta de títulos. O F9 fica bloqueado nas duas telas; o teste termina na Consulta, antes de gravar ou reler dados persistidos. Campos podem permanecer pendentes na sessão do ERP.
+- Não bloqueia títulos vencidos. A gravação ocorre em duas telas e não tem rollback automático; qualquer estado parcial ou indeterminado interrompe o lote.
+
+Documentação, evidências de telas/atalhos, formato do histórico e pendências de homologação: [docs/prorrogacao-titulos.md](docs/prorrogacao-titulos.md).
+
+**Atenção:** a captura confirmou F1, F2, os comandos NXJ e o resultado manual de F9. A aceitação de eventos de teclado sintéticos ainda depende de homologação no Systextil real. Não considere a automação pronta para produção antes de validar um único título autorizado.
+
 ## Segunda via automática — SmartTable → Systextil
 
 **Instalação única:** [userscripts/systextil-segunda-via.user.js](userscripts/systextil-segunda-via.user.js) · v1.0.6.
