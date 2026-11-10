@@ -140,6 +140,17 @@ test('a captura é somente leitura e não envia comandos Find ou F7', () => {
   assert.doesNotMatch(trecho, /btnFind|F7|UnifyNXJ/);
 });
 
+test('inspeção só habilita controles escalares e bloqueia campos desabilitados', () => {
+  const inicio = SOURCE.indexOf('function campoTemValorSimples');
+  const fim = SOURCE.indexOf('function catalogarFormulario', inicio);
+  const trecho = SOURCE.slice(inicio, fim);
+
+  assert.ok(inicio >= 0 && fim > inicio);
+  assert.match(trecho, /\["", "text", "search", "number", "date"/);
+  assert.doesNotMatch(trecho, /password|checkbox|radio|hidden|file/);
+  assert.match(SOURCE, /checkbox\.disabled = campo\.ocorrencias !== 1 \|\| !campo\.legivel \|\| campo\.desabilitado/);
+});
+
 test('não armazena valores capturados nas receitas persistidas', () => {
   const inicio = SOURCE.indexOf('function salvarReceitas(');
   const fim = SOURCE.indexOf('function baixarArquivo(', inicio);
