@@ -74,6 +74,82 @@ test('não trunca Compl.hist acima dos 60 caracteres', () => {
   );
 });
 
+test('insere quebra de linha ao pressionar Enter no campo de títulos', () => {
+  const eventos = [];
+  const campo = {
+    value: '00012345;03XXX',
+    selectionStart: 11,
+    selectionEnd: 14,
+    setRangeText(texto, inicio, fim, modo) {
+      this.value = this.value.slice(0, inicio) + texto + this.value.slice(fim);
+      if (modo === 'end') {
+        this.selectionStart = inicio + texto.length;
+        this.selectionEnd = this.selectionStart;
+      }
+    },
+    dispatchEvent(evento) {
+      eventos.push(evento.type);
+      return true;
+    }
+  };
+  const flags = { preventDefault: false, stopPropagation: false, stopImmediatePropagation: false };
+  const evento = {
+    target: campo,
+    type: 'keydown',
+    key: 'Enter',
+    code: 'Enter',
+    preventDefault() { flags.preventDefault = true; },
+    stopPropagation() { flags.stopPropagation = true; },
+    stopImmediatePropagation() { flags.stopImmediatePropagation = true; }
+  };
+  class EventoFake {
+    constructor(type, options) {
+      this.type = type;
+      this.bubbles = options.bubbles;
+    }
+  }
+
+  assert.equal(api.interceptarEnterNoCampoLote(evento, campo, { Event: EventoFake }), true);
+  assert.equal(campo.value, '00012345;03\\n');
+  assert.equal(campo.selectionStart, 12);
+  assert.deepEqual(flags, {
+    preventDefault: true,
+    stopPropagation: true,
+    stopImmediatePropagation: true
+  });
+  assert.deepEqual(eventos, ['input']);
+});
+
+test('bloqueia propagação dos eventos Enter sem inserir quebras duplicadas', () => {
+  const campo = { value: '00012345;03', selectionStart: 11, selectionEnd: 11 };
+  let interrompido = false;
+  const evento = {
+    target: campo,
+    type: 'keypress',
+    keyCode: 13,
+    preventDefault() {},
+    stopPropagation() {},
+    stopImmediatePropagation() { interrompido = true; }
+  };
+
+  assert.equal(api.interceptarEnterNoCampoLote(evento, campo, {}), true);
+  assert.equal(campo.value, '00012345;03');
+  assert.equal(interrompido, true);
+});
+
+test('não intercepta teclas ou campos diferentes do textarea de títulos', () => {
+  const campo = { value: '00012345;03' };
+  const outroCampo = { value: '' };
+  const eventoOutraTecla = { target: campo, type: 'keydown', key: 'A' };
+  const eventoOutroCampo = { target: outroCampo, type: 'keydown', key: 'Enter' };
+  const eventoComposicao = { target: campo, type: 'keydown', key: 'Enter', isComposing: true };
+
+  assert.equal(api.interceptarEnterNoCampoLote(eventoOutraTecla, campo, {}), false);
+  assert.equal(api.interceptarEnterNoCampoLote(eventoOutroCampo, campo, {}), false);
+  assert.equal(api.interceptarEnterNoCampoLote(eventoComposicao, campo, {}), false);
+  assert.equal(campo.value, '00012345;03');
+});
+
 test('analisa lote com data comum e data específica por linha', () => {
   const itens = api.analisarLote(
     '00012345;03\n00012346;01;15/11/2026',
