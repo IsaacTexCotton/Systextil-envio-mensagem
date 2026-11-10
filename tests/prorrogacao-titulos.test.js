@@ -276,6 +276,27 @@ test('gera resumo NXJ com comando, status e correspondência sem expor valores',
   }
 });
 
+test('modo de teste bloqueia F9 antes de qualquer disparo', () => {
+  assert.throws(
+    () => api.exigirF9Permitido(true),
+    /modo de teste não permite executar F9/
+  );
+  assert.equal(api.exigirF9Permitido(false), true);
+});
+
+test('modo de teste aceita somente um título/parcela por execução', () => {
+  assert.equal(api.validarQuantidadeItensModoTeste(false, 3), true);
+  assert.equal(api.validarQuantidadeItensModoTeste(true, 1), true);
+  assert.throws(
+    () => api.validarQuantidadeItensModoTeste(true, 2),
+    /somente um título\/parcela/
+  );
+  assert.throws(
+    () => api.validarQuantidadeItensModoTeste(true, 0),
+    /somente um título\/parcela/
+  );
+});
+
 test('usa largura comprovada da sonda quando maxLength é -1', () => {
   assert.equal(api.obterLimiteCampo(-1, 9), 9);
   assert.equal(api.obterLimiteCampo(-1, 2), 2);
