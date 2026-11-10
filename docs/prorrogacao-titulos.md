@@ -1,7 +1,7 @@
 # Prorrogação de títulos — evidências e operação
 
 **Userscript:** \`userscripts/systextil-prorrogacao-titulos.user.js\`  
-**Versão:** 0.1.8  
+**Versão:** 0.1.9  
 **Branch de implementação:** \`feat/prorrogacao-titulos\`  
 **Base técnica:** sonda somente leitura 0.1.2, captura de 09/11/2026 entre 19:03:52 e 19:04:39 UTC.
 
@@ -69,19 +69,22 @@ O limite é de 60 caracteres. O script rejeita o texto que exceder esse tamanho;
 
 ## 4. Entrada do lote
 
+Digite um título/parcela por linha no campo **Títulos e parcelas**. Pressione **Enter** para criar a próxima linha; também é possível colar várias linhas copiadas de uma planilha ou arquivo texto. O campo aceita quebras de linha LF e CRLF.
+
+O painel intercepta Enter em fase de captura no contexto da página, insere a quebra diretamente no `textarea` e impede que o evento chegue aos atalhos globais do Systextil. O Enter não é convertido em espaços. Linhas não devem ser separadas por vários espaços: use uma quebra real de linha.
+
 Uma linha por título/parcela:
 
-\`\`\`text
+```text
 00012345;03
 00012346;01;15/11/2026
-\`\`\`
+```
 
-A primeira linha usa a data comum informada no painel. A segunda usa a data individual, que prevalece sobre a data comum. A data individual deve estar no formato \`DD/MM/AAAA\`.
+A primeira linha usa a data comum informada no painel. A segunda usa a data individual, que prevalece sobre a data comum. A data individual deve estar no formato `DD/MM/AAAA`.
 
 No painel, informe também o motivo (opcional), a sigla de autorização (opcional) e a sigla do executor (obrigatória). Clique em **Validar lote**, revise os itens e marque a confirmação antes de **Iniciar lote**.
 
 O script permite títulos vencidos: não aplica bloqueio por atraso.
-
 ## 5. Fluxo implementado
 
 Para cada título/parcela:
@@ -243,3 +246,13 @@ O fluxo continua bloqueando F9 durante todo o processamento. O retorno à Consul
 Se qualquer um dos dois F1 não for confirmado pelo NXJ ou a visão final não for `forms.crec.crec_f090`, o teste termina como interrompido, não como concluído. O usuário deve conferir a tela atual antes de qualquer ação manual.
 
 O modo continua limitado a um título/parcela. Os campos podem permanecer pendentes na sessão do ERP, e o comportamento da navegação para fora de formulários com alterações ainda não gravadas precisa ser homologado no ambiente real.
+
+## 17. Quebras de linha no campo de títulos — v0.1.9
+
+O Systextil pode capturar Enter em handlers globais da página antes do comportamento padrão do `textarea`. Isso impedia inserir registros consecutivos mesmo com o cursor no campo de lote.
+
+A v0.1.9 registra listeners de captura no contexto da página para `keydown`, `keypress` e `keyup`, restritos ao Enter cujo alvo é exatamente o campo `#stp-itens`. No `keydown`, cancela a ação padrão, insere explicitamente `\\n` na posição do cursor (substituindo a seleção, se houver), atualiza o cursor e emite o evento `input`. Os eventos Enter são interrompidos antes de alcançarem os atalhos globais do Systextil. Outras teclas e outros campos não são afetados.
+
+O parser já separava registros por LF/CRLF; a correção restaura a forma de produzir essas quebras diretamente no painel. Colar múltiplas linhas continua aceito. Espaços repetidos não substituem separadores de linha.
+
+Os testes simulam a inserção de quebra no cursor/seleção, verificam cancelamento e propagação dos eventos e garantem que teclas/campos distintos não sejam interceptados. A validação automatizada não substitui a conferência de Enter no Chrome/Tampermonkey com a tela real aberta.
