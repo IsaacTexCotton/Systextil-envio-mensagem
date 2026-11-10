@@ -1,7 +1,7 @@
 # Prorrogação de títulos — evidências e operação
 
 **Userscript:** \`userscripts/systextil-prorrogacao-titulos.user.js\`  
-**Versão:** 0.1.7  
+**Versão:** 0.1.8  
 **Branch de implementação:** \`feat/prorrogacao-titulos\`  
 **Base técnica:** sonda somente leitura 0.1.2, captura de 09/11/2026 entre 19:03:52 e 19:04:39 UTC.
 
@@ -209,7 +209,7 @@ Há uma trava adicional em `salvarUmaVez`: mesmo que algum caminho futuro tente 
 
 O modo de teste cobre o primeiro salvamento (`Compl.hist`) porque sair dessa tela para testar a grade sem salvar poderia descartar ou transportar alterações pendentes de forma não homologada. O preenchimento de data e motivo em `crec_f035` permanece reservado à execução operacional autorizada.
 
-## 15. Modo de teste do fluxo completo sem F9 — v0.1.7
+## 15. Modo de teste do fluxo completo sem F9 — v0.1.7 (sem retorno à Consulta)
 
 A v0.1.7 amplia o modo de teste. A opção continua aceitando somente um título/parcela por execução, mas agora percorre as etapas de consulta e preenchimento nas duas telas.
 
@@ -229,3 +229,17 @@ A proteção contra F9 passou a existir em dois níveis: a rotina de gravação 
 **O que o teste não comprova:** persistência dos valores, resultado de F9, estado `UPDATED`, releitura final na Consulta ou rollback. Por não executar F9, a automação para antes dessas verificações.
 
 **Atenção operacional:** o modo não é offline. Find, clique de navegação, F2 e comandos de foco/Tab continuam sendo enviados ao NXJ. Os campos podem permanecer alterados e pendentes na sessão do Systextil. Ao concluir, a tela fica na grade de parcelas; não pressione F9 manualmente. Confira ou limpe o estado pendente antes de iniciar uma execução real. A aceitação dos eventos sintéticos e o comportamento da navegação com campos ainda não gravados continuam dependendo de homologação no ERP real.
+
+## 16. Retorno à Consulta no modo de teste — v0.1.8
+
+Após confirmar os três campos pelo NXJ, o modo de teste agora executa também a navegação de retorno:
+
+1. Envia F1 em `forms.crec.crec_f035` e exige `PREVIOUS_FORM` com destino `forms.crec.crec_f030`.
+2. Envia F1 em `forms.crec.crec_f030` e exige `PREVIOUS_FORM` com destino `forms.crec.crec_f090` (Consulta de títulos).
+3. Valida novamente o nome da visão atual antes de marcar o teste como concluído.
+
+O fluxo continua bloqueando F9 durante todo o processamento. O retorno à Consulta é somente navegação; não executa Find novamente, não confirma persistência nem substitui a releitura feita no fluxo real após os salvamentos.
+
+Se qualquer um dos dois F1 não for confirmado pelo NXJ ou a visão final não for `forms.crec.crec_f090`, o teste termina como interrompido, não como concluído. O usuário deve conferir a tela atual antes de qualquer ação manual.
+
+O modo continua limitado a um título/parcela. Os campos podem permanecer pendentes na sessão do ERP, e o comportamento da navegação para fora de formulários com alterações ainda não gravadas precisa ser homologado no ambiente real.
