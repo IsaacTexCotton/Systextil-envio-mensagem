@@ -162,7 +162,7 @@
       return ["", "text", "search", "number", "date", "datetime-local", "email", "tel", "url", "hidden"].includes(tipo) &&
         typeof elemento.value === "string";
     }
-    return (tag === "select" || tag === "textarea") &&
+    return (tag === "select" && !elemento.multiple || tag === "textarea") &&
       typeof elemento.value === "string";
   }
 
@@ -646,10 +646,24 @@
     }
 
     function importarReceitasJson(arquivo) {
+      if (arquivo.size > 1024 * 1024) {
+        return Promise.reject(new Error("O arquivo JSON ultrapassa o limite de 1 MB."));
+      }
+
       return arquivo.text().then(texto => {
         const dados = JSON.parse(texto);
         const lista = Array.isArray(dados) ? dados : dados?.receitas;
         const importadas = validarColecaoReceitas(lista);
+        const idsExistentes = new Set(receitas.map(receita => receita.id));
+        const conflitos = importadas.filter(receita => idsExistentes.has(receita.id));
+        if (conflitos.length && !window.confirm(
+          "O arquivo contém " + conflitos.length +
+          " receita(s) já salvas. Deseja substituir essas receitas?"
+        )) {
+          definirStatus("Importação cancelada; nenhuma receita foi alterada.", false);
+          return;
+        }
+
         const porId = new Map(receitas.map(receita => [receita.id, receita]));
         importadas.forEach(receita => porId.set(receita.id, receita));
         receitas = salvarReceitas(Array.from(porId.values()));
@@ -724,7 +738,7 @@
       nomeReceita.value = primeiraReceita.nome;
       descricaoReceita.value = primeiraReceita.descricao;
     }
-    atualizarTela([]);
+    atualizarTela(primeiraReceita?.campos || []);
   }
 
   if (documento.body) iniciarInterface();
