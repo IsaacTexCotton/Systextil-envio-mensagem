@@ -1,7 +1,7 @@
 # Prorrogação de títulos — evidências e operação
 
 **Userscript:** \`userscripts/systextil-prorrogacao-titulos.user.js\`  
-**Versão:** 0.1.6  
+**Versão:** 0.1.7  
 **Branch de implementação:** \`feat/prorrogacao-titulos\`  
 **Base técnica:** sonda somente leitura 0.1.2, captura de 09/11/2026 entre 19:03:52 e 19:04:39 UTC.
 
@@ -191,7 +191,7 @@ Se a confirmação continuar ausente, a mensagem apresenta um resumo técnico do
 A tecla Tab sintética ainda depende de homologação no handler legado do Systextil real. O teste automatizado comprova o mapeamento e o formato do diagnóstico; não comprova que o ERP aceite o evento sintético.
 
 
-## 14. Modo de teste sem F9 — v0.1.6
+## 14. Modo de teste inicial sem F9 — v0.1.6 (substituído na v0.1.7)
 
 O painel possui a opção **Modo de teste — não executar F9**. Ela serve para testar a consulta do título, a abertura da manutenção, o preenchimento de `Compl.hist` e a confirmação NXJ do campo sem disparar o comando de gravação.
 
@@ -208,3 +208,24 @@ Há uma trava adicional em `salvarUmaVez`: mesmo que algum caminho futuro tente 
 **Limite importante:** o modo não é uma simulação offline. A consulta, o clique de navegação e os comandos de foco/Tab continuam sendo enviados ao NXJ para testar a interação real. O valor pode permanecer visível como alteração pendente na tela/sessão do ERP. A automação não envia F9, mas o operador não deve pressionar F9 manualmente após o teste. Confira ou limpe o campo manualmente antes de iniciar uma execução real.
 
 O modo de teste cobre o primeiro salvamento (`Compl.hist`) porque sair dessa tela para testar a grade sem salvar poderia descartar ou transportar alterações pendentes de forma não homologada. O preenchimento de data e motivo em `crec_f035` permanece reservado à execução operacional autorizada.
+
+## 15. Modo de teste do fluxo completo sem F9 — v0.1.7
+
+A v0.1.7 amplia o modo de teste. A opção continua aceitando somente um título/parcela por execução, mas agora percorre as etapas de consulta e preenchimento nas duas telas.
+
+No modo de teste, o script:
+
+1. Prepara a Consulta, confirma título e parcela pelo NXJ, executa Find uma vez e exige um único registro correspondente.
+2. Abre `forms.crec.crec_f030`, confere título/parcela e preenche `compl_historico.`; envia Tab e exige a confirmação NXJ exata do conteúdo.
+3. Navega para `forms.crec.crec_f035` por F2 e exige a confirmação da visão de destino.
+4. Localiza a parcela por correspondência única na grade.
+5. Preenche `data_prorrogacao.N` e `nr_mtv_prorrogacao.N`, enviando Tab e exigindo confirmação NXJ individual para os dois campos.
+6. Encerra na grade de parcelas. Não executa F9 em nenhuma das telas, não executa a rotina `ADD_UPDATE`, não retorna à Consulta e não tenta reler dados como se estivessem persistidos.
+
+A proteção contra F9 passou a existir em dois níveis: a rotina de gravação continua verificando o modo de teste, e o próprio despacho de teclas rejeita F9 enquanto o modo estiver ativo. F1, F2 e Tab continuam permitidos para testar foco e navegação.
+
+**O que o teste comprova:** a consulta encontrou o título/parcela esperados; o script percorreu as telas previstas; e os três campos de negócio foram aceitos/confirmados pelos comandos NXJ de saída de campo observados.
+
+**O que o teste não comprova:** persistência dos valores, resultado de F9, estado `UPDATED`, releitura final na Consulta ou rollback. Por não executar F9, a automação para antes dessas verificações.
+
+**Atenção operacional:** o modo não é offline. Find, clique de navegação, F2 e comandos de foco/Tab continuam sendo enviados ao NXJ. Os campos podem permanecer alterados e pendentes na sessão do Systextil. Ao concluir, a tela fica na grade de parcelas; não pressione F9 manualmente. Confira ou limpe o estado pendente antes de iniciar uma execução real. A aceitação dos eventos sintéticos e o comportamento da navegação com campos ainda não gravados continuam dependendo de homologação no ERP real.
