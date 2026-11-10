@@ -220,7 +220,7 @@ No modo de teste, o script:
 3. Navega para `forms.crec.crec_f035` por F2 e exige a confirmação da visão de destino.
 4. Localiza a parcela por correspondência única na grade.
 5. Preenche `data_prorrogacao.N` e `nr_mtv_prorrogacao.N`, enviando Tab e exigindo confirmação NXJ individual para os dois campos.
-6. Encerra na grade de parcelas. Não executa F9 em nenhuma das telas, não executa a rotina `ADD_UPDATE`, não retorna à Consulta e não tenta reler dados como se estivessem persistidos.
+6. Encerra na grade de parcelas. Não executa F9 em nenhuma das telas, não chama `salvarUmaVez` nem aciona explicitamente `ADD_UPDATE`, não retorna à Consulta e não tenta reler dados como se estivessem persistidos.
 
 A proteção contra F9 passou a existir em dois níveis: a rotina de gravação continua verificando o modo de teste, e o próprio despacho de teclas rejeita F9 enquanto o modo estiver ativo. F1, F2 e Tab continuam permitidos para testar foco e navegação.
 
