@@ -1459,6 +1459,7 @@ function criarApi() {
 
       let monitor = null;
       let concluidos = 0;
+      let testeConcluido = false;
       try {
         monitor = criarMonitorNxj(pagina);
         for (let indice = 0; indice < itens.length; indice += 1) {
@@ -1474,6 +1475,7 @@ function criarApi() {
             });
 
             if (resultado.modoTeste) {
+              testeConcluido = true;
               linha.textContent = "Item " + (indice + 1) + "/" + itens.length +
                 " — " + item.titulo + " / " + item.parcela +
                 ": TESTE concluído; F9 não enviado.";
@@ -1507,10 +1509,12 @@ function criarApi() {
           }
         }
 
-        mostrarStatus(
-          "Lote concluído: " + concluidos + " de " + itens.length +
-          " título(s)/parcela(s) gravado(s) e conferido(s) por releitura."
-        );
+        if (!testeConcluido) {
+          mostrarStatus(
+            "Lote concluído: " + concluidos + " de " + itens.length +
+            " título(s)/parcela(s) gravado(s) e conferido(s) por releitura."
+          );
+        }
       } catch (_) {
         // A mensagem específica já foi apresentada no ponto da falha.
       } finally {
