@@ -159,7 +159,7 @@
     const tipo = String(elemento?.type || "").toLowerCase();
 
     if (tag === "input") {
-      return ["", "text", "search", "number", "date", "datetime-local", "email", "tel", "url", "hidden"].includes(tipo) &&
+      return ["", "text", "search", "number", "date", "datetime-local", "email", "tel", "url"].includes(tipo) &&
         typeof elemento.value === "string";
     }
     return (tag === "select" && !elemento.multiple || tag === "textarea") &&
@@ -242,7 +242,7 @@
       throw new Error("O campo " + nome + " não é um controle simples de leitura.");
     }
 
-    return elemento.value.trim();
+    return elemento.value;
   }
 
   function criarId(nome) {
