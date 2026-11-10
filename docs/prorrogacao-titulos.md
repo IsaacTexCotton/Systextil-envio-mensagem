@@ -1,7 +1,7 @@
 # Prorrogação de títulos — evidências e operação
 
 **Userscript:** \`userscripts/systextil-prorrogacao-titulos.user.js\`  
-**Versão:** 0.1.5  
+**Versão:** 0.1.6  
 **Branch de implementação:** \`feat/prorrogacao-titulos\`  
 **Base técnica:** sonda somente leitura 0.1.2, captura de 09/11/2026 entre 19:03:52 e 19:04:39 UTC.
 
@@ -189,3 +189,22 @@ A v0.1.5 envia `keydown` de Tab ao campo editado e, depois, ativa o próximo con
 Se a confirmação continuar ausente, a mensagem apresenta um resumo técnico dos POSTs NXJ observados desde o início da edição: nome do comando, quantidade/tamanho dos segmentos, status HTTP e indicação de correspondência com o valor esperado. O resumo não imprime o conteúdo do histórico, identificadores de sessão, URL completa ou outros valores de negócio.
 
 A tecla Tab sintética ainda depende de homologação no handler legado do Systextil real. O teste automatizado comprova o mapeamento e o formato do diagnóstico; não comprova que o ERP aceite o evento sintético.
+
+
+## 14. Modo de teste sem F9 — v0.1.6
+
+O painel possui a opção **Modo de teste — não executar F9**. Ela serve para testar a consulta do título, a abertura da manutenção, o preenchimento de `Compl.hist` e a confirmação NXJ do campo sem disparar o comando de gravação.
+
+Regras do modo:
+
+1. Aceita somente um título/parcela por execução.
+2. Executa a consulta e abre `forms.crec.crec_f030`.
+3. Preenche `compl_historico.`, envia Tab e aguarda confirmação NXJ válida do valor.
+4. Interrompe imediatamente antes do primeiro F9. Não executa `ADD_UPDATE`, não abre `crec_f035`, não altera a data/motivo da grade e não inicia outro item.
+5. O painel informa que o teste terminou sem gravação.
+
+Há uma trava adicional em `salvarUmaVez`: mesmo que algum caminho futuro tente chamar a rotina de gravação enquanto o modo de teste estiver ativo, a execução é bloqueada antes de enviar F9.
+
+**Limite importante:** o modo não é uma simulação offline. A consulta, o clique de navegação e os comandos de foco/Tab continuam sendo enviados ao NXJ para testar a interação real. O valor pode permanecer visível como alteração pendente na tela/sessão do ERP. A automação não envia F9, mas o operador não deve pressionar F9 manualmente após o teste. Confira ou limpe o campo manualmente antes de iniciar uma execução real.
+
+O modo de teste cobre o primeiro salvamento (`Compl.hist`) porque sair dessa tela para testar a grade sem salvar poderia descartar ou transportar alterações pendentes de forma não homologada. O preenchimento de data e motivo em `crec_f035` permanece reservado à execução operacional autorizada.
