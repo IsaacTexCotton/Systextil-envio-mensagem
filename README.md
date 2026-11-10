@@ -5,9 +5,9 @@ Userscripts para reduzir trabalho repetitivo no Systextil, mantendo uma autoriza
 
 ## Prorrogação de títulos — lote
 
-**Userscript independente:** [userscripts/systextil-prorrogacao-titulos.user.js](userscripts/systextil-prorrogacao-titulos.user.js) · v0.1.8.
+**Userscript independente:** [userscripts/systextil-prorrogacao-titulos.user.js](userscripts/systextil-prorrogacao-titulos.user.js) · v0.1.9.
 
-- Recebe uma linha por título/parcela no formato \`TITULO;PARCELA\`; a data pode ser comum ao lote ou individual por linha.
+- Recebe uma linha por título/parcela no formato \`TITULO;PARCELA\`; Enter cria uma nova linha sem acionar atalhos do Systextil, e também aceita colar listas com quebras LF/CRLF. A data pode ser comum ao lote ou individual por linha.
 - Substitui \`Compl.hist\` em \`forms.crec.crec_f030\` e grava a data de prorrogação e Mot \`01\` na linha encontrada em \`forms.crec.crec_f035\`.
 - Exige correspondência única da parcela na grade, confirmação NXJ e releitura na Consulta antes de avançar ao próximo item.
 - A data do `Compl.hist` é sempre a data atual do processamento; a data informada na linha/campo comum é apenas a data de prorrogação. O executor é uma sigla configurável. Motivo e autorização são opcionais. O texto de histórico não pode ultrapassar 60 caracteres.
