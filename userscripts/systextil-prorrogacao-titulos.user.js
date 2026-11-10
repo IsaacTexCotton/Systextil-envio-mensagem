@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Prorrogação de Títulos
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      0.1.8
+// @version      0.1.9
 // @description  Prorroga títulos em lote com confirmação NXJ, gravação sequencial e releitura.
 // @match        https://systextil.texcotton.com.br/systextil/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -28,7 +28,7 @@
 function criarApi() {
   "use strict";
 
-  const VERSION = "0.1.8";
+  const VERSION = "0.1.9";
   const VISAO_CONSULTA = "forms.crec.crec_f090";
   const VISAO_HISTORICO = "forms.crec.crec_f030";
   const VISAO_PARCELAS = "forms.crec.crec_f035";
@@ -144,6 +144,46 @@ function criarApi() {
       );
     }
     return texto;
+  }
+
+  function interceptarEnterNoCampoLote(evento, campo, pagina) {
+    if (!evento || evento.target !== campo || evento.isComposing) return false;
+
+    const ehEnter = evento.key === "Enter" ||
+      evento.code === "Enter" ||
+      evento.keyCode === 13 ||
+      evento.which === 13;
+    if (!ehEnter) return false;
+
+    evento.preventDefault?.();
+    evento.stopPropagation?.();
+    evento.stopImmediatePropagation?.();
+
+    // O Systextil pode capturar Enter em um listener global. Insere a quebra
+    // explicitamente no textarea e bloqueia a propagação para os atalhos do ERP.
+    if (evento.type === "keydown") {
+      const valor = String(campo.value ?? "");
+      const inicio = Number.isInteger(campo.selectionStart)
+        ? campo.selectionStart
+        : valor.length;
+      const fim = Number.isInteger(campo.selectionEnd)
+        ? campo.selectionEnd
+        : inicio;
+
+      if (typeof campo.setRangeText === "function") {
+        campo.setRangeText("\\n", inicio, fim, "end");
+      } else {
+        campo.value = valor.slice(0, inicio) + "\\n" + valor.slice(fim);
+        const cursor = inicio + 1;
+        campo.setSelectionRange?.(cursor, cursor);
+      }
+
+      if (typeof pagina?.Event === "function" && typeof campo.dispatchEvent === "function") {
+        campo.dispatchEvent(new pagina.Event("input", { bubbles: true }));
+      }
+    }
+
+    return true;
   }
 
   function analisarLote(texto, dataComum, configuracao, dataAtual = new Date()) {
@@ -1319,7 +1359,7 @@ function criarApi() {
       '<div class="stp-conteudo">' +
         '<label class="stp-label" for="stp-itens">Títulos e parcelas</label>' +
         '<textarea id="stp-itens" rows="5" spellcheck="false" placeholder="00012345;03&#10;00012346;01;15/11/2026"></textarea>' +
-        '<div class="stp-ajuda">Uma linha por título: TITULO;PARCELA. A data informada na linha é a data da prorrogação; o Compl.hist usa automaticamente a data atual.</div>' +
+        '<div class="stp-ajuda">Uma linha por título: TITULO;PARCELA. Pressione Enter para inserir outra linha ou cole uma lista com quebras de linha. A data informada na linha é a data da prorrogação; o Compl.hist usa automaticamente a data atual.</div>' +
         '<label class="stp-label" for="stp-data">Data da prorrogação comum (quando não houver data na linha)</label>' +
         '<input id="stp-data" type="date" />' +
         '<label class="stp-label" for="stp-motivo">Motivo (opcional)</label>' +
@@ -1373,6 +1413,12 @@ function criarApi() {
     const campoExecutor = buscar("#stp-executor");
     const campoConfirmacao = buscar("#stp-confirmar");
     const campoModoTeste = buscar("#stp-modo-teste");
+
+    const isolarEnterDoErp = evento =>
+      interceptarEnterNoCampoLote(evento, campoItens, pagina);
+    ["keydown", "keypress", "keyup"].forEach(tipo => {
+      pagina.addEventListener(tipo, isolarEnterDoErp, true);
+    });
     const botaoValidar = buscar("#stp-validar");
     const botaoIniciar = buscar("#stp-iniciar");
     const status = buscar("#stp-status");
@@ -1609,6 +1655,7 @@ function criarApi() {
     formatarDataLocal,
     montarComplementoHistorico,
     analisarLote,
+    interceptarEnterNoCampoLote,
     selecionarLinhaPorParcela,
     obterLimiteCampo,
     obterCodigoTecla,
