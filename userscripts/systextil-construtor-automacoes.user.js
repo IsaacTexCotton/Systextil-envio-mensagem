@@ -154,6 +154,18 @@
     return Array.from(documento.forms || []);
   }
 
+  function campoTemValorSimples(elemento) {
+    const tag = String(elemento?.tagName || "").toLowerCase();
+    const tipo = String(elemento?.type || "").toLowerCase();
+
+    if (tag === "input") {
+      return ["", "text", "search", "number", "date", "datetime-local", "email", "tel", "url", "hidden"].includes(tipo) &&
+        typeof elemento.value === "string";
+    }
+    return (tag === "select" || tag === "textarea") &&
+      typeof elemento.value === "string";
+  }
+
   function catalogarFormulario(formulario, indice) {
     const elementos = Array.from(formulario.elements || []);
     const contagem = new Map();
@@ -173,12 +185,12 @@
       vistos.add(nome);
       campos.push({
         nome,
-        tipo: String(elemento.tagName || "elemento").toLowerCase(),
+        tipo: String(elemento.tagName || "elemento").toLowerCase() +
+          (elemento.type ? "[" + String(elemento.type).toLowerCase() + "]" : ""),
         ocorrencias: contagem.get(nome) || 0,
         somenteLeitura: Boolean(elemento.readOnly),
         desabilitado: Boolean(elemento.disabled),
-        legivel: typeof elemento.value === "string" ||
-          typeof elemento.textContent === "string"
+        legivel: campoTemValorSimples(elemento)
       });
     });
 
@@ -226,11 +238,11 @@
     if (elemento.disabled) {
       throw new Error("O campo " + nome + " está desabilitado.");
     }
-
-    if (typeof elemento.value === "string") {
-      return elemento.value.trim();
+    if (!campoTemValorSimples(elemento)) {
+      throw new Error("O campo " + nome + " não é um controle simples de leitura.");
     }
-    return String(elemento.textContent ?? "").trim();
+
+    return elemento.value.trim();
   }
 
   function criarId(nome) {
@@ -335,7 +347,7 @@
       "  <div class='card'><label for='st-nome-receita'>Nome da automação</label><input id='st-nome-receita' type='text' maxlength='80' placeholder='Ex.: Leitura de títulos em aberto'><label for='st-descricao-receita' style='margin-top:9px'>Descrição (opcional)</label><textarea id='st-descricao-receita' maxlength='240' placeholder='O que esta receita deve ler?'></textarea><div class='muted' data-role='visao-receita' style='margin-top:7px'></div></div>",
       "  <div class='card'><div class='row between'><strong style='font-size:13px'>Campos que serão lidos</strong><span class='muted' data-role='contagem-campos'>0 selecionados</span></div><div class='field-list' data-role='campos'><div class='empty'>Atualize a tela para listar os campos.</div></div></div>",
       "  <div class='notice'>Este MVP apenas lê os campos selecionados do formulário atual. Ele não preenche filtros, não aciona Find/F7, não navega registros e não grava dados no ERP. Faça a consulta manualmente no Systextil antes de capturar os dados.</div>",
-      "  <div class='actions'><button type='button' class='primary' data-action='salvar'>Salvar receita</button><button type='button' data-action='simular'>Validar receita</button><button type='button' class='primary' data-action='executar'>Capturar dados</button><button type='button' data-action='exportar-csv' disabled>Exportar CSV</button></div>",
+      "  <div class='actions'><button type='button' data-action='nova'>Nova receita</button><button type='button' class='primary' data-action='salvar'>Salvar receita</button><button type='button' data-action='simular'>Validar receita</button><button type='button' class='primary' data-action='executar'>Capturar dados</button><button type='button' data-action='exportar-csv' disabled>Exportar CSV</button></div>",
       "  <div class='actions'><button type='button' data-action='exportar-json'>Exportar receitas JSON</button><button type='button' data-action='importar-json'>Importar receitas JSON</button><input type='file' accept='application/json,.json' data-role='arquivo-json' hidden></div>",
       "  <div class='card'><strong style='font-size:13px'>Resultado</strong><div class='status' data-role='status' aria-live='polite'>Nenhuma execução nesta sessão.</div><div class='results' data-role='resultado'><div class='empty'>Nenhum dado capturado.</div></div></div>",
       " </div>",
@@ -359,7 +371,7 @@
     const botaoCsv = sombra.querySelector("[data-action='exportar-csv']");
 
     let receitas = carregarReceitas();
-    let receitaAtivaId = "";
+    let receitaAtivaId = receitas[0]?.id || "";
     let catalogo = [];
     let ultimoResultado = null;
 
@@ -379,12 +391,13 @@
 
     function renderizarSeletorReceitas() {
       seletorReceitas.replaceChildren();
-      if (receitas.length === 0) {
-        const opcao = criarElemento("option", "Nenhuma receita salva");
-        opcao.value = "";
-        seletorReceitas.appendChild(opcao);
-        return;
-      }
+      const opcaoInicial = criarElemento(
+        "option",
+        receitas.length ? "Selecione uma receita" : "Nenhuma receita salva"
+      );
+      opcaoInicial.value = "";
+      seletorReceitas.appendChild(opcaoInicial);
+
       receitas.forEach(receita => {
         const opcao = criarElemento("option", receita.nome);
         opcao.value = receita.id;
@@ -406,7 +419,6 @@
         return;
       }
 
-      let total = 0;
       catalogo.forEach(formulario => {
         const titulo = criarElemento("div",
           "Formulário " + (formulario.id || formulario.nome || ("#" + (formulario.indice + 1))),
@@ -420,7 +432,7 @@
           checkbox.type = "checkbox";
           checkbox.value = campo.nome;
           checkbox.checked = camposSelecionados.includes(campo.nome);
-          checkbox.disabled = campo.ocorrencias !== 1 || !campo.legivel;
+          checkbox.disabled = campo.ocorrencias !== 1 || !campo.legivel || campo.desabilitado;
           checkbox.addEventListener("change", atualizarContagem);
           const texto = documento.createElement("span");
           const codigo = criarElemento("code", campo.nome);
@@ -477,6 +489,13 @@
       }
 
       const atual = obterReceitaAtiva();
+      if (atual && atual.visao !== visao) {
+        throw new Error(
+          "Esta receita pertence à visão " + atual.visao +
+          ". Use Nova receita para criar uma automação para outra tela."
+        );
+      }
+
       const receita = validarReceita({
         schema: 1,
         id: atual?.id || criarId(nome),
@@ -593,6 +612,15 @@
       );
     }
 
+    function novaReceita() {
+      receitaAtivaId = "";
+      seletorReceitas.value = "";
+      nomeReceita.value = "";
+      descricaoReceita.value = "";
+      atualizarTela([]);
+      definirStatus("Rascunho novo. Selecione os campos e salve como uma receita independente.", false);
+    }
+
     function excluirReceita() {
       const receita = obterReceitaAtiva();
       if (!receita) throw new Error("Nenhuma receita selecionada.");
@@ -665,6 +693,7 @@
       const acao = botao.getAttribute("data-action");
       try {
         if (acao === "atualizar") atualizarTela(camposMarcados());
+        if (acao === "nova") novaReceita();
         if (acao === "carregar") carregarReceitaSelecionada();
         if (acao === "salvar") salvarReceitaAtual();
         if (acao === "simular") simularReceita();
