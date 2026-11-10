@@ -276,11 +276,17 @@ test('gera resumo NXJ com comando, status e correspondência sem expor valores',
   }
 });
 
-test('modo de teste bloqueia F9 antes de qualquer disparo', () => {
+test('modo de teste bloqueia F9 diretamente no despacho de teclas', () => {
   assert.throws(
     () => api.exigirF9Permitido(true),
     /modo de teste não permite executar F9/
   );
+  assert.throws(
+    () => api.obterCodigoTeclaComModo('F9', true),
+    /modo de teste não permite executar F9/
+  );
+  assert.equal(api.obterCodigoTeclaComModo('F9', false), 120);
+  assert.equal(api.obterCodigoTeclaComModo('F2', true), 113);
   assert.equal(api.exigirF9Permitido(false), true);
 });
 
