@@ -2,6 +2,18 @@
 
 Userscripts para reduzir trabalho repetitivo no Systextil, mantendo uma autorização explícita para ações comerciais.
 
+## Construtor de Automações Systextil
+
+**Userscript independente:** [userscripts/systextil-construtor-automacoes.user.js](userscripts/systextil-construtor-automacoes.user.js) · v0.1.0.
+
+O construtor permite criar receitas declarativas por tela do ERP, selecionar campos observados no formulário atual, validar a receita e capturar os valores desses campos. As receitas são salvas localmente no navegador e podem ser importadas/exportadas em JSON; os dados capturados podem ser exportados para CSV por ação explícita.
+
+**Limite desta primeira versão:** o construtor é somente leitura. Ele não preenche filtros, não aciona Find/F7, não navega entre registros e não executa gravações, emissões, baixas ou exclusões. O operador deve realizar a consulta manualmente antes de capturar os campos. Não há execução de código arbitrário nas receitas.
+
+Os valores capturados ficam apenas em memória nesta aba; somente a definição da receita (visão e nomes dos campos) é persistida. A exportação CSV é local e iniciada pelo operador. O script não adiciona hosts, chamadas de rede ou dependências externas.
+
+Documentação: [docs/construtor-automacoes.md](docs/construtor-automacoes.md).
+
 ## Segunda via automática — SmartTable → Systextil
 
 **Instalação única:** [userscripts/systextil-segunda-via.user.js](userscripts/systextil-segunda-via.user.js) · v1.0.6.
