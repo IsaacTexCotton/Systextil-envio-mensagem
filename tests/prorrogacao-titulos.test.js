@@ -276,7 +276,7 @@ test('gera resumo NXJ com comando, status e correspondência sem expor valores',
   }
 });
 
-test('modo de teste bloqueia F9 diretamente no despacho de teclas', () => {
+test('modo de teste bloqueia F9 e permite F1/F2/Tab para navegar sem salvar', () => {
   assert.throws(
     () => api.exigirF9Permitido(true),
     /modo de teste não permite executar F9/
@@ -286,8 +286,22 @@ test('modo de teste bloqueia F9 diretamente no despacho de teclas', () => {
     /modo de teste não permite executar F9/
   );
   assert.equal(api.obterCodigoTeclaComModo('F9', false), 120);
+  assert.equal(api.obterCodigoTeclaComModo('F1', true), 112);
   assert.equal(api.obterCodigoTeclaComModo('F2', true), 113);
+  assert.equal(api.obterCodigoTeclaComModo('Tab', true), 9);
   assert.equal(api.exigirF9Permitido(false), true);
+});
+
+test('modo de teste só conclui depois de retornar à Consulta de títulos', () => {
+  assert.equal(api.validarVisaoFinalModoTeste('forms.crec.crec_f090'), true);
+  assert.throws(
+    () => api.validarVisaoFinalModoTeste('forms.crec.crec_f035'),
+    /não concluiu o retorno à Consulta/
+  );
+  assert.throws(
+    () => api.validarVisaoFinalModoTeste('forms.crec.crec_f030'),
+    /não concluiu o retorno à Consulta/
+  );
 });
 
 test('modo de teste aceita somente um título/parcela por execução', () => {
