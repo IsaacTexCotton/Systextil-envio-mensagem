@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Prorrogação de Títulos
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      0.1.7
+// @version      0.1.8
 // @description  Prorroga títulos em lote com confirmação NXJ, gravação sequencial e releitura.
 // @match        https://systextil.texcotton.com.br/systextil/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -28,7 +28,7 @@
 function criarApi() {
   "use strict";
 
-  const VERSION = "0.1.7";
+  const VERSION = "0.1.8";
   const VISAO_CONSULTA = "forms.crec.crec_f090";
   const VISAO_HISTORICO = "forms.crec.crec_f030";
   const VISAO_PARCELAS = "forms.crec.crec_f035";
@@ -1007,6 +1007,15 @@ function criarApi() {
     return obterCodigoTecla(tecla);
   }
 
+  function validarVisaoFinalModoTeste(visaoAtual) {
+    if (visaoAtual !== VISAO_CONSULTA) {
+      throw new Error(
+        "O modo de teste não concluiu o retorno à Consulta de títulos."
+      );
+    }
+    return true;
+  }
+
   function validarQuantidadeItensModoTeste(modoTeste, quantidade) {
     if (modoTeste && quantidade !== 1) {
       throw new Error(
@@ -1263,6 +1272,12 @@ function criarApi() {
       const resultadoProrrogacao = await gravarProrrogacao(pagina, monitor, item);
 
       if (resultadoProrrogacao.modoTeste) {
+        callbacks?.status?.(
+          "Modo de teste: retornando à Consulta de títulos por F1, sem executar F9."
+        );
+        await retornarConsulta(pagina, monitor);
+        validarVisaoFinalModoTeste(obterEstado(pagina)?.visao);
+
         return {
           ok: true,
           modoTeste: true,
@@ -1273,7 +1288,7 @@ function criarApi() {
           motivoConfirmado: resultadoProrrogacao.motivoConfirmado === true,
           verificado: false,
           f9Executado: false,
-          visaoFinal: VISAO_PARCELAS
+          visaoFinal: VISAO_CONSULTA
         };
       }
 
@@ -1509,9 +1524,9 @@ function criarApi() {
                 ": TESTE concluído; F9 não enviado.";
               mostrarStatus(
                 "Modo de teste concluído. O script consultou o título, confirmou o Compl.hist, " +
-                "navegou até a grade e confirmou a data e o motivo da prorrogação.\n\n" +
-                "Nenhum F9 foi enviado. A execução terminou na grade de parcelas, antes da gravação. " +
-                "Os campos podem permanecer alterados e pendentes na sessão do ERP. " +
+                "preencheu e confirmou a data e o motivo na grade e retornou à Consulta de títulos.\n\n" +
+                "Nenhum F9 foi enviado e os dados não foram gravados. A execução terminou na Consulta. " +
+                "Os campos podem ter permanecido alterados durante a sessão do ERP. " +
                 "Não pressione F9 manualmente.",
                 false
               );
@@ -1600,6 +1615,7 @@ function criarApi() {
     exigirF9Permitido,
     obterCodigoTeclaComModo,
     validarQuantidadeItensModoTeste,
+    validarVisaoFinalModoTeste,
     valoresNaoConfirmados,
     encontrarElementoPorId,
     coletarDocumentosMesmoDominio,
