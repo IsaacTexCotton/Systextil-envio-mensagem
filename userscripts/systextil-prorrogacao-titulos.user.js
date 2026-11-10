@@ -43,6 +43,7 @@ function criarApi() {
   const ATRASO_BORDA_MS = 800;
   let interfaceInstalada = false;
   let loteEmExecucao = false;
+  let modoTesteAtivo = false;
 
   function normalizarEspacos(valor) {
     return String(valor ?? "")
@@ -994,6 +995,13 @@ function criarApi() {
     return confirmacao;
   }
 
+  function exigirF9Permitido(modoTeste) {
+    if (modoTeste) {
+      throw new Error("Bloqueio de segurança: o modo de teste não permite executar F9.");
+    }
+    return true;
+  }
+
   async function salvarUmaVez(
     pagina,
     monitor,
@@ -1001,6 +1009,7 @@ function criarApi() {
     valoresEsperados,
     confirmacoesCampo
   ) {
+    exigirF9Permitido(modoTesteAtivo);
     exigirVisao(pagina, visao);
     const estadoAnterior = obterEstado(pagina);
     const sequencia = monitor.obterSequencia();
@@ -1107,6 +1116,14 @@ function criarApi() {
       "seq_duplicatas."
     );
 
+    if (modoTesteAtivo) {
+      return {
+        modoTeste: true,
+        campoConfirmado: true,
+        f9Executado: false
+      };
+    }
+
     await salvarUmaVez(
       pagina,
       monitor,
@@ -1114,6 +1131,7 @@ function criarApi() {
       [item.historico],
       [confirmacaoHistorico]
     );
+    return { modoTeste: false, campoConfirmado: true, f9Executado: true };
   }
 
   async function gravarProrrogacao(pagina, monitor, item) {
@@ -1191,8 +1209,28 @@ function criarApi() {
         "CMDBTNTITULOS", VISAO_HISTORICO, monitor
       );
 
-      callbacks?.status?.("Gravando Compl.hist.");
-      await gravarHistorico(pagina, monitor, item);
+      callbacks?.status?.(
+        modoTesteAtivo
+          ? "Modo de teste: preenchendo e validando Compl.hist. sem gravar."
+          : "Gravando Compl.hist."
+      );
+      const resultadoHistorico = await gravarHistorico(pagina, monitor, item);
+
+      if (resultadoHistorico.modoTeste) {
+        callbacks?.status?.(
+          "Teste concluído: Compl.hist foi preenchido e confirmado pelo NXJ. " +
+          "F9 não foi enviado; a execução parou antes da primeira gravação."
+        );
+        return {
+          ok: true,
+          modoTeste: true,
+          historicoSalvo: false,
+          prorrogacaoSalva: false,
+          verificado: false,
+          f9Executado: false
+        };
+      }
+
       historicoSalvo = true;
 
       callbacks?.status?.("Abrindo grade de parcelas.");
@@ -1238,6 +1276,7 @@ function criarApi() {
           '<div><label class="stp-label" for="stp-aut">Autorização (sigla, opcional)</label><input id="stp-aut" type="text" maxlength="8" placeholder="Ex.: GISELA" /></div>' +
           '<div><label class="stp-label" for="stp-executor">Executor (sigla)</label><input id="stp-executor" type="text" maxlength="8" placeholder="Sua sigla" /></div>' +
         '</div>' +
+        '<label class="stp-modo-teste"><input id="stp-modo-teste" type="checkbox" /> <span><strong>Modo de teste — não executar F9</strong><small>Testa um único título até confirmar o Compl.hist e para antes de salvar. Não testa a grade de parcelas.</small></span></label>' +
         '<div class="stp-acoes"><button type="button" id="stp-validar">Validar lote</button><button type="button" id="stp-iniciar" disabled>Iniciar lote</button></div>' +
         '<label class="stp-consentimento"><input id="stp-confirmar" type="checkbox" /> Revisei os títulos, parcelas, datas e o histórico.</label>' +
         '<div id="stp-status" role="status" aria-live="polite">Aguardando validação.</div>' +
@@ -1262,6 +1301,10 @@ function criarApi() {
       "#st-prorrogacao-lote button{border-radius:6px;padding:8px 11px;border:1px solid #cbd5e1;background:#f8fafc;color:#1e293b;font-weight:600;cursor:pointer}" +
       "#st-prorrogacao-lote #stp-iniciar{background:#1d4ed8;border-color:#1d4ed8;color:#fff;flex:1}" +
       "#st-prorrogacao-lote button:disabled{opacity:.45;cursor:not-allowed}" +
+      "#st-prorrogacao-lote .stp-modo-teste{display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding:9px;border:1px solid #d97706;border-radius:6px;background:#fffbeb;color:#78350f;font-size:11px}" +
+      "#st-prorrogacao-lote .stp-modo-teste input{margin:2px 0 0;flex:0 0 auto}" +
+      "#st-prorrogacao-lote .stp-modo-teste span{display:flex;flex-direction:column;gap:3px}" +
+      "#st-prorrogacao-lote .stp-modo-teste small{font-size:10px;line-height:1.4;color:#92400e}" +
       "#st-prorrogacao-lote .stp-consentimento{display:flex;gap:7px;align-items:flex-start;margin-top:10px;font-size:11px;color:#475569}" +
       "#st-prorrogacao-lote #stp-status{margin-top:10px;padding:8px;background:#f1f5f9;border-radius:6px;color:#334155;white-space:pre-wrap}" +
       "#st-prorrogacao-lote #stp-resultados{margin:8px 0 0;padding-left:20px;max-height:150px;overflow:auto;font-size:11px}" +
@@ -1277,6 +1320,7 @@ function criarApi() {
     const campoAut = buscar("#stp-aut");
     const campoExecutor = buscar("#stp-executor");
     const campoConfirmacao = buscar("#stp-confirmar");
+    const campoModoTeste = buscar("#stp-modo-teste");
     const botaoValidar = buscar("#stp-validar");
     const botaoIniciar = buscar("#stp-iniciar");
     const status = buscar("#stp-status");
@@ -1337,6 +1381,8 @@ function criarApi() {
       botaoIniciar.disabled = !campoConfirmacao.checked || !loteValidado || loteEmExecucao;
     });
 
+    campoModoTeste.addEventListener("change", limparValidacao);
+
     [campoItens, campoData, campoMotivo, campoAut, campoExecutor].forEach(campo => {
       campo.addEventListener("input", limparValidacao);
       campo.addEventListener("change", limparValidacao);
@@ -1372,12 +1418,23 @@ function criarApi() {
         return;
       }
 
+      const modoTeste = campoModoTeste.checked;
+      if (modoTeste && itens.length !== 1) {
+        mostrarStatus(
+          "O modo de teste aceita somente um título/parcela por execução. " +
+          "Deixe apenas uma linha no lote e valide novamente.",
+          true
+        );
+        return;
+      }
+
       const estado = obterEstado(pagina);
       if (estado?.visao !== VISAO_CONSULTA) {
         mostrarStatus("Abra a Consulta de títulos antes de iniciar. Nenhuma gravação foi feita.", true);
         return;
       }
 
+      modoTesteAtivo = modoTeste;
       loteEmExecucao = true;
       botaoValidar.disabled = true;
       botaoIniciar.disabled = true;
@@ -1387,6 +1444,7 @@ function criarApi() {
       campoAut.disabled = true;
       campoExecutor.disabled = true;
       campoConfirmacao.disabled = true;
+      campoModoTeste.disabled = true;
       resultados.replaceChildren();
 
       let monitor = null;
@@ -1401,9 +1459,23 @@ function criarApi() {
           resultados.appendChild(linha);
 
           try {
-            await executarItem(pagina, monitor, item, {
+            const resultado = await executarItem(pagina, monitor, item, {
               status: mostrarStatus
             });
+
+            if (resultado.modoTeste) {
+              linha.textContent = "Item " + (indice + 1) + "/" + itens.length +
+                " — " + item.titulo + " / " + item.parcela +
+                ": TESTE concluído; F9 não enviado.";
+              mostrarStatus(
+                "Modo de teste concluído. O Compl.hist foi preenchido e confirmado pelo NXJ, " +
+                "mas não foi gravado. O script não enviou F9 nem avançou para a grade de parcelas.\n\n" +
+                "O campo pode permanecer alterado e não salvo na tela. Não pressione F9 manualmente.",
+                false
+              );
+              break;
+            }
+
             linha.textContent = "Item " + (indice + 1) + "/" + itens.length +
               " — " + item.titulo + " / " + item.parcela + ": gravado e relido.";
             concluidos += 1;
@@ -1433,6 +1505,7 @@ function criarApi() {
         // A mensagem específica já foi apresentada no ponto da falha.
       } finally {
         try { monitor?.remover(); } catch (_) {}
+        modoTesteAtivo = false;
         loteEmExecucao = false;
         botaoValidar.disabled = false;
         campoItens.disabled = false;
@@ -1441,6 +1514,7 @@ function criarApi() {
         campoAut.disabled = false;
         campoExecutor.disabled = false;
         campoConfirmacao.disabled = false;
+        campoModoTeste.disabled = false;
         campoConfirmacao.checked = false;
         loteValidado = null;
         botaoIniciar.disabled = true;
@@ -1477,6 +1551,7 @@ function criarApi() {
     selecionarLinhaPorParcela,
     obterLimiteCampo,
     obterCodigoTecla,
+    exigirF9Permitido,
     valoresNaoConfirmados,
     encontrarElementoPorId,
     coletarDocumentosMesmoDominio,
