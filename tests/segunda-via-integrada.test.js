@@ -238,34 +238,42 @@ test('captura a confirmação NXJ antes de escrever título e parcela', () => {
   assert.ok(baselineParcela >= 0 && baselineParcela < escritaParcela);
 });
 
-test('aguarda a ociosidade NXJ após cada foco antes de editar o campo seguinte', () => {
+test('aguarda um POST NXJ de saída e a resposta antes de editar o próximo campo', () => {
+  const monitor = SOURCE.slice(
+    SOURCE.indexOf('function criarMonitorComandosNxj'),
+    SOURCE.indexOf('async function preencherCamposConsulta')
+  );
   const inicio = SOURCE.indexOf('async function preencherCamposConsulta');
   const fim = SOURCE.indexOf('function normalizarTextoProcesso', inicio);
   const trecho = SOURCE.slice(inicio, fim);
 
+  assert.match(monitor, /async function aguardarComandoSaida\(sequenciaMinima, rotulo\)/);
+  assert.match(monitor, /COMANDOS_NXJ_CONFIRMACAO\.has\(requisicao\.comando\)/);
+  assert.match(monitor, /registro\.status < 200 \|\| registro\.status >= 300/);
+  assert.match(monitor, /await aguardarOcioso\(\)/);
+
   const focoInicialTitulo = trecho.indexOf('campoTitulo.focus();');
   const ociosoAposFocoTitulo = trecho.indexOf('await monitor.aguardarOcioso();', focoInicialTitulo);
   const escritaTitulo = trecho.indexOf('atribuirValorCampo(campoTitulo, titulo)', focoInicialTitulo);
-
-  assert.ok(focoInicialTitulo >= 0);
   assert.ok(ociosoAposFocoTitulo > focoInicialTitulo);
   assert.ok(escritaTitulo > ociosoAposFocoTitulo);
 
   const focoParcela = trecho.indexOf('campoParcela.focus();', escritaTitulo);
-  const ociosoAposBlurTitulo = trecho.indexOf('await monitor.aguardarOcioso();', focoParcela);
+  const baselineSaidaTitulo = trecho.indexOf('const sequenciaAntesDaSaidaTitulo', escritaTitulo);
+  const esperaSaidaTitulo = trecho.indexOf('await monitor.aguardarComandoSaida(', focoParcela);
   const escritaParcela = trecho.indexOf('atribuirValorCampo(campoParcela, parcela)', focoParcela);
+  assert.ok(baselineSaidaTitulo > escritaTitulo && baselineSaidaTitulo < focoParcela);
+  assert.ok(esperaSaidaTitulo > focoParcela && esperaSaidaTitulo < escritaParcela);
 
-  assert.ok(focoParcela > escritaTitulo);
-  assert.ok(ociosoAposBlurTitulo > focoParcela);
-  assert.ok(escritaParcela > ociosoAposBlurTitulo);
+  const saidaParcela = trecho.indexOf('const sequenciaAntesDaSaidaParcela');
+  const focoRetornoTitulo = trecho.indexOf('campoTitulo.focus();', focoParcela + 1);
+  const esperaSaidaParcela = trecho.indexOf('await monitor.aguardarComandoSaida(', focoRetornoTitulo);
+  assert.ok(saidaParcela > escritaParcela && saidaParcela < focoRetornoTitulo);
+  assert.ok(esperaSaidaParcela > focoRetornoTitulo);
 
-  const refocoParcela = trecho.indexOf('campoParcela.focus();', focoParcela + 1);
-  const ociosoAposRefoco = trecho.indexOf('await monitor.aguardarOcioso();', refocoParcela);
-  const marcoParcela = trecho.indexOf('const sequenciaAntesDaParcela', refocoParcela);
-
-  assert.ok(refocoParcela > focoParcela);
-  assert.ok(ociosoAposRefoco > refocoParcela);
-  assert.ok(marcoParcela > ociosoAposRefoco);
+  const baselineRefoco = trecho.indexOf('const sequenciaAntesDoRefocoParcela');
+  const esperaRefoco = trecho.indexOf('await monitor.aguardarComandoSaida(', baselineRefoco);
+  assert.ok(baselineRefoco >= 0 && esperaRefoco > baselineRefoco);
 });
 
 test('atualiza Processos agendados pelo sininho e aguarda a grade', () => {

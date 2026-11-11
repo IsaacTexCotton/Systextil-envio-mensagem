@@ -584,6 +584,64 @@
       }
     }
 
+    async function aguardarComandoSaida(sequenciaMinima, rotulo) {
+      const inicio = Date.now();
+      let registro = null;
+
+      while (!registro) {
+        validarVisaoConsultaTitulos(pagina);
+
+        registro = requisicoes.find(requisicao =>
+          requisicao.sequencia > sequenciaMinima &&
+          requisicao.metodo === "POST" &&
+          COMANDOS_NXJ_CONFIRMACAO.has(requisicao.comando)
+        ) || null;
+
+        if (registro) break;
+
+        if (Date.now() - inicio >= limiteEsperaMs) {
+          throw new Error(
+            "O Systextil não enviou CLICKONFIELD/NEXT_FIELD ao sair do campo " +
+            rotulo + " dentro de " +
+            Math.round(limiteEsperaMs / 1000) +
+            " segundos. Diagnóstico NXJ: " + resumo(sequenciaMinima) + "."
+          );
+        }
+
+        await pausa(intervaloMs);
+      }
+
+      if (registro.monitoramentoFalhou) {
+        throw new Error(
+          "O comando NXJ de saída do campo " + rotulo +
+          " foi observado, mas não pôde ser monitorado até a resposta."
+        );
+      }
+
+      while (!registro.finalizado) {
+        validarVisaoConsultaTitulos(pagina);
+
+        if (Date.now() - inicio >= limiteEsperaMs) {
+          throw new Error(
+            "O comando NXJ de saída do campo " + rotulo +
+            " não terminou dentro do limite de espera."
+          );
+        }
+
+        await pausa(intervaloMs);
+      }
+
+      if (registro.status < 200 || registro.status >= 300) {
+        throw new Error(
+          "O comando NXJ de saída do campo " + rotulo +
+          " retornou HTTP " + registro.status + "."
+        );
+      }
+
+      await aguardarOcioso();
+      return registro.comando;
+    }
+
     function confirmou(valorEsperado, sequenciaMinima) {
       return requisicoes.some(requisicao =>
         requisicao.sequencia > sequenciaMinima &&
@@ -620,6 +678,7 @@
       confirmou,
       resumo,
       aguardarOcioso,
+      aguardarComandoSaida,
       remover() {
         if (prototipo.open === abrirInterceptadoRef) {
           Object.defineProperty(prototipo, "open", descritorOpen);
@@ -738,14 +797,15 @@
 
       await pausa(atrasoAntesDeSairCampoMs);
 
-      // A troca de foco confirma o título, mas não aguardamos uma classificação
-      // específica do comando NXJ para liberar a inserção da parcela.
+      // A troca de foco deve produzir um comando NXJ de saída. Esperamos o
+      // POST e sua resposta sem exigir correspondência literal do título aqui.
+      const sequenciaAntesDaSaidaTitulo = monitor.obterSequencia();
       campoParcela.focus();
       await pausa(atrasoAposSairCampoMs);
-
-      // Aguarda o processamento assíncrono da saída do título sem exigir
-      // uma correspondência literal antes de continuar a sequência funcional.
-      await monitor.aguardarOcioso();
+      await monitor.aguardarComandoSaida(
+        sequenciaAntesDaSaidaTitulo,
+        "número do título"
+      );
 
       validarVisaoConsultaTitulos(pagina);
 
@@ -757,9 +817,13 @@
 
         campoParcela = parcelaAtual;
         validarCampoEditavel(campoParcela);
+        const sequenciaAntesDoRefocoParcela = monitor.obterSequencia();
         campoParcela.focus();
         await pausa(atrasoAposSairCampoMs);
-        await monitor.aguardarOcioso();
+        await monitor.aguardarComandoSaida(
+          sequenciaAntesDoRefocoParcela,
+          "reativação da parcela"
+        );
         validarVisaoConsultaTitulos(pagina);
       }
 
@@ -801,8 +865,13 @@
         throw new Error("O campo atual do título não permite recuperar o foco.");
       }
 
+      const sequenciaAntesDaSaidaParcela = monitor.obterSequencia();
       campoTitulo.focus();
       await pausa(atrasoAposSairCampoMs);
+      await monitor.aguardarComandoSaida(
+        sequenciaAntesDaSaidaParcela,
+        "parcela"
+      );
 
       // Aguarda a conclusão das chamadas NXJ. A presença literal do valor no
       // payload é apenas diagnóstica: máscaras e prefixos podem alterar o texto.
