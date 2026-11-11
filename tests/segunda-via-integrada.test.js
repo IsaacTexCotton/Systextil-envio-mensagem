@@ -110,6 +110,24 @@ test('bloqueia a consulta quando o NXJ não confirma título e parcela', () => {
   );
 });
 
+test('preserva o diagnóstico NXJ além dos 300 caracteres e limita somente acima de 1.200', () => {
+  const comandoDiagnostico = 'CLICKONFIELD[8] NEXT_FIELD[2]';
+
+  const mensagemCompleta = 'Preenchimento interrompido. ' +
+    'Detalhes de comandos observados: ' +
+    'NEXT_FIELD[4] '.repeat(35) +
+    comandoDiagnostico;
+
+  const preservada = api.limitarMensagemResultado(mensagemCompleta);
+  assert.equal(preservada, mensagemCompleta);
+  assert.ok(preservada.length > 300);
+  assert.ok(preservada.endsWith(comandoDiagnostico));
+
+  const excessiva = 'X'.repeat(1250);
+  assert.equal(api.limitarMensagemResultado(excessiva).length, 1200);
+  assert.equal(api.limitarMensagemResultado(null), '');
+});
+
 test('exige a confirmação NXJ dos dois campos antes de acionar Find', () => {
   const confirmacao = SOURCE.indexOf('validarConfirmacoesNxj(preenchimento.confirmacoes)');
   const find = SOURCE.indexOf('clicarBarraConsulta("find")');
