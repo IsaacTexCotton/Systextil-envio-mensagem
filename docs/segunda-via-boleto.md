@@ -1305,3 +1305,25 @@ A execução anterior pode deixar um registro na chave compartilhada `smarttable
 A v1.0.6 propõe o comando de menu Tampermonkey **Segunda via: liberar bloqueio após conferência manual**. O operador deve conferir Processos agendados e Downloads, ler o estado informado pelo comando e confirmar explicitamente. O comando relê as chaves antes de limpar pedido, execução, locks locais e resultado; se o estado mudar durante a confirmação, interrompe a limpeza.
 
 A ação não acessa nem altera o ERP, não cancela processos e não aciona outra emissão. Ela apenas remove o bloqueio compartilhado local para permitir uma nova transferência após a conferência humana. A existência e o comportamento do item de menu e a gravação no armazenamento GM ainda exigem validação em Chrome/Tampermonkey reais, sem criar emissão adicional.
+
+## 33. Sincronização sequencial da consulta NXJ (v1.0.8 — 11/11/2026)
+
+### Sintoma e análise
+
+O operador informou que o campo do título ficava visualmente preenchido, mas, em algumas tentativas, o F7 manual retornava a consulta genérica como se nenhum número tivesse sido informado. O diagnóstico NXJ mostrou um POST `CLICKONFIELD` com segmentos curtos e sem correspondência identificável ao número de título esperado. Isso confirma que o DOM, sozinho, não demonstrava que o filtro havia sido registrado no protocolo.
+
+O título observado tinha seis dígitos. A normalização com zeros à esquerda não é a correção adequada: a v0.4.6 retirou esse preenchimento porque a sequência manual funcional enviava o número original. A v1.0.8 mantém `preservarCodigoConsulta()` para o título.
+
+### Correção proposta
+
+- Após focar inicialmente o título e respeitar a pausa de ativação, aguarda o NXJ ficar ocioso antes de escrever.
+- Após mover o foco do título para a parcela, aguarda a conclusão das requisições NXJ observadas antes de editar a parcela.
+- Se o ERP recriar o campo da parcela e a rotina precisar refocá-lo, aguarda novamente a ociosidade antes de continuar.
+- Não exige a confirmação literal do título antes da escrita da parcela, pois essa barreira antecipada já foi retirada para preservar a sequência manual comprovada.
+- Mantém a confirmação NXJ obrigatória de título e parcela antes do Find. Se qualquer uma faltar, a consulta continua bloqueada. Não há F7 manual como alternativa automática nem retentativa de emissão.
+
+### Testes e validação
+
+Foi adicionada uma regressão que verifica a ordem das esperas de ociosidade em relação aos focos e às escritas dos campos. O teste verifica o contrato de sequência no código; não simula o navegador/ERP real.
+
+A validação completa `npm run verify` não foi executada neste ambiente. A homologação no Chrome, Tampermonkey e Systextil reais permanece pendente. Para validar, usar somente um título já previsto numa operação legítima; confirmar no diagnóstico que os dois campos foram reconhecidos antes do Find. Em caso de interrupção, conferir ou limpar os campos e não executar a consulta manualmente.

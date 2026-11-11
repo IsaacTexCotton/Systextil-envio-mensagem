@@ -4,7 +4,7 @@ Userscripts para reduzir trabalho repetitivo no Systextil, mantendo uma autoriza
 
 ## Segunda via automática — SmartTable → Systextil
 
-**Instalação única:** [userscripts/systextil-segunda-via.user.js](userscripts/systextil-segunda-via.user.js) · v1.0.6.
+**Instalação única:** [userscripts/systextil-segunda-via.user.js](userscripts/systextil-segunda-via.user.js) · v1.0.8 (proposta na branch `fix/nxj-aguarda-ocioso-por-campo`).
 
 O mesmo userscript funciona no CRM e no Systextil. O clique em **Enviar ao Systextil** no SmartTable é a única autorização humana necessária. Depois disso, o script:
 
@@ -21,7 +21,7 @@ Não são criados painéis flutuantes, campos auxiliares, janelas de conferênci
 
 **Instalação e atualização:** instale somente `systextil-segunda-via.user.js` no Tampermonkey e habilite-o no CRM e no Systextil. Os três userscripts antigos foram desativados por metadados e não devem ser reativados. Depois de instalar o novo, remova ou desative as entradas antigas no Tampermonkey para evitar confusão.
 
-**Conferência da versão instalada:** a `main` integra a v1.0.6 pela PR #40. A branch `fix/diagnostico-nxj-sem-corte` propõe a v1.0.7. Após a integração e atualização, confira o cabeçalho `@version` da entrada instalada, desative/remova cópias antigas e confirme a versão efetivamente instalada; não infira a versão pelo nome do arquivo.
+**Conferência da versão instalada:** a `main` integra a v1.0.7 pela PR #44. A branch `fix/nxj-aguarda-ocioso-por-campo` propõe a v1.0.8. Enquanto a proposta não for integrada, a versão publicada na `main` continua sendo 1.0.7. Confira o cabeçalho `@version` da entrada instalada, desative/remova cópias antigas e confirme a versão efetivamente instalada; não infira a versão pelo nome do arquivo.
 
 **Proteções operacionais:** confirmação NXJ obrigatória dos dois campos antes do Find, correspondência única, conferência de título/parcela/cliente, trava contra emissão repetida, identificação inequívoca do processo, validação do PDF e bloqueio de repetição quando o resultado do download é indeterminado. Um timeout após clicar em **Emite boleto** não prova que a emissão falhou; nesses casos o fluxo não emite novamente. Um resultado de download indeterminado exige conferir a pasta Downloads antes de uma nova tentativa.
 
@@ -33,7 +33,7 @@ Documentação da integração: [docs/transferencia-crm-systextil.md](docs/trans
 
 **Correção v1.0.6 (PR #40, integrada à `main`):** diferencia a existência de um registro persistido de uma execução comprovadamente ativa. O bloqueio de resultado incerto continua sem expiração automática; o operador recebe a opção do menu Tampermonkey **Segunda via: liberar bloqueio após conferência manual**, que exige confirmação e só remove estado local depois da conferência de Processos agendados e Downloads. Isso não cancela nem altera processos no ERP.
 
-**Correção proposta na v1.0.7:** o resultado compartilhado entre Systextil e SmartTable passa a preservar mensagens técnicas de até 1.200 caracteres. A versão anterior limitava o campo `mensagem` a 300 caracteres e podia cortar o resumo NXJ no meio de um nome de comando. A alteração não inclui valores de título, parcela, cliente ou payload nos diagnósticos e não modifica a barreira que exige confirmação NXJ dos dois campos antes do Find.
+**Correção integrada na v1.0.7 (PR #44):** o resultado compartilhado entre Systextil e SmartTable preserva mensagens técnicas de até 1.200 caracteres. A versão anterior limitava `mensagem` a 300 caracteres e podia cortar o resumo NXJ no meio de um nome de comando. Os diagnósticos não incluem valores de título, parcela, cliente ou payload; a barreira de confirmação NXJ antes do Find permanece ativa.
 
 ## Desenvolvimento e testes
 
@@ -208,3 +208,6 @@ As instruções permanentes para agentes estão em [AGENTS.md](AGENTS.md). O Git
 - Se houver mais de um campo compatível, não preencher silenciosamente; informar a ambiguidade.
 - Não registrar nomes, credenciais ou dados de cliente no console.
 - Manter pequenas alterações, documentação das regras e testes de regressão para dias da semana, fins de semana, feriados e busca reversa.
+
+
+**Correção proposta na v1.0.8 — sincronização sequencial do NXJ:** a rotina passa a aguardar a ociosidade das requisições NXJ após ativar o campo do título, após retirar o foco do título e após eventual refoco do campo da parcela. As pausas fixas continuam existindo, mas deixam de ser a única proteção contra sobreposição de comandos. A mudança não exige uma confirmação literal do título antes de escrever a parcela, preservando a sequência funcional já adotada; a confirmação NXJ de título e parcela continua obrigatória antes do Find. Título de seis dígitos permanece exatamente como recebido, sem completar zeros. A validação no ERP real permanece pendente.
