@@ -36,7 +36,7 @@ function formatarDataHora(timestamp) {
 }
 
 test('expõe a versão unificada e valida a transferência recebida do SmartTable', () => {
-  assert.equal(api.VERSION, '1.0.6');
+  assert.equal(api.VERSION, '1.0.8');
   const pedido = api.validarPedido(pedidoValido());
   assert.equal(pedido.titulo, '00001234');
   assert.equal(pedido.parcela, '03');
@@ -236,6 +236,36 @@ test('captura a confirmação NXJ antes de escrever título e parcela', () => {
 
   assert.ok(baselineTitulo >= 0 && baselineTitulo < escritaTitulo);
   assert.ok(baselineParcela >= 0 && baselineParcela < escritaParcela);
+});
+
+test('aguarda a ociosidade NXJ após cada foco antes de editar o campo seguinte', () => {
+  const inicio = SOURCE.indexOf('async function preencherCamposConsulta');
+  const fim = SOURCE.indexOf('function normalizarTextoProcesso', inicio);
+  const trecho = SOURCE.slice(inicio, fim);
+
+  const focoInicialTitulo = trecho.indexOf('campoTitulo.focus();');
+  const ociosoAposFocoTitulo = trecho.indexOf('await monitor.aguardarOcioso();', focoInicialTitulo);
+  const escritaTitulo = trecho.indexOf('atribuirValorCampo(campoTitulo, titulo)', focoInicialTitulo);
+
+  assert.ok(focoInicialTitulo >= 0);
+  assert.ok(ociosoAposFocoTitulo > focoInicialTitulo);
+  assert.ok(escritaTitulo > ociosoAposFocoTitulo);
+
+  const focoParcela = trecho.indexOf('campoParcela.focus();', escritaTitulo);
+  const ociosoAposBlurTitulo = trecho.indexOf('await monitor.aguardarOcioso();', focoParcela);
+  const escritaParcela = trecho.indexOf('atribuirValorCampo(campoParcela, parcela)', focoParcela);
+
+  assert.ok(focoParcela > escritaTitulo);
+  assert.ok(ociosoAposBlurTitulo > focoParcela);
+  assert.ok(escritaParcela > ociosoAposBlurTitulo);
+
+  const refocoParcela = trecho.indexOf('campoParcela.focus();', focoParcela + 1);
+  const ociosoAposRefoco = trecho.indexOf('await monitor.aguardarOcioso();', refocoParcela);
+  const marcoParcela = trecho.indexOf('const sequenciaAntesDaParcela', refocoParcela);
+
+  assert.ok(refocoParcela > focoParcela);
+  assert.ok(ociosoAposRefoco > refocoParcela);
+  assert.ok(marcoParcela > ociosoAposRefoco);
 });
 
 test('atualiza Processos agendados pelo sininho e aguarda a grade', () => {

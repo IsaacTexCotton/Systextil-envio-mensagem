@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Segunda Via Automática CRM
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      1.0.7
+// @version      1.0.8
 // @description  Recebe títulos do SmartTable e automatiza a segunda via com recuperação manual de bloqueio persistido.
 // @match        https://texhub.texcotton.com.br/crm/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -23,7 +23,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "1.0.7";
+  const VERSION = "1.0.8";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const DATA_VIEW_PROCESSOS = "forms.systextil.batch";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
@@ -725,6 +725,9 @@
       campoTitulo.focus();
       await pausa(atrasoFocoInicialMs);
 
+      // Não edita enquanto o NXJ ainda processa a ativação inicial do campo.
+      await monitor.aguardarOcioso();
+
       validarVisaoConsultaTitulos(pagina);
       valoresAlterados = true;
       atribuirValorCampo(campoTitulo, titulo);
@@ -740,6 +743,10 @@
       campoParcela.focus();
       await pausa(atrasoAposSairCampoMs);
 
+      // Aguarda o processamento assíncrono da saída do título sem exigir
+      // uma correspondência literal antes de continuar a sequência funcional.
+      await monitor.aguardarOcioso();
+
       validarVisaoConsultaTitulos(pagina);
 
       // Se a resposta assíncrona substituiu o input durante os 800 ms, usa o
@@ -752,6 +759,7 @@
         validarCampoEditavel(campoParcela);
         campoParcela.focus();
         await pausa(atrasoAposSairCampoMs);
+        await monitor.aguardarOcioso();
         validarVisaoConsultaTitulos(pagina);
       }
 
