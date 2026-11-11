@@ -21,7 +21,7 @@ Não são criados painéis flutuantes, campos auxiliares, janelas de conferênci
 
 **Instalação e atualização:** instale somente `systextil-segunda-via.user.js` no Tampermonkey e habilite-o no CRM e no Systextil. Os três userscripts antigos foram desativados por metadados e não devem ser reativados. Depois de instalar o novo, remova ou desative as entradas antigas no Tampermonkey para evitar confusão.
 
-**Conferência da versão instalada:** a `main` integra a v1.0.5 pela PR #39. Esta branch propõe a v1.0.6. Após a integração e atualização, confira o cabeçalho `@version` da entrada instalada, desative/remova cópias antigas e confirme a versão efetivamente instalada; não infira a versão pelo nome do arquivo.
+**Conferência da versão instalada:** a `main` integra a v1.0.6 pela PR #40. A branch `fix/diagnostico-nxj-sem-corte` propõe a v1.0.7. Após a integração e atualização, confira o cabeçalho `@version` da entrada instalada, desative/remova cópias antigas e confirme a versão efetivamente instalada; não infira a versão pelo nome do arquivo.
 
 **Proteções operacionais:** confirmação NXJ obrigatória dos dois campos antes do Find, correspondência única, conferência de título/parcela/cliente, trava contra emissão repetida, identificação inequívoca do processo, validação do PDF e bloqueio de repetição quando o resultado do download é indeterminado. Um timeout após clicar em **Emite boleto** não prova que a emissão falhou; nesses casos o fluxo não emite novamente. Um resultado de download indeterminado exige conferir a pasta Downloads antes de uma nova tentativa.
 
@@ -31,7 +31,9 @@ Documentação da integração: [docs/transferencia-crm-systextil.md](docs/trans
 
 **Versão 1.0.5 — PR #39:** integrada à `main` em 09/11/2026. Atualiza Processos agendados pelo sininho `procAgendados`, aguarda a renderização da grade e captura as confirmações NXJ de título/parcela antes da escrita. A PR registrou 20 verificações direcionadas; `npm run verify` e a homologação no ERP real ainda estavam pendentes naquela revisão.
 
-**Correção proposta na v1.0.6:** diferencia a existência de um registro persistido de uma execução comprovadamente ativa. O bloqueio de resultado incerto continua sem expiração automática; o operador recebe a opção do menu Tampermonkey **Segunda via: liberar bloqueio após conferência manual**, que exige confirmação e só remove estado local depois da conferência de Processos agendados e Downloads. Isso não cancela nem altera processos no ERP.
+**Correção v1.0.6 (PR #40, integrada à `main`):** diferencia a existência de um registro persistido de uma execução comprovadamente ativa. O bloqueio de resultado incerto continua sem expiração automática; o operador recebe a opção do menu Tampermonkey **Segunda via: liberar bloqueio após conferência manual**, que exige confirmação e só remove estado local depois da conferência de Processos agendados e Downloads. Isso não cancela nem altera processos no ERP.
+
+**Correção proposta na v1.0.7:** o resultado compartilhado entre Systextil e SmartTable passa a preservar mensagens técnicas de até 1.200 caracteres. A versão anterior limitava o campo `mensagem` a 300 caracteres e podia cortar o resumo NXJ no meio de um nome de comando. A alteração não inclui valores de título, parcela, cliente ou payload nos diagnósticos e não modifica a barreira que exige confirmação NXJ dos dois campos antes do Find.
 
 ## Desenvolvimento e testes
 
