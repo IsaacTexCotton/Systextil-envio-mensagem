@@ -2,7 +2,7 @@
 
 **Userscript único:** `userscripts/systextil-segunda-via.user.js`  
 **Versão proposta:** 1.0.8 (`fix/nxj-aguarda-ocioso-por-campo`)  
-**Status:** v1.0.7 integrada à `main` pela PR #44 em 11/11/2026. A v1.0.8 nesta branch acrescenta sincronização por ociosidade NXJ entre etapas de foco. A homologação operacional no Chrome/Tampermonkey/Systextil real permanece pendente.
+**Status:** v1.0.7 integrada à `main` pela PR #44 em 11/11/2026. A v1.0.8 nesta branch espera o POST NXJ de saída, sua resposta HTTP 2xx e a ociosidade subsequente entre etapas de foco. A homologação operacional no Chrome/Tampermonkey/Systextil real permanece pendente.
 
 ## Objetivo e autorização
 
@@ -26,7 +26,7 @@ O SmartTable continua responsável por apresentar os títulos elegíveis e emiti
 2. Clique em **Enviar título ao Systextil**, selecione o título e confirme em **Enviar ao Systextil**.
 3. O userscript valida o contrato da transferência, preservando o título e a parcela como texto e os zeros à esquerda.
 4. No Systextil, aguarda a tela **Consulta de títulos** e preenche diretamente os campos reais `num_duplicata.` e `seq_duplicatas.`.
-5. A rotina mantém a sequência de foco, edição e eventos `input/change`. Depois de focar o título e depois de mover o foco para a parcela, aguarda a ociosidade das requisições NXJ antes de alterar o próximo campo; se o ERP recriar a parcela, também aguarda após refocá-la. Essa sincronização não exige a classificação literal do título antes de inserir a parcela. Antes do Find, o monitor ainda precisa confirmar título e parcela em comandos NXJ concluídos com HTTP 2xx. Diferenças de zeros à esquerda e prefixos explícitos são aceitas somente pela comparação estrita já implementada, sem aceitar substrings.
+5. A rotina mantém a sequência de foco, edição e eventos `input/change`. Depois de mover o foco do título para a parcela, espera um POST `CLICKONFIELD`/`NEXT_FIELD` iniciado após essa transição, sua resposta HTTP 2xx e 300 ms de ociosidade antes de editar a parcela. Se o ERP recriar a parcela, exige o comando de ativação correspondente antes de escrever no novo controle. Ao sair da parcela, aplica a mesma espera. Uma mera ausência de requisições não é considerada confirmação de saída. Essa sincronização não exige correspondência literal do título antes de inserir a parcela. Antes do Find, o monitor ainda precisa confirmar título e parcela em comandos NXJ concluídos com HTTP 2xx. Diferenças de zeros à esquerda e prefixos explícitos são aceitas somente pela comparação estrita já implementada, sem aceitar substrings.
 6. Somente depois das duas confirmações NXJ o userscript aciona o controle **Find**. Se qualquer confirmação faltar, a automação para e não consulta nem emite. Exige exatamente um registro e confere título, parcela e cliente. A comparação tolera zeros à esquerda apenas durante a conferência; os identificadores originais continuam armazenados como texto.
 7. Registra a proteção contra repetição e aciona **Emite boleto** uma única vez.
 8. Aciona `procAgendados`. Se o ERP mudar a visão na mesma aba, o userscript acompanha a transição; se abrir outra aba, a aba que receber a visão de processos recupera o estado compartilhado pelo Tampermonkey.
@@ -53,7 +53,7 @@ O download de Blob/File exige Tampermonkey 5.4.6226 ou superior. No modo Browser
 
 A solicitação inclui identificador, data/hora, CNPJ de referência, razão social, título, parcela/sequência, vencimento, saldo, dias de atraso, situação e fluxo.
 
-Título e parcela permanecem como strings. O script não converte identificadores em números nem completa/trunca códigos silenciosamente. O campo real do ERP é conferido antes e depois do Find.
+Título e parcela permanecem como strings. O script não converte identificadores em números nem completa/trunca códigos silenciosamente. No cenário investigado, o título de seis dígitos é enviado com os mesmos seis caracteres, sem zeros à esquerda adicionados. O campo real do ERP é conferido antes e depois do Find.
 
 Os dados de referência do CRM são usados para conduzir a operação e nomear o arquivo. O script não grava observação, contato, negociação ou outros dados comerciais no CRM.
 
@@ -68,7 +68,7 @@ Os dados de referência do CRM são usados para conduzir a operação e nomear o
 - Um estado persistido não comprova que há um processo ativo no ERP. Em bloqueio sem execução pendente, o operador pode usar o menu Tampermonkey **Segunda via: liberar bloqueio após conferência manual**. O comando mostra o estado registrado, exige confirmação, relê as chaves para evitar apagar um estado que mudou durante a conferência e remove somente as chaves locais de pedido/execução/trava/resultado. Não cancela nem consulta processos no ERP.
 - O processo precisa ser identificado sem ambiguidade e informar conclusão com sucesso. A atualização da grade é feita pelo sininho `procAgendados`, não pelo Find da tela de consulta. A primeira leitura ocorre após o refresh inicial e a espera de renderização. Mensagens intermediárias ou desconhecidas mantêm o acompanhamento ativo e provocam nova atualização; marcadores explícitos de falha interrompem o fluxo. O limite de espera gera estado indeterminado, sem repetir a emissão. O download continua bloqueado até a confirmação explícita de sucesso.
 - Os marcos de sequência NXJ do título e da parcela são capturados antes da escrita dos respectivos campos. Isso evita descartar uma confirmação enviada imediatamente por `input/change` antes do blur, sem enfraquecer a barreira de confirmação antes do Find.
-- A v1.0.8 aguarda a ociosidade NXJ entre as etapas de foco para evitar escrever a parcela enquanto uma requisição de saída do título continua em andamento. Não substitui a confirmação dos dois campos e não cria retentativas de comandos.
+- A v1.0.8 aguarda o POST NXJ de saída (`CLICKONFIELD`/`NEXT_FIELD`), resposta HTTP 2xx e ociosidade de 300 ms antes de avançar entre campos. Não substitui a confirmação dos dois valores e não cria retentativas de comandos.
 - O PDF só é baixado após revalidar o processo, a seleção da grade e a URL/relatório.
 - Existe reserva contra download duplicado. Se o navegador não confirmar se o download terminou, a reserva fica indeterminada; confira manualmente a pasta Downloads antes de tentar novamente.
 - `Esc` interrompe a automação local. Não cancela uma emissão já enviada ao ERP.

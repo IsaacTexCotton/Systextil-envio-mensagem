@@ -1317,9 +1317,10 @@ O título observado tinha seis dígitos. A normalização com zeros à esquerda 
 ### Correção proposta
 
 - Após focar inicialmente o título e respeitar a pausa de ativação, aguarda o NXJ ficar ocioso antes de escrever.
-- Após mover o foco do título para a parcela, aguarda a conclusão das requisições NXJ observadas antes de editar a parcela.
-- Se o ERP recriar o campo da parcela e a rotina precisar refocá-lo, aguarda novamente a ociosidade antes de continuar.
+- Após mover o foco do título para a parcela, espera surgir um novo POST `CLICKONFIELD`/`NEXT_FIELD` posterior à transição, aguarda resposta HTTP 2xx e só então exige 300 ms de ociosidade antes de editar a parcela.
+- Se o ERP recriar o campo da parcela e a rotina precisar refocá-lo, exige o novo comando de ativação, a resposta HTTP 2xx e a ociosidade antes de continuar.
 - Não exige a confirmação literal do título antes da escrita da parcela, pois essa barreira antecipada já foi retirada para preservar a sequência manual comprovada.
+- Ao sair da parcela para devolver o foco ao título, aplica a mesma espera por POST, HTTP 2xx e ociosidade.
 - Mantém a confirmação NXJ obrigatória de título e parcela antes do Find. Se qualquer uma faltar, a consulta continua bloqueada. Não há F7 manual como alternativa automática nem retentativa de emissão.
 
 ### Testes e validação

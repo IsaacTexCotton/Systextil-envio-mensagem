@@ -123,7 +123,7 @@ Parâmetros de referência observados: monitoramento a cada 50–60 ms, silênci
 
 A sequência mousedown → focus() → mouseup → click() reproduziu a interação esperada em uma tela específica. Teste antes de reutilizar. Releia os campos por name após cada espera, nunca confie em referências DOM antigas.
 
-Na segunda via unificada v1.0.8, as pausas fixas são complementadas por `aguardarOcioso()` após a ativação inicial do título, após a saída do título para a parcela e após eventual refoco da parcela. A espera confirma que as requisições NXJ observadas terminaram e atingiram o período de silêncio configurado; ela não substitui a correspondência dos valores. Por compatibilidade com a sequência manual validada, a classificação literal da confirmação do título não bloqueia a escrita da parcela, mas título e parcela continuam obrigatoriamente confirmados antes do Find. Esse fluxo é específico da Consulta de títulos.
+Na segunda via unificada v1.0.8, depois da transição de foco que deve enviar um valor ao ERP, o monitor exige um novo POST `CLICKONFIELD`/`NEXT_FIELD` iniciado após o marco da transição, aguarda a resposta HTTP 2xx e, em seguida, 300 ms sem requisições NXJ em andamento. Uma tela sem novas requisições não é interpretada como confirmação de que o comando de saída ocorreu. Por compatibilidade com a sequência manual validada, essa espera não exige a correspondência literal do título antes da escrita da parcela; título e parcela continuam obrigatoriamente confirmados antes do Find. Esse fluxo é específico da Consulta de títulos.
 
 ### 4.2 Monitor de rede em userscripts
 
