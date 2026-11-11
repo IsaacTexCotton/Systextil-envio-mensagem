@@ -1,8 +1,8 @@
 # Segunda via automática — SmartTable → Systextil
 
 **Userscript único:** `userscripts/systextil-segunda-via.user.js`  
-**Versão:** 1.0.6 (proposta nesta branch)  
-**Status:** v1.0.5 integrada à `main` pela PR #39 em 09/11/2026. A v1.0.6 acrescenta recuperação manual de estado persistido. A homologação operacional no Chrome/Tampermonkey/Systextil real permanece pendente.
+**Versão:** 1.0.7 (proposta nesta branch)  
+**Status:** v1.0.6 integrada à `main` pela PR #40 em 09/11/2026. A v1.0.7 nesta branch corrige o truncamento de mensagens técnicas. A homologação operacional no Chrome/Tampermonkey/Systextil real permanece pendente.
 
 ## Objetivo e autorização
 
@@ -91,7 +91,7 @@ Com Node.js 18 ou superior, execute na raiz:
 npm run verify
 ```
 
-A execução dos testes não comprova a integração operacional. A v1.0.5 está na `main` pela PR #39; a v1.0.6 permanece em revisão nesta branch. A homologação no Chrome/Tampermonkey e Systextil reais continua pendente. Aproveite um título que já esteja previsto em uma operação real; não gere emissão extra apenas para testar.
+A execução dos testes não comprova a integração operacional. A v1.0.6 está na `main` pela PR #40; a v1.0.7 permanece em revisão nesta branch. A homologação no Chrome/Tampermonkey e Systextil reais continua pendente. Aproveite um título que já esteja previsto em uma operação real; não gere emissão extra apenas para testar.
 
 A homologação precisa confirmar:
 
@@ -103,7 +103,7 @@ A homologação precisa confirmar:
 6. O download validado do PDF para a pasta Downloads sem janela de destino, incluindo o comportamento de nome duplicado.
 7. O retorno do resultado ao SmartTable e o bloqueio seguro em timeout/falha.
 
-**Estado atual:** a PR #37 integrou a v1.0.4 à `main`; a PR #39 registra as correções da versão 1.0.5. Antes de distribuir a automação como homologada, execute `npm run verify` e conclua a homologação operacional no ERP real, sem gerar emissão extra para teste.
+**Estado atual:** a PR #37 integrou a v1.0.4 à `main`; a PR #39 integrou as correções da v1.0.5 e a PR #40 integrou a v1.0.6. Antes de distribuir a automação como homologada, execute `npm run verify` e conclua a homologação operacional no ERP real, sem gerar emissão extra para teste.
 
 
 ## Correção do acompanhamento de Processos agendados (v1.0.4)
@@ -121,3 +121,11 @@ A tela Processos agendados é atualizada pelo controle `procAgendados` (sininho)
 Na Consulta de títulos, os marcos de sequência do monitor NXJ passam a ser capturados antes da escrita de título e parcela. A versão anterior os capturava depois da escrita e parte da espera; uma confirmação imediata do ERP podia ficar fora da janela monitorada. A barreira que exige confirmação de ambos os campos antes do Find permanece inalterada.
 
 A PR #39 inclui regressões para a ordem dos marcos NXJ, refresh pelo sininho e atualização antes da primeira leitura da grade. Parse sintático e 18 verificações direcionadas foram aprovados nesta revisão; `npm run verify` e a homologação no Systextil real ainda não foram executados.
+
+## Correção proposta na v1.0.7 — diagnóstico NXJ sem truncamento prematuro
+
+A versão 1.0.6 limitava a mensagem devolvida ao SmartTable a 300 caracteres em `criarResultado()`. Como o resumo NXJ pode conter vários comandos, o limite podia cortar a mensagem no meio de um identificador (por exemplo, em `CLIC`), impedindo a leitura do restante do diagnóstico.
+
+Na v1.0.7, o limite passa a ser 1.200 caracteres e fica centralizado em `limitarMensagemResultado()`. O resumo continua restrito a metadados técnicos e comprimentos dos segmentos: não inclui os valores de título, parcela, cliente, cookies, tokens ou payload integral. Mensagens maiores que 1.200 caracteres continuam limitadas para proteger o armazenamento e a interface.
+
+A suíte adiciona regressão para uma mensagem superior a 300 caracteres com o comando final preservado, além do limite máximo de 1.200 caracteres e do tratamento de valor nulo. A regra NXJ não foi alterada: título e parcela continuam exigindo confirmação em comandos reconhecidos e respostas HTTP 2xx antes de liberar o Find. A validação automatizada não substitui a homologação no Chrome/Tampermonkey/Systextil real.
