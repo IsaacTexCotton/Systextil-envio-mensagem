@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Segunda Via Automática CRM
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      1.0.6
+// @version      1.0.7
 // @description  Recebe títulos do SmartTable e automatiza a segunda via com recuperação manual de bloqueio persistido.
 // @match        https://texhub.texcotton.com.br/crm/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -23,7 +23,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "1.0.6";
+  const VERSION = "1.0.7";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const DATA_VIEW_PROCESSOS = "forms.systextil.batch";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
@@ -58,6 +58,7 @@
   const PROGRAMA_RELATORIO_BOLETO = "forms.crec.crec_e259";
   const CHAVE_DOWNLOAD_PREFIXO = "st-segunda-via-boleto:download:";
   const TAMANHO_MAXIMO_PDF = 25 * 1024 * 1024;
+  const MAX_MENSAGEM_RESULTADO = 1200;
 
   const EM_NODE = typeof module === "object" && module.exports;
   const URL_ATUAL = EM_NODE ? null : new URL(window.location.href);
@@ -1844,12 +1845,16 @@
     }
   }
 
+  function limitarMensagemResultado(mensagem) {
+    return String(mensagem ?? "").slice(0, MAX_MENSAGEM_RESULTADO);
+  }
+
   function criarResultado(pedido, status, ok, mensagem) {
     return {
       id: String(pedido?.id ?? ""),
       status,
       ok: ok === true,
-      mensagem: String(mensagem ?? "").slice(0, 300),
+      mensagem: limitarMensagemResultado(mensagem),
       updatedAt: Date.now()
     };
   }
@@ -2881,6 +2886,7 @@
       extrairValoresPendentesNxj,
       valorConfere,
       validarConfirmacoesNxj,
+      limitarMensagemResultado,
       obterExecucaoAtiva,
       analisarProcessos,
       interpretarDataHoraProcesso,

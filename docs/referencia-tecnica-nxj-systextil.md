@@ -445,7 +445,7 @@ A PR #39 integrou as alterações da v1.0.5 à `main` em 09/11/2026. O comportam
 - Os testes direcionados verificam a ordem do baseline NXJ, o seletor do sininho, o tempo mínimo de espera e o refresh antes da primeira leitura.
 - Esses testes não comprovam que a tela real atualiza em todas as execuções nem que a primeira busca sempre será confirmada. Homologar com um título já previsto em operação real; não gerar uma emissão exclusivamente para teste.
 
-## 18. Recuperação manual de estado persistido — v1.0.6 proposta
+## 18. Recuperação manual de estado persistido — v1.0.6 integrada pela PR #40
 
 ### 18.1 Causa do bloqueio aparente
 
@@ -464,3 +464,13 @@ A PR #39 integrou as alterações da v1.0.5 à `main` em 09/11/2026. O comportam
 
 - Testes automatizados verificam a presença do comando, a ordem da confirmação e a revalidação das chaves antes da limpeza.
 - Isso não comprova a renderização do item no menu do Tampermonkey nem a leitura/escrita do armazenamento na instalação real. Validar em Chrome/Tampermonkey com estado de teste, sem criar emissão adicional.
+
+## 19. Diagnóstico NXJ completo no retorno ao SmartTable — v1.0.7 proposta
+
+A v1.0.6 limitava `criarResultado().mensagem` a 300 caracteres. O resumo produzido pelo monitor NXJ pode conter vários comandos e seus metadados; quando excedia esse limite, a mensagem apresentada ao operador era cortada no meio do texto (por exemplo, em `CLIC`).
+
+A v1.0.7 centraliza esse limite em `limitarMensagemResultado()` e amplia a capacidade para 1.200 caracteres. O resumo permanece mascarado: apresenta nomes de comandos e comprimentos dos segmentos, nunca os valores dos campos ou o payload integral.
+
+O teste de regressão verifica que uma mensagem maior que 300 caracteres conserva o comando final, que mensagens acima de 1.200 caracteres são limitadas e que valores nulos viram string vazia.
+
+**A barreira NXJ não foi enfraquecida:** ambos os campos continuam exigindo confirmação por comando de confirmação reconhecido, requisição concluída e HTTP 2xx. A mudança resolve a observabilidade do erro, não a confirmação em si. Se o título continuar sem confirmação após a atualização, o próximo diagnóstico deverá ser lido por inteiro antes de qualquer ajuste no protocolo.
