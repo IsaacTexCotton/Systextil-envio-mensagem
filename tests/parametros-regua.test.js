@@ -17,7 +17,12 @@ function calculator(options) {
   };
   const window = { document: document, console: console };
   window.top = window;
-  const context = { window: window, document: document, console: console, Date: Date };
+  // A API de diagnóstico só é exposta com opt-in explícito no localStorage.
+  const localStorage = {
+    getItem: function (key) { return key === 'st-regua-debug' ? '1' : null; },
+    setItem: function () {}
+  };
+  const context = { window: window, document: document, console: console, Date: Date, localStorage: localStorage };
   if (options && options.arrayFromEmptyForSets) {
     // Simula um ambiente em que Array.from não enumera Set, mas continua tratando NodeLists.
     const nativeFrom = Array.from;
@@ -45,8 +50,8 @@ function dayIso(value) {
 
 test('API de diagnóstico identifica a versão ativa e reconhece 02/11/2026', function () {
   const api = calculator();
-  assert.equal(api.version, '0.8.1');
-  assert.equal(api.buildId, '2026-11-03-set-iteration-fix');
+  assert.equal(api.version, '0.9.1');
+  assert.equal(api.buildId, '2026-11-23-holiday-set-fix');
   assert.equal(api.holidayCalendarContains('2026-11-02'), true);
   assert.equal(api.holidayCalendarContains('2026-11-03'), false);
 });
@@ -343,4 +348,49 @@ test('API de cálculo não executa a consulta nem preenche campos', function () 
   const api = calculator();
   const result = api.calculate(date(2026, 10, 28));
   assert.equal(Object.keys(result.values).length, 10);
+});
+
+function assertReferencia23112026(result) {
+  // 20/11/2026 (Consciência Negra) é sexta-feira: segunda 23/11 usa a linha
+  // "sexta feriado; segunda seguinte" da matriz, e não a regra semanal padrão (19/11).
+  assert.equal(result.twoHolidayStatus, 'matched');
+  assert.equal(result.sixHolidayStatus, 'matched');
+  assert.equal(result.twoSource, 'holiday-rule');
+  assert.equal(result.sixSource, 'holiday-rule');
+  assert.equal(dayIso(result.values.inicio2), '2026-11-18');
+  assert.equal(dayIso(result.values.fim2), '2026-11-18');
+  assert.equal(dayIso(result.values.inicio6), '2026-11-14');
+  assert.equal(dayIso(result.values.fim6), '2026-11-17');
+  assert.equal(result.sixCount, 4);
+  assert.equal(result.sixContiguous, true);
+  // 10, 15 e 18 dias: dias corridos, sem ajuste de feriado ou fim de semana.
+  assert.equal(dayIso(result.values.inicio10), '2026-11-13');
+  assert.equal(dayIso(result.values.fim10), '2026-11-13');
+  assert.equal(dayIso(result.values.inicio15), '2026-11-08');
+  assert.equal(dayIso(result.values.fim15), '2026-11-08');
+  assert.equal(dayIso(result.values.inicio18), '2026-11-05');
+  assert.equal(dayIso(result.values.fim18), '2026-11-05');
+  assert.equal(result.noExpediente, false);
+  assert.equal(result.blocked, false);
+}
+
+test('23/11/2026 aplica a matriz do feriado de sexta-feira 20/11 (Consciência Negra)', function () {
+  const api = calculator();
+  assert.equal(api.holidayCalendarContains('2026-11-20'), true);
+  assertReferencia23112026(api.calculate(date(2026, 11, 23)));
+});
+
+test('23/11/2026 mantém a matriz de feriado quando Array.from não enumera Set', function () {
+  const api = calculator({ arrayFromEmptyForSets: true });
+  assertReferencia23112026(api.calculate(date(2026, 11, 23)));
+});
+
+test('20/11/2026, o próprio feriado, é SEM EXPED. e bloqueia o preenchimento', function () {
+  const api = calculator();
+  const result = api.calculate(date(2026, 11, 20));
+  assert.equal(result.twoHolidayStatus, 'no-expediente');
+  assert.equal(result.sixHolidayStatus, 'no-expediente');
+  assert.equal(result.blocked, true);
+  assert.equal(result.values.inicio2, null);
+  assert.equal(result.values.inicio6, null);
 });
