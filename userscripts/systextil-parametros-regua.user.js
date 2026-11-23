@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil - Parâmetros da Régua de Cobrança
 // @namespace    https://texcotton.com.br/tampermonkey
-// @version      0.9.0
+// @version      0.9.1
 // @description  Calcula e preenche, mediante ação explícita, parâmetros de datas da régua no Systextil.
 // @match        http://systextil.texcotton.com.br/systextil/*
 // @match        https://systextil.texcotton.com.br/systextil/*
@@ -12,8 +12,8 @@
 (function () {
   'use strict';
 
-  const SCRIPT_VERSION = '0.9.0';
-  const SCRIPT_BUILD_ID = '2026-11-09-ui-review';
+  const SCRIPT_VERSION = '0.9.1';
+  const SCRIPT_BUILD_ID = '2026-11-23-holiday-set-fix';
 
   // Um único painel no documento principal; os campos podem estar em iframes same-origin.
   if (window.top !== window || window.__systextilParametrosReguaCarregado) return;
@@ -172,6 +172,14 @@
     return new Date(year, month - 1, day, 12);
   }
 
+  // Converte Set pelo método de visita direta, sem depender do iterador/Array.from da página.
+  function setToSortedArray(set) {
+    const values = [];
+    set.forEach(function (value) { values.push(value); });
+    values.sort();
+    return values;
+  }
+
   function holidaysForYear(year) {
     const fixed = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '12-25'];
     const dates = fixed.map(function (md) { return year + '-' + md; });
@@ -192,6 +200,10 @@
     const year = date.getFullYear();
     if (!holidayCache.has(year)) holidayCache.set(year, holidaysForYear(year));
     return holidayCache.get(year).has(iso(date));
+  }
+
+  function isBusinessDay(date) {
+    return date.getDay() !== 0 && date.getDay() !== 6 && !isHoliday(date);
   }
 
   function nextMonday(date) {
@@ -281,15 +293,20 @@
         if (parsed && Math.abs(calendarDayDifference(referenceDate, parsed)) <= 5) found.add(iso(parsed));
       });
     }
-    return Array.from(found).sort();
+    return setToSortedArray(found);
   }
 
-  function resolveHolidayWindow(type, referenceDate) {
-    const holidayValues = holidayDatesNear(referenceDate);
+  function resolveHolidayWindow(type, referenceDate, explicitHolidayDates) {
+    // O calendário explícito só serve a diagnóstico/testes; o fluxo real usa o calendário nacional.
+    const holidayValues = explicitHolidayDates === undefined
+      ? holidayDatesNear(referenceDate)
+      : (Array.isArray(explicitHolidayDates) ? explicitHolidayDates : []);
     const matches = [];
 
     holidayValues.forEach(function (value) {
-      const holidayDate = parseIso(value);
+      let holidayDate = null;
+      if (typeof value === 'string') holidayDate = parseIso(value);
+      else if (value && typeof value.getFullYear === 'function') holidayDate = localNoon(value);
       if (!holidayDate) return;
 
       const referenceOffset = calendarDayDifference(referenceDate, holidayDate);
@@ -434,6 +451,8 @@
         : twoResolution.status === 'no-expediente' ? 'holiday-no-expediente'
         : twoResolution.status === 'conflict' ? 'holiday-conflict' : 'weekly-default',
       sixMatches: sixResolution.matches,
+      twoHolidayStatus: twoResolution.status,
+      sixHolidayStatus: sixResolution.status,
       holidayConflicts: holidayConflicts,
       noExpediente: noExpediente,
       blocked: holidayConflicts.length > 0 || noExpediente
@@ -1142,13 +1161,22 @@
     window.__systextilParametrosReguaDebug = Object.freeze({
       version: SCRIPT_VERSION,
       buildId: SCRIPT_BUILD_ID,
+      holidayCalendarContains: function (dateString) {
+        const parsed = parseIso(dateString);
+        return Boolean(parsed && holidaysForYear(parsed.getFullYear()).has(iso(parsed)));
+      },
+      isBusinessDay: isBusinessDay,
+      parameterKeyFromLabel: function (label) {
+        const param = parameterFromLabel(label);
+        return param ? param.key : null;
+      },
       calculate: calculate,
       twoDayWindow: twoDayWindow,
       calculateSixthDayDeadline: calculateSixthDayDeadline,
       reverseSearchSixthDay: reverseSearchSixthDay,
       resolveHolidayWindow: resolveHolidayWindow,
       holidayRules: HOLIDAY_RULES.slice(),
-      holidaysForYear: function (year) { return Array.from(holidaysForYear(year)).sort(); },
+      holidaysForYear: function (year) { return setToSortedArray(holidaysForYear(year)); },
       iso: iso,
       br: br
     });

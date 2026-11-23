@@ -183,6 +183,8 @@ Para 10, 15 e 18 dias, início e fim são a mesma data: referência menos a quan
 
 O código calcula feriados nacionais fixos e datas móveis: Carnaval, Sexta-feira Santa e Corpus Christi. A lista adicional de feriados locais está vazia por padrão. As datas de 05/06/2026 e 02/09/2026 não são ativadas sem confirmação. Feriados duplicados são eliminados pelo conjunto de datas.
 
+A enumeração dos conjuntos de datas usa `Set.forEach` (função `setToSortedArray`), sem `Array.from`/iterador da página. Se a página sobrescrever `Array.from`, a matriz de feriados deixa de ser aplicada em silêncio e o 2º dia cai na regra semanal padrão (v0.9.0 apresentou esse defeito; corrigido na v0.9.1). Caso de referência: em 23/11/2026, com o feriado de sexta 20/11, o 2º dia é 18/11 e o 6º dia é 14/11 a 17/11.
+
 ## Qualidade e testes locais
 
 O cálculo está separado da interação com o formulário e é exposto numa API de diagnóstico somente leitura, chamada window.__systextilParametrosReguaDebug. Essa API não preenche campos nem executa consultas.
