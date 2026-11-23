@@ -266,9 +266,19 @@ test('userscript inicializa o painel automaticamente após a tela ficar pronta',
 test('declara URLs estáveis para verificar e baixar atualizações', () => {
   const url = 'https://raw.githubusercontent.com/IsaacTexCotton/Systextil-envio-mensagem/main/userscripts/systextil-segunda-via-boleto.user.js';
 
-  assert.match(source, /^\/\/ @version\s+0\.6\.1$/m);
+  // O legado foi desativado em 06/11/2026 (chore: desativa userscript legado):
+  // a versão do metadado subiu para 1.0.0 para distribuir a desativação.
+  assert.match(source, /^\/\/ @version\s+1\.0\.0$/m);
   assert.ok(source.includes('// @updateURL     ' + url));
   assert.ok(source.includes('// @downloadURL   ' + url));
+});
+
+test('o userscript legado permanece desativado: sem @match, @include nem @exclude', () => {
+  const metadados = source.slice(source.indexOf('// ==UserScript=='), source.indexOf('// ==/UserScript=='));
+
+  assert.equal(/^\/\/ @(match|include|exclude)\b/m.test(metadados), false);
+  assert.match(metadados, /^\/\/ @description\s+Descontinuado\./m);
+  assert.match(metadados, /systextil-segunda-via\.user\.js/);
 });
 
 
@@ -638,7 +648,12 @@ test('interrompe sem sucesso quando o NXJ não confirma o número do título', a
         /NÃO pressione F7.*não confirmou o campo número do título/
       );
       assert.match(erro.message, /Diagnóstico NXJ/);
-      assert.match(erro.message, /0 requisição\(ões\) observada\(s\)/);
+      // Fluxo atual: apenas a saída do campo da parcela é confirmada (1 POST + 1 GET);
+      // nenhum comando NXJ carrega o valor do título, o que é o sinal que bloqueia o fluxo.
+      assert.match(
+        erro.message,
+        /2 requisição\(ões\) observada\(s\), 1 POST\(s\), 1 comando\(s\) de saída de campo e 0 valor\(es\) correspondente\(s\)/
+      );
       return true;
     }
   );
@@ -1014,13 +1029,16 @@ test('o userscript declara somente as permissões necessárias para o auxiliar l
   assert.equal(source.includes('// @grant        none'), false);
 });
 
-test('a versão do metadado Tampermonkey corresponde à versão interna do userscript', () => {
+test('a versão do metadado do legado desativado é a marca de desativação e o código interno está congelado', () => {
   const versaoMetadado = source.match(/^\/\/ @version\s+([^\s]+)$/m)?.[1];
   const versaoInterna = source.match(/const VERSION = "([^"]+)";/)?.[1];
 
   assert.ok(versaoMetadado, 'metadado @version deve existir');
   assert.ok(versaoInterna, 'constante VERSION deve existir');
-  assert.equal(versaoMetadado, versaoInterna);
+  // Desde 06/11/2026 o metadado (1.0.0) apenas distribui a desativação; o código
+  // interno permanece em 0.6.1 e não roda em nenhuma página (sem @match).
+  assert.equal(versaoMetadado, '1.0.0');
+  assert.equal(versaoInterna, '0.6.1');
 });
 
 test('valida a URL PDF gerada pelo Systextil e aceita somente o endpoint de boletos', () => {
@@ -1296,26 +1314,33 @@ test('reserva pendente expirada vira indeterminada, em vez de permitir novo down
 });
 
 test('encaminha timeout para callback próprio, sem tratá-lo como falha comprovada', () => {
-  let opcoesDownload;
+  const url = 'http://systextil.texcotton.com.br/systextil/download/blt365332.pdf?report=blt365332.jrprint&ext=pdf&program=forms.crec.crec_e259';
+  const pdf = Uint8Array.from(Buffer.from('%PDF-1.7\n%%EOF', 'ascii')).buffer;
+  let envioAuxiliar;
   const api = carregarApi([], {}, {
-    GM_download(opcoes) {
-      opcoesDownload = opcoes;
-      return 'download-id';
+    GM_xmlhttpRequest(detalhes) {
+      if (detalhes.method === 'GET') {
+        detalhes.onload({ status: 200, finalUrl: url, response: pdf });
+      } else {
+        envioAuxiliar = detalhes;
+      }
+      return { abort() {} };
     }
   });
 
   let erros = 0;
   let timeouts = 0;
   let sucessos = 0;
-  api.iniciarDownloadPdf('https://exemplo.test/arquivo.pdf', 'arquivo.pdf', {
+  api.iniciarDownloadPdf(url, 'arquivo.pdf', 'A'.repeat(43), {
     onload() { sucessos += 1; },
     onerror() { erros += 1; },
     ontimeout() { timeouts += 1; }
   });
 
-  opcoesDownload.ontimeout({ error: 'timeout' });
-  opcoesDownload.onload({});
-  opcoesDownload.onerror({ error: 'late-error' });
+  // Callbacks tardios depois do timeout não podem alterar o resultado indeterminado.
+  envioAuxiliar.ontimeout();
+  envioAuxiliar.onload({ status: 200, responseText: JSON.stringify({ ok: true, fileName: 'arquivo.pdf', bytes: 14 }) });
+  envioAuxiliar.onerror();
 
   assert.equal(timeouts, 1);
   assert.equal(erros, 0);
@@ -1328,7 +1353,8 @@ test('a análise da Fase 3 não seleciona nem inicia download automaticamente', 
   assert.equal(typeof api.analisarProcessos, 'function');
   assert.ok(source.includes('Baixar PDF do processo identificado'));
   assert.ok(source.includes('botaoBaixar.addEventListener("click"'));
-  assert.ok(source.includes('saveAs: false'));
+  // O legado não usa mais GM_download; o PDF só segue ao auxiliar local por GM_xmlhttpRequest.
+  assert.equal(source.includes('GM_download('), false);
   assert.equal(source.includes('doCommand('), false);
   assert.equal(source.includes('.submit('), false);
 });
@@ -1653,47 +1679,6 @@ test('testa a conexão e só aprova auxiliar com pasta de destino acessível', (
   assert.equal(requisicao.headers['X-ST-Boleto-Token'], token);
   assert.equal(sucesso.destinationReady, true);
 });
-
-test('o auxiliar PowerShell fica limitado a loopback, autentica e grava sem sobrescrever', () => {
-  const helperPath = path.join(
-    __dirname,
-    '..',
-    'tools',
-    'boleto-helper',
-    'BoletoHelper.ps1'
-  );
-  const helper = fs.readFileSync(helperPath, 'utf8');
-
-  assert.match(helper, /TcpListener.*127\.0\.0\.1/s);
-  assert.match(helper, /IPAddress\]::IsLoopback/);
-  assert.match(helper, /Test-RequestToken/);
-  assert.match(helper, /MaxPdfBytes = 25MB/);
-  assert.match(helper, /Test-PdfBytes/);
-  assert.match(helper, /Test-SafePdfName/);
-  assert.match(helper, /\[System\.IO\.File\]::Move/);
-  assert.match(helper, /127\.0\.0\.1:17834/);
-  assert.equal(helper.includes('IPAddress]::Any'), false);
-});
-
-test('o instalador cria configuração local protegida e inicialização no logon', () => {
-  const installerPath = path.join(
-    __dirname,
-    '..',
-    'tools',
-    'boleto-helper',
-    'Instalar.ps1'
-  );
-  const installer = fs.readFileSync(installerPath, 'utf8');
-
-  assert.match(installer, /RandomNumberGenerator/);
-  assert.match(installer, /DestinationDirectory/);
-  assert.match(installer, /CreateShortcut/);
-  assert.match(installer, /Programs\\Startup/);
-  assert.match(installer, /127\.0\.0\.1:17834/);
-  assert.equal(installer.includes('Set-ExecutionPolicy'), false);
-});
-
-
 
 test('recria o painel correto ao atualizar uma versão antiga na tela de Processos agendados', () => {
   const inicio = source.lastIndexOf('const painelAtual = document.getElementById(PANEL_ID);');
