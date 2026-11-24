@@ -662,22 +662,24 @@
 
   /** Localiza um controle da barra por id exato; zero ou mais de um interrompe. */
   function localizarControleUnico(pagina, id) {
-    const encontrados = new Set();
+    // Array simples: o Systextil sobrescreve Array.from, que passa a devolver
+    // vazio para Set (mesmo defeito já visto no userscript de parâmetros).
+    const encontrados = [];
 
     for (const documento of coletarDocumentosMesmoDominio(pagina)) {
       const elemento = documento.getElementById?.(id);
-      if (elemento) encontrados.add(elemento);
+      if (elemento && !encontrados.includes(elemento)) encontrados.push(elemento);
     }
 
-    if (encontrados.size !== 1) {
+    if (encontrados.length !== 1) {
       throw new ErroConsulta(
-        encontrados.size === 0
+        encontrados.length === 0
           ? "O controle do Systextil não foi encontrado: " + id
           : "Mais de um controle do Systextil com o mesmo identificador: " + id
       );
     }
 
-    const elemento = Array.from(encontrados)[0];
+    const elemento = encontrados[0];
     if (elemento.disabled) {
       throw new ErroConsulta("O controle do Systextil está desabilitado: " + id);
     }

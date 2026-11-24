@@ -43,7 +43,7 @@ Documentação da integração: [docs/transferencia-crm-systextil.md](docs/trans
 
 **Proteções:** não emite boleto/nota nem grava nada (não há código para isso); não usa F7, F10 nem rede própria; não guarda dados em storage nem no console; título inexistente, ambíguo, divergente ou com cliente/empresa/tipo inexistente é registrado sem extrair dados e o lote segue; erro de estado da tela, timeout ou interrupção (Esc) encerram o lote. Não use junto com uma transferência da segunda via em andamento.
 
-**Estado:** 46 testes automatizados com ERP simulado e verificação de mutação das proteções, além de um teste de fumaça da interface no Chromium contra uma página simulada (fora do repositório). **A homologação no Systextil real está pendente** (checklist na seção 8 da documentação): sequência de preenchimento em Empresa/Cliente/Tipo, mapeamento das três partes do cliente, `recordAction` de título inexistente e conflito do atalho.
+**Estado:** 48 testes automatizados com ERP simulado e verificação de mutação das proteções, além de um teste de fumaça da interface no Chromium contra uma página simulada (fora do repositório). **A homologação no Systextil real está pendente** (checklist na seção 8 da documentação): sequência de preenchimento em Empresa/Cliente/Tipo, mapeamento das três partes do cliente, `recordAction` de título inexistente e conflito do atalho.
 
 ## Desenvolvimento e testes
 

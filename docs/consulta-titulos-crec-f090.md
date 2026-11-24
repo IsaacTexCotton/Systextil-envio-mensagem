@@ -216,7 +216,7 @@ Com cliente existente informado, a tela carrega `nome_cliente.` e a situação d
 
 ## 7. Testes automatizados
 
-`tests/consulta-titulos.test.js` (Node nativo, sem dependências). Cobrem: interpretação da entrada (formatos, zeros à esquerda, operadores recusados, duplicados, limites), partes do CPF/CNPJ, regras puras (situação, valores monetários, alertas, comparação da chave), exportação (escape, fórmulas), atalho, **cobertura do catálogo contra a seção 7.1 da referência**, o fluxo completo contra um ERP simulado (XHR + comandos NXJ + `curDataView`) e proteções estáticas (escopo, permissões, ausência de ações de escrita).
+`tests/consulta-titulos.test.js` (Node nativo, sem dependências). Cobrem: interpretação da entrada (formatos, zeros à esquerda, operadores recusados, duplicados, limites), partes do CPF/CNPJ, regras puras (situação, valores monetários, alertas, comparação da chave), exportação (escape, fórmulas), atalho, **cobertura do catálogo contra a seção 7.1 da referência**, o fluxo completo contra um ERP simulado (XHR + comandos NXJ + `curDataView`) e proteções estáticas (escopo, permissões, ausência de ações de escrita), independência de `Array.from` (o Systextil o sobrescreve; ver seção 10).
 
 Cenários do ERP simulado (o simulador reproduz o DOM: `focus()` sobre elemento focado não dispara evento): sucesso, sem cliente, três títulos em sequência (regressão do foco residual), título inexistente seguido de outro válido, modo de consulta sem registro, mais de um registro, registro divergente, cliente/empresa/tipo inexistentes, comando NXJ sem valor, comando de saída ausente, HTTP 500, campo limpo visualmente, input recriado, visão trocada durante o lote, interrupção, empresa bloqueada, `maxLength`, resíduo de cliente após Nova consulta e campo duplicado/oculto. Foi feita uma verificação de mutação (desativar cada proteção crítica faz ao menos um teste falhar). Além disso, o userscript foi executado no Chromium contra uma página simulada com `XMLHttpRequest` real (popup, atalho, tabela, CSV, interrupção por Esc, recusa fora da `crec_f090`); esse teste achou o defeito do foco residual e não faz parte do repositório, pois não há dependências de teste de navegador.
 
@@ -241,3 +241,7 @@ Executar com usuário autorizado, títulos reais já existentes e **sem emitir n
 
 - [AGENTS.md](../AGENTS.md) · [Guia transversal](guia-automacao-tampermonkey-systextil.md) · [Referência técnica NXJ](referencia-tecnica-nxj-systextil.md) (seção 7, Consulta de títulos, e seção 12, níveis de risco).
 - [Segunda via automática](transferencia-crm-systextil.md): origem da sequência de foco/escrita/confirmação NXJ reaproveitada (código duplicado de propósito: os userscripts são independentes).
+
+## 10. Correções registradas
+
+- **0.1.0 (mesma branch):** `Cannot read properties of undefined (reading 'disabled')` ao clicar em Consultar. Causa: `Array.from(Set)` devolve vazio porque o Systextil sobrescreve `Array.from`; a localização de `btnClearToFind.`/`btnFind.` pegava `undefined`. Trocado por array simples; testes de regressão (sobrescrita de `Array.from` e ausência de `Array.from`/spread de `Set` no código). Não validado no ERP real.

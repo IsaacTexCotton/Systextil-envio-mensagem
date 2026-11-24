@@ -583,6 +583,27 @@ test('regressão: o 2º título funciona mesmo com o foco ainda no primeiro camp
   assert.equal(erp.comandos.filter(comando => comando === 'FIND').length, 3);
 });
 
+test('regressão: funciona quando a página sobrescreve Array.from (devolve vazio para Set)', async () => {
+  const erp = criarErpFake();
+  const original = Array.from;
+  let resultados;
+
+  Array.from = () => [];
+  try {
+    resultados = await api.consultarLote(itensDe('1;;123456;1;1'), erp.opcoesLote());
+  } finally {
+    Array.from = original;
+  }
+
+  assert.equal(resultados[0].status, 'ok', resultados[0].mensagem);
+});
+
+test('o script não depende de Array.from nem de iterar Set/Map (o Systextil sobrescreve Array.from)', () => {
+  const codigo = SOURCE.slice(SOURCE.indexOf('(function () {')).replace(/\/\/.*$/gm, '');
+  assert.equal(/Array\.from\s*\(/.test(codigo), false);
+  assert.equal(/\[\s*\.\.\.\s*(?:new\s+)?(?:Set|Map)/.test(codigo), false);
+});
+
 test('tela que permanece em modo de consulta sem registro vira "sem-resultado" (não afirma inexistência)', async () => {
   const erp = criarErpFake({ semRegistro: 'permanece' });
   const [resultado] = await api.consultarLote(itensDe('1;;999999;1;1'), erp.opcoesLote());
