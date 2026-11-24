@@ -476,3 +476,14 @@ A v1.0.7 centraliza esse limite em `limitarMensagemResultado()` e amplia a capac
 O teste de regressão verifica que uma mensagem maior que 300 caracteres conserva o comando final, que mensagens acima de 1.200 caracteres são limitadas e que valores nulos viram string vazia.
 
 **A barreira NXJ não foi enfraquecida:** ambos os campos continuam exigindo confirmação por comando de confirmação reconhecido, requisição concluída e HTTP 2xx. A mudança resolve a observabilidade do erro, não a confirmação em si. Se o título continuar sem confirmação após a atualização, o próximo diagnóstico deverá ser lido por inteiro antes de qualquer ajuste no protocolo.
+
+## 20. Consulta de títulos em lote (crec_f090) — v0.1.0 proposta
+
+Userscript independente: [systextil-consulta-titulos.user.js](../userscripts/systextil-consulta-titulos.user.js). Mapa completo dos campos, regras, resultados e checklist de homologação em [consulta-titulos-crec-f090.md](consulta-titulos-crec-f090.md). Resumo do que vale como evidência:
+
+- **Reaproveitado (já validado em campo para Número e Parcela):** foco → ociosidade → setter nativo + `input`/`change` → foco no campo seguinte → POST `CLICKONFIELD`/`NEXT_FIELD` com HTTP 2xx → 300 ms de silêncio.
+- **Generalização não homologada:** a mesma sequência em `codigo_empresa.`, `cli_dup_cgc_cli_r.`/`_o.`/`cli_dup_cgc_cli2.` e `tipo_titulo.`. Se o ERP não confirmar um campo, o Find é bloqueado.
+- **Inferido:** as partes do cliente como base (9), ordem (4) e dígito (2) nos campos `_r`, `_o` e `2`; o valor de `recordAction` para consulta sem registro (`NO_RECORDS…`, herdado do userscript de segunda via); `btnClearToFind.` como equivalente do F6.
+- **Janela de confirmação por campo:** cada valor só é aceito se trafegou no comando de confirmação entre o marco anterior à sua escrita e o fim da sua saída. Uma janela aberta até o fim da sequência confunde campos com valores iguais (por exemplo, parcela 1 e tipo 1). Isso é uma escolha de implementação; a premissa de que o valor viaja no próprio comando de saída vale para o que foi observado e deve ser confirmada nos novos campos.
+- **Defesa em profundidade:** além da confirmação NXJ, a leitura pós-Find confere empresa, número, parcela, tipo e as três partes do cliente; divergência descarta os dados.
+- **Somente leitura (L0):** apenas `btnClearToFind.` e `btnFind.` são acionados. Mais de um registro não é percorrido com NEXT_RECORD/F4: vira `ambiguo`.

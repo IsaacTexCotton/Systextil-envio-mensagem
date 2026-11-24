@@ -35,6 +35,16 @@ Documentação da integração: [docs/transferencia-crm-systextil.md](docs/trans
 
 **Correção integrada na v1.0.7 (PR #44):** o resultado compartilhado entre Systextil e SmartTable preserva mensagens técnicas de até 1.200 caracteres. A versão anterior limitava `mensagem` a 300 caracteres e podia cortar o resumo NXJ no meio de um nome de comando. Os diagnósticos não incluem valores de título, parcela, cliente ou payload; a barreira de confirmação NXJ antes do Find permanece ativa.
 
+## Consulta de títulos em lote — `crec_f090` (somente leitura)
+
+**Userscript:** [userscripts/systextil-consulta-titulos.user.js](userscripts/systextil-consulta-titulos.user.js) · v0.1.0 (proposta em branch; independente da segunda via). Documentação completa, incluindo o mapa de todos os campos da tela e o funcionamento de cada um: [docs/consulta-titulos-crec-f090.md](docs/consulta-titulos-crec-f090.md).
+
+**Alt+Shift+Q** (ou o menu do Tampermonkey) abre um popup onde o operador cola vários títulos, um por linha (`empresa;cliente;número;parcela;tipo`, tab ou `;`; cliente opcional). O clique em **Consultar** é a autorização humana explícita. Para cada título, o script usa Nova consulta, preenche Empresa, Cliente e Nr título com a sequência NXJ já validada na segunda via, exige a confirmação NXJ de cada campo e a descrição carregada de empresa/cliente/tipo, aciona **Find** uma única vez e lê os campos exibidos. O resultado aparece no popup (com todos os campos por título) e pode ser copiado para planilha ou baixado em CSV.
+
+**Proteções:** não emite boleto/nota nem grava nada (não há código para isso); não usa F7, F10 nem rede própria; não guarda dados em storage nem no console; título inexistente, ambíguo, divergente ou com cliente/empresa/tipo inexistente é registrado sem extrair dados e o lote segue; erro de estado da tela, timeout ou interrupção (Esc) encerram o lote. Não use junto com uma transferência da segunda via em andamento.
+
+**Estado:** 46 testes automatizados com ERP simulado e verificação de mutação das proteções, além de um teste de fumaça da interface no Chromium contra uma página simulada (fora do repositório). **A homologação no Systextil real está pendente** (checklist na seção 8 da documentação): sequência de preenchimento em Empresa/Cliente/Tipo, mapeamento das três partes do cliente, `recordAction` de título inexistente e conflito do atalho.
+
 ## Desenvolvimento e testes
 
 Para qualquer nova automação no ERP, leia primeiro o [AGENTS.md](AGENTS.md), o [guia transversal de Tampermonkey](docs/guia-automacao-tampermonkey-systextil.md) e a [referência técnica NXJ e de telas](docs/referencia-tecnica-nxj-systextil.md). A referência NXJ reúne campos e comandos observados na Consulta de títulos e na Baixa de Títulos por Seleção, além dos limites conhecidos de Processos agendados. Os achados não são universais: confirme a visão, os campos e a sequência na tela de destino.
