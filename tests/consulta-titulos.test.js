@@ -798,6 +798,39 @@ test('empresa pré-preenchida e bloqueada é aceita somente quando idêntica à 
   assert.equal(diferente.comandos.includes('FIND'), false);
 });
 
+test('empresa já preenchida com o valor pedido e nome carregado não é reescrita (ERP não envia comando sem alteração)', async () => {
+  const erp = criarErpFake({ empresaInicial: '1' });
+  erp.campos['nome_empresa.'].value = 'EMPRESA FICTICIA';
+  const [resultado] = await api.consultarLote(itensDe('1;;123456;1;1'), erp.opcoesLote());
+
+  assert.equal(resultado.status, 'ok', resultado.mensagem);
+  assert.equal('codigo_empresa.' in erp.confirmados, false, 'Empresa não foi escrita nem confirmada por NXJ');
+});
+
+test('empresa preenchida mas sem nome carregado, ou diferente da pedida, continua sendo escrita e confirmada', async () => {
+  const semNome = criarErpFake({ empresaInicial: '1' });
+  const [r1] = await api.consultarLote(itensDe('1;;123456;1;1'), semNome.opcoesLote());
+  assert.equal(r1.status, 'ok', r1.mensagem);
+  assert.equal(semNome.confirmados['codigo_empresa.'], '1');
+
+  const outra = criarErpFake({ empresaInicial: '2', empresas: { 1: 'EMPRESA FICTICIA', 2: 'OUTRA' } });
+  outra.campos['nome_empresa.'].value = 'OUTRA';
+  const [r2] = await api.consultarLote(itensDe('1;;123456;1;1'), outra.opcoesLote());
+  assert.equal(r2.status, 'ok', r2.mensagem);
+  assert.equal(outra.confirmados['codigo_empresa.'], '1');
+});
+
+test('falta de comando de saída traz diagnóstico de foco e contagem NXJ, sem dados do título', async () => {
+  const erp = criarErpFake({ semSaida: 'codigo_empresa.' });
+  const [resultado] = await api.consultarLote(itensDe('1;;123456;1;1'), erp.opcoesLote());
+
+  assert.equal(resultado.status, 'erro');
+  assert.match(resultado.mensagem, /saída do campo Empresa/);
+  assert.match(resultado.mensagem, /Foco aplicado ao campo seguinte: sim/);
+  assert.match(resultado.mensagem, /NXJ observados no lote: \d+ requisições \(\d+ POST\)/);
+  assert.equal(resultado.mensagem.includes('123456'), false);
+});
+
 test('respeita maxLength do campo: remove só o zero inicial da base do CNPJ e nunca trunca dígitos', async () => {
   const erp = criarErpFake({ camposExtras: { 'cli_dup_cgc_cli_r.': { maxLength: 8 } } });
   const [resultado] = await api.consultarLote(itensDe('1;12345678000100;123456;1;1'), erp.opcoesLote());

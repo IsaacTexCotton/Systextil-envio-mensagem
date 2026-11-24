@@ -1023,6 +1023,11 @@
      * sua saída). Janela aberta confundiria campos com o mesmo valor (ex.: parcela
      * 1 e tipo 1).
      */
+    function estatistica() {
+      const posts = requisicoes.filter(requisicao => requisicao.metodo === "POST").length;
+      return "NXJ observados no lote: " + requisicoes.length + " requisições (" + posts + " POST).";
+    }
+
     function confirmou(valorEsperado, sequenciaMinima, sequenciaMaxima = Infinity) {
       return requisicoes.some(requisicao =>
         requisicao.sequencia > sequenciaMinima &&
@@ -1041,6 +1046,7 @@
       obterSequencia: () => estado.sequencia,
       confirmou,
       resumo,
+      estatistica,
       aguardarOcioso,
       aguardarComandoSaida: (sequenciaMinima, rotulo) => aguardarComando(
         sequenciaMinima,
@@ -1157,8 +1163,25 @@
       const campo = obterCampoUnico(documento, name);
       const marco = monitor.obterSequencia();
       campo.focus();
+      const focado = documento.activeElement === campo;
       await pausa(config.atrasoAposSairCampoMs);
-      await monitor.aguardarComandoSaida(marco, rotulo);
+
+      try {
+        await monitor.aguardarComandoSaida(marco, rotulo);
+      } catch (erro) {
+        if (erro instanceof ErroConsulta && erro.status === STATUS.erro) {
+          // Só metadados técnicos: ajudam a separar "foco não aplicado" de
+          // "monitor não enxerga o tráfego" de "ERP não enviou comando".
+          throw new ErroConsulta(
+            erro.message + " Foco aplicado ao campo seguinte: " +
+            (typeof documento.activeElement === "undefined" ? "n/d" : (focado ? "sim" : "não")) +
+            "; documento com foco: " +
+            (typeof documento.hasFocus === "function" ? (documento.hasFocus() ? "sim" : "não") : "n/d") +
+            ". " + monitor.estatistica()
+          );
+        }
+        throw erro;
+      }
       return campo;
     }
 
@@ -1167,6 +1190,18 @@
       const passo = passos[indice];
       ctx.etapa("Preenchendo " + passo.rotulo);
       let campo = obterCampoUnico(documento, passo.name);
+
+      // Empresa que a tela já traz com o valor pedido e com o nome carregado é a
+      // empresa em uso: reescrever o mesmo valor não altera nada e o ERP pode não
+      // enviar comando algum. A evidência é o valor visível + o nome da empresa.
+      if (passo.chave === "empresa" && mesmoCodigo(campo.value, passo.valor)) {
+        const nomeEmpresa = documento.getElementsByName(CAMPOS_CHAVE.empresa.descricao)?.[0];
+        if (nomeEmpresa && String(nomeEmpresa.value ?? "").trim() !== "") {
+          origem[passo.chave] = "TELA";
+          campoAtivo = null;
+          continue;
+        }
+      }
 
       if (campoSomenteLeitura(campo)) {
         // Somente Empresa pré-preenchida e idêntica à solicitada é aceita assim.
@@ -1554,6 +1589,13 @@
       font: 13px/1.4 Arial, Helvetica, sans-serif; color: #1b1b1b; }
     .painel { background: #fff; margin: 24px; width: min(1100px, 100%); border-radius: 6px;
       box-shadow: 0 8px 32px rgba(0,0,0,.35); padding: 16px 18px; box-sizing: border-box; }
+    /* Compacto: cartão no canto, fundo transparente, para ver a tela do ERP. */
+    .fundo.compacto { background: transparent; align-items: flex-end; justify-content: flex-end; overflow: hidden; }
+    .fundo.compacto:not(.bloqueia) { pointer-events: none; }
+    .fundo.compacto .painel { pointer-events: auto; width: 380px; margin: 12px; max-height: 45vh; overflow: auto;
+      border: 2px solid #1d4f91; }
+    .fundo.compacto .oculta-compacto { display: none; }
+    .fundo.compacto h2 { font-size: 14px; }
     h2 { margin: 0; font-size: 17px; }
     .topo { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
     .selo { font-size: 11px; background: #e6f2e6; color: #1d5c1d; border-radius: 10px; padding: 2px 8px; }
@@ -1727,6 +1769,7 @@
     const raiz = hospedeiro.attachShadow({ mode: "open" });
     const controle = { cancelado: false };
     let resultados = [];
+    let tituloAtual = "";
 
     raiz.appendChild(criarElemento(documento, "style", {}, ESTILO_POPUP));
     const fundo = criarElemento(documento, "div", { className: "fundo" });
@@ -1738,28 +1781,30 @@
 
     const topo = criarElemento(documento, "div", { className: "topo" });
     topo.appendChild(criarElemento(documento, "h2", { id: "st-ct-titulo" }, "Consulta de títulos em lote (crec_f090)"));
-    topo.appendChild(criarElemento(documento, "span", { className: "selo" }, "somente leitura · v" + VERSION));
+    topo.appendChild(criarElemento(documento, "span", { className: "selo oculta-compacto" }, "somente leitura · v" + VERSION));
     painel.appendChild(topo);
 
-    const aviso = criarElemento(documento, "div", { className: "aviso" });
+    const aviso = criarElemento(documento, "div", { className: "aviso oculta-compacto" });
     painel.appendChild(aviso);
 
     const rotuloEntrada = criarElemento(documento, "label", { for: "st-ct-entrada" },
       "Títulos (um por linha): empresa;cliente;número;parcela;tipo");
     rotuloEntrada.style.cssText = "display:block;margin-top:10px;font-weight:bold;";
+    rotuloEntrada.classList.add("oculta-compacto");
     painel.appendChild(rotuloEntrada);
 
     const entrada = criarElemento(documento, "textarea", {
       id: "st-ct-entrada", spellcheck: "false", placeholder: EXEMPLO_ENTRADA
     });
+    entrada.classList.add("oculta-compacto");
     painel.appendChild(entrada);
 
-    const ajuda = criarElemento(documento, "details");
+    const ajuda = criarElemento(documento, "details", { className: "oculta-compacto" });
     ajuda.appendChild(criarElemento(documento, "summary", {}, "Formato e regras"));
     AJUDA_FORMATO.forEach(linha => ajuda.appendChild(criarElemento(documento, "div", {}, linha)));
     painel.appendChild(ajuda);
 
-    const listaErros = criarElemento(documento, "ul", { className: "erros", hidden: "" });
+    const listaErros = criarElemento(documento, "ul", { className: "erros oculta-compacto", hidden: "" });
     painel.appendChild(listaErros);
 
     const acoes = criarElemento(documento, "div", { className: "acoes" });
@@ -1767,16 +1812,20 @@
     const botaoInterromper = criarElemento(documento, "button", { type: "button" }, "Interromper (Esc)");
     const botaoCopiar = criarElemento(documento, "button", { type: "button" }, "Copiar para planilha");
     const botaoCsv = criarElemento(documento, "button", { type: "button" }, "Baixar CSV");
-    const botaoFechar = criarElemento(documento, "button", { type: "button" }, "Fechar");
+    const botaoFechar = criarElemento(documento, "button", { type: "button", className: "oculta-compacto" }, "Fechar");
+    const botaoMinimizar = criarElemento(documento, "button", { type: "button" }, "Minimizar");
     const status = criarElemento(documento, "span", { className: "status", role: "status", "aria-live": "polite" });
     botaoInterromper.disabled = true;
     botaoCopiar.disabled = true;
     botaoCsv.disabled = true;
-    [botaoConsultar, botaoInterromper, botaoCopiar, botaoCsv, botaoFechar, status]
+    botaoConsultar.classList.add("oculta-compacto");
+    botaoCopiar.classList.add("oculta-compacto");
+    botaoCsv.classList.add("oculta-compacto");
+    [botaoConsultar, botaoInterromper, botaoMinimizar, botaoCopiar, botaoCsv, botaoFechar, status]
       .forEach(elemento => acoes.appendChild(elemento));
     painel.appendChild(acoes);
 
-    const tabela = criarElemento(documento, "table");
+    const tabela = criarElemento(documento, "table", { className: "oculta-compacto" });
     painel.appendChild(tabela);
 
     function atualizarAviso() {
@@ -1801,6 +1850,12 @@
 
     function definirExecutando(executando) {
       loteEmAndamento = executando;
+      // Durante o lote: cartão compacto no canto, fundo transparente (a tela do
+      // ERP fica visível) e um escudo invisível que ainda bloqueia cliques.
+      fundo.classList.toggle("compacto", executando);
+      fundo.classList.toggle("bloqueia", executando);
+      botaoMinimizar.textContent = "Minimizar";
+      botaoMinimizar.disabled = executando;
       botaoConsultar.disabled = executando;
       entrada.disabled = executando;
       botaoFechar.disabled = executando;
@@ -1851,9 +1906,10 @@
           controle,
           aoProgresso(evento) {
             if (evento.tipo === "iniciando") {
-              definirStatus("Consultando " + (evento.indice + 1) + " de " + evento.total + "…");
+              tituloAtual = "título " + evento.item.numero + " parcela " + evento.item.parcela;
+              definirStatus("Consultando " + (evento.indice + 1) + " de " + evento.total + " (" + tituloAtual + ")…");
             } else if (evento.tipo === "etapa") {
-              definirStatus("Consultando " + (evento.indice + 1) + " de " + evento.total + " — " + evento.texto + "…");
+              definirStatus("Consultando " + (evento.indice + 1) + " de " + evento.total + " (" + tituloAtual + ") — " + evento.texto + "…");
             } else {
               resultados = resultados.filter(anterior => anterior.linha !== evento.resultado.linha);
               resultados.push(evento.resultado);
@@ -1903,6 +1959,11 @@
       definirStatus("Interrupção solicitada. O título em andamento será encerrado em um ponto seguro.");
     });
     botaoFechar.addEventListener("click", fechar);
+    botaoMinimizar.addEventListener("click", () => {
+      if (loteEmAndamento) return; // durante o lote o cartão já é compacto
+      const compacto = fundo.classList.toggle("compacto");
+      botaoMinimizar.textContent = compacto ? "Expandir" : "Minimizar";
+    });
     botaoCopiar.addEventListener("click", async () => {
       const copiado = await copiarTexto(documento, montarTsv(resultados));
       definirStatus(copiado ? "Resultado copiado. Cole na planilha." : "Não foi possível copiar. Use Baixar CSV.");
