@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Segunda Via Automática CRM
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      1.0.8
+// @version      1.1.0
 // @description  Recebe títulos do SmartTable e automatiza a segunda via com recuperação manual de bloqueio persistido.
 // @match        https://texhub.texcotton.com.br/crm/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -23,7 +23,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "1.0.8";
+  const VERSION = "1.1.0";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const DATA_VIEW_PROCESSOS = "forms.systextil.batch";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
@@ -79,7 +79,8 @@
     resultado: "smarttable.systextil.title-transfer.v1.resultado",
     consumidor: "smarttable.systextil.title-transfer.v1.consumidor",
     execucao: "smarttable.systextil.title-transfer.v1.execucao",
-    lockProcesso: "smarttable.systextil.title-transfer.v1.lock-processo"
+    lockProcesso: "smarttable.systextil.title-transfer.v1.lock-processo",
+    navegacao: "smarttable.systextil.title-transfer.v1.navegacao"
   });
   const TTL_PEDIDO_MS = 5 * 60 * 1000;
   const TTL_LOCK_TRANSFER_MS = 10 * 60 * 1000;
@@ -91,6 +92,17 @@
   const PREFIXO_CHAVE_EMISSAO = "st-auto-segunda-via:emissao:";
   const VISAO_CONSULTA = DATA_VIEW_CONSULTA_TITULOS;
   const VISAO_PROCESSOS = DATA_VIEW_PROCESSOS;
+  // Lote: o Systextil emite cada boleto na Consulta de títulos e só DEPOIS vai a Processos agendados baixar os PDFs.
+  // Os processos são todos "Emissão de boletos com registro" e só se distinguem pelo horário (janela de ±TOLERANCIA_HORARIO_PROCESSO_MS
+  // em volta do clique). Para cada processo cair numa janela só dele, os cliques em "Emite boleto" ficam separados por mais de duas
+  // janelas. O teto de itens vem do prazo de MAX_IDADE_SOLICITACAO_MS (30 min): o 1º PDF só é baixado depois da última emissão.
+  const MAX_ITENS_LOTE = 6;
+  const INTERVALO_ENTRE_EMISSOES_MS = 2 * TOLERANCIA_HORARIO_PROCESSO_MS + 5000;
+  const TTL_LOCK_LOTE_MS = 40 * 60 * 1000;
+  const ESTADOS_ITEM_LOTE = Object.freeze([
+    "na-fila", "consultando", "aguardando-intervalo", "emitido", "nao-emitido", "baixando", "concluido", "indeterminado", "erro"
+  ]);
+  const CODIGOS_ERRO_RESULTADO = Object.freeze(["pedido-pendente", "bloqueio-persistido", "expirado", "tela-ausente"]);
 
   /**
    * Remove caracteres inválidos para nomes de arquivo do Windows.
@@ -1926,14 +1938,18 @@
     return String(mensagem ?? "").slice(0, MAX_MENSAGEM_RESULTADO);
   }
 
-  function criarResultado(pedido, status, ok, mensagem) {
-    return {
+  function criarResultado(pedido, status, ok, mensagem, extras) {
+    const resultado = {
       id: String(pedido?.id ?? ""),
       status,
       ok: ok === true,
       mensagem: limitarMensagemResultado(mensagem),
       updatedAt: Date.now()
     };
+    // Extras só de listas fechadas: o andamento de cada título do lote e o código do erro. Nada de dados do cliente.
+    if (extras && Array.isArray(extras.itens)) resultado.itens = resumirItensParaCrm(extras.itens);
+    if (extras && CODIGOS_ERRO_RESULTADO.includes(extras.codigo)) resultado.codigo = extras.codigo;
+    return resultado;
   }
 
   function validarCodigoTransferencia(valor, limite, rotulo) {
@@ -1944,11 +1960,11 @@
     return codigo;
   }
 
-  function validarPedido(pedido, agora = Date.now()) {
+  function validarEnvelopePedido(pedido, schemaEsperado, agora) {
     if (!pedido || typeof pedido !== "object" || Array.isArray(pedido)) {
       throw new Error("A solicitação recebida não é um objeto válido.");
     }
-    if (pedido.schema !== 1 || pedido.source !== "smarttable-crm") {
+    if (pedido.schema !== schemaEsperado || pedido.source !== "smarttable-crm") {
       throw new Error("A versão ou a origem da solicitação não é reconhecida.");
     }
     if (typeof pedido.id !== "string" || !/^[A-Za-z0-9_-]{8,100}$/.test(pedido.id)) {
@@ -1960,7 +1976,10 @@
     if (!Number.isFinite(createdAt) || idade < -30000 || idade > TTL_PEDIDO_MS) {
       throw new Error("A solicitação expirou ou possui horário inválido. Envie novamente pelo CRM.");
     }
+    return { id: pedido.id, createdAt };
+  }
 
+  function validarItemTransferencia(pedido) {
     const cnpj = String(pedido.cnpj ?? "").replace(/\D/g, "");
     if (!/^\d{14}$/.test(cnpj)) throw new Error("O CNPJ de referência não contém 14 dígitos.");
 
@@ -1970,10 +1989,6 @@
     }
 
     return {
-      schema: 1,
-      id: pedido.id,
-      createdAt,
-      source: "smarttable-crm",
       cnpj,
       razaoSocial,
       titulo: validarCodigoTransferencia(pedido.titulo, MAX_TITULO_TRANSFERENCIA, "Número do título"),
@@ -1984,6 +1999,224 @@
       situacao: String(pedido.situacao ?? "").slice(0, 40),
       fluxo: String(pedido.fluxo ?? "").slice(0, 20)
     };
+  }
+
+  function validarPedido(pedido, agora = Date.now()) {
+    const { id, createdAt } = validarEnvelopePedido(pedido, 1, agora);
+    return {
+      schema: 1,
+      id,
+      createdAt,
+      source: "smarttable-crm",
+      ...validarItemTransferencia(pedido)
+    };
+  }
+
+  /**
+   * Pedido em lote (schema 2): de 1 a MAX_ITENS_LOTE títulos, cada um validado como o pedido de um título. Título e parcela
+   * repetidos no mesmo lote são recusados (emitiriam o mesmo boleto duas vezes).
+   */
+  function validarPedidoLote(pedido, agora = Date.now()) {
+    const { id, createdAt } = validarEnvelopePedido(pedido, 2, agora);
+    if (!Array.isArray(pedido.itens) || pedido.itens.length < 1) {
+      throw new Error("O lote não tem nenhum título.");
+    }
+    if (pedido.itens.length > MAX_ITENS_LOTE) {
+      throw new Error("O lote tem mais de " + MAX_ITENS_LOTE + " títulos.");
+    }
+
+    const vistos = new Set();
+    const itens = pedido.itens.map((bruto, posicao) => {
+      if (!bruto || typeof bruto !== "object" || Array.isArray(bruto)) {
+        throw new Error("O título " + (posicao + 1) + " do lote não é um objeto válido.");
+      }
+      let item;
+      try {
+        item = validarItemTransferencia(bruto);
+      } catch (erro) {
+        throw new Error("Título " + (posicao + 1) + " do lote: " + erro.message);
+      }
+      const chave = normalizarCodigoComparacao(item.titulo) + "|" + normalizarCodigoComparacao(item.parcela);
+      if (vistos.has(chave)) throw new Error("O lote repete o mesmo título e parcela.");
+      vistos.add(chave);
+      return item;
+    });
+
+    return { schema: 2, id, createdAt, source: "smarttable-crm", itens };
+  }
+
+  /** Aceita o pedido de um título (schema 1) ou o lote (schema 2). */
+  function validarQualquerPedido(pedido, agora = Date.now()) {
+    return pedido && pedido.schema === 2
+      ? validarPedidoLote(pedido, agora)
+      : validarPedido(pedido, agora);
+  }
+
+  /** O que vai ao CRM sobre cada título do lote: só a posição e o estado de uma lista fechada. Nunca título, CNPJ, nome nem mensagem. */
+  function resumirItensParaCrm(itens) {
+    return (Array.isArray(itens) ? itens : []).map((item, posicao) => ({
+      indice: Number.isInteger(item?.indice) ? item.indice : posicao,
+      estado: ESTADOS_ITEM_LOTE.includes(item?.estado) ? item.estado : "erro"
+    }));
+  }
+
+  /** O resultado final do lote, a partir dos estados finais dos títulos. `concluido` com ok=true só se TODOS salvaram o PDF. */
+  function consolidarResultadoLote(itens) {
+    const lista = Array.isArray(itens) ? itens : [];
+    const total = lista.length;
+    const concluidos = lista.filter(item => item?.estado === "concluido").length;
+    if (total > 0 && concluidos === total) {
+      return {
+        status: "concluido",
+        ok: true,
+        mensagem: "Segunda via concluída: " + (total === 1 ? "1 PDF salvo" : total + " PDFs salvos") + " na pasta Downloads do navegador."
+      };
+    }
+    const incerto = lista.some(item => item?.estado === "indeterminado");
+    return {
+      status: incerto ? "indeterminado" : "concluido",
+      ok: false,
+      mensagem: concluidos + " de " + total + " PDF(s) salvo(s). " +
+        (incerto
+          ? "Há título(s) com resultado incerto: confira Processos agendados e a pasta Downloads antes de qualquer nova emissão."
+          : "Os demais não foram emitidos ou baixados. Veja o estado de cada título no CRM.")
+    };
+  }
+
+  function textoDoErro(erro) {
+    return String(erro?.message || erro || "Falha não identificada.").slice(0, 240);
+  }
+
+  /**
+   * Falha ao identificar ou baixar o PDF de UM título do lote. A tela de Processos agendados indisponível é falha do lote
+   * inteiro (os demais títulos também não poderiam ser lidos); o resto é falha daquele título.
+   */
+  function classificarFalhaDownload(erro) {
+    const texto = String(erro?.message || "");
+    if (/Tampermonkey não iniciou o download/i.test(texto)) return { estado: "erro", fatal: false };
+    if (/Processos agendados não está ativa|sininho|não retornou à tela|Formulário de Processos agendados não identificado|Mais de uma grade/i.test(texto)) {
+      return { estado: "indeterminado", fatal: true };
+    }
+    return { estado: "indeterminado", fatal: false };
+  }
+
+  /**
+   * Fase 1 do lote: consulta e emite cada título, na ordem, sem sair da Consulta de títulos. As dependências vêm de fora para
+   * que a regra (ordem, intervalo, parada na falha) seja testável sem o ERP:
+   *   consultar(item, indice) -> campos conferidos (lança se a consulta falhar; nada foi emitido);
+   *   emitir(item, campos, indice) -> { solicitadoEm, titulo, parcela, cliente } depois de clicar em "Emite boleto"
+   *     (se lançar com `emissaoClicada === true`, a emissão é incerta).
+   * A consulta do título seguinte acontece ANTES da espera do intervalo; o clique só depois dele. Na primeira falha o lote para:
+   * os que faltam ficam `nao-emitido`; um clique incerto fica `indeterminado`. Nada é emitido duas vezes.
+   */
+  async function executarLoteEmissao({
+    itens, consultar, emitir, esperar, agora = Date.now, intervaloMs = INTERVALO_ENTRE_EMISSOES_MS,
+    aoMudar = async () => {}, estaCancelado = () => false
+  }) {
+    const estados = itens.map((_, indice) => ({ indice, estado: "na-fila" }));
+    let ultimoCliqueEm = null;
+    let interrompido = false;
+
+    const pararEm = async (posicao, estado, motivo) => {
+      interrompido = true;
+      estados[posicao].estado = estado;
+      estados[posicao].motivo = motivo;
+      for (let seguinte = posicao + 1; seguinte < estados.length; seguinte += 1) {
+        estados[seguinte].estado = "nao-emitido";
+        estados[seguinte].motivo = "Não emitido: um título anterior não foi emitido.";
+      }
+      await aoMudar(estados);
+    };
+
+    for (let posicao = 0; posicao < itens.length; posicao += 1) {
+      const atual = estados[posicao];
+      if (estaCancelado()) {
+        await pararEm(posicao, "nao-emitido", "Interrompido pelo operador (Esc).");
+        break;
+      }
+
+      atual.estado = "consultando";
+      await aoMudar(estados);
+      let campos;
+      try {
+        campos = await consultar(itens[posicao], posicao);
+      } catch (erro) {
+        await pararEm(posicao, "nao-emitido", textoDoErro(erro));
+        break;
+      }
+
+      if (ultimoCliqueEm !== null) {
+        atual.estado = "aguardando-intervalo";
+        await aoMudar(estados);
+        while (!estaCancelado() && agora() - ultimoCliqueEm < intervaloMs) {
+          await esperar(Math.max(1, Math.min(1000, intervaloMs - (agora() - ultimoCliqueEm))));
+        }
+        if (estaCancelado()) {
+          await pararEm(posicao, "nao-emitido", "Interrompido pelo operador (Esc).");
+          break;
+        }
+      }
+
+      try {
+        const emitido = await emitir(itens[posicao], campos, posicao);
+        ultimoCliqueEm = Number.isFinite(Number(emitido?.solicitadoEm)) ? Number(emitido.solicitadoEm) : agora();
+        atual.estado = "emitido";
+        atual.solicitadoEm = emitido?.solicitadoEm;
+        atual.titulo = emitido?.titulo;
+        atual.parcela = emitido?.parcela;
+        atual.cliente = emitido?.cliente;
+        await aoMudar(estados);
+      } catch (erro) {
+        await pararEm(posicao, erro?.emissaoClicada === true ? "indeterminado" : "nao-emitido", textoDoErro(erro));
+        break;
+      }
+    }
+
+    return { itens: estados, interrompido };
+  }
+
+  /**
+   * Fase 2 do lote: em Processos agendados, identifica e baixa o PDF de cada título emitido, na ordem. Baixar não duplica
+   * emissão, então a falha de UM título não impede os outros, exceto se a própria tela de Processos agendados falhar.
+   *   baixarUm(item, indice, aoIniciarDownload) -> resolve quando o PDF foi salvo; lança se não foi possível.
+   * Um título que já estava `baixando` (a página recarregou no meio) vira `indeterminado`: o PDF pode ter sido salvo.
+   */
+  async function executarLoteDownloads({ itens, baixarUm, aoMudar = async () => {}, estaCancelado = () => false }) {
+    let fatal = false;
+    for (let posicao = 0; posicao < itens.length; posicao += 1) {
+      const item = itens[posicao];
+      if (item.estado === "baixando") {
+        item.estado = "indeterminado";
+        item.motivo = "A página recarregou durante o download. Confira a pasta Downloads antes de repetir.";
+        await aoMudar(itens);
+        continue;
+      }
+      if (item.estado !== "emitido") continue;
+      if (fatal || estaCancelado()) {
+        item.estado = "indeterminado";
+        item.motivo = fatal
+          ? "A tela Processos agendados falhou antes deste título. Confira o ERP."
+          : "Interrompido pelo operador (Esc). Confira Processos agendados e Downloads.";
+        await aoMudar(itens);
+        continue;
+      }
+      try {
+        await baixarUm(item, posicao, async () => {
+          item.estado = "baixando";
+          await aoMudar(itens);
+        });
+        item.estado = "concluido";
+        delete item.motivo;
+        await aoMudar(itens);
+      } catch (erro) {
+        const falha = classificarFalhaDownload(erro);
+        item.estado = falha.estado;
+        item.motivo = textoDoErro(erro);
+        if (falha.fatal) fatal = true;
+        await aoMudar(itens);
+      }
+    }
+    return { itens, interrompido: fatal };
   }
 
   function emitirResultado(resultado) {
@@ -2008,8 +2241,8 @@
     await GM_setValue(chave, valor);
   }
 
-  async function publicarResultado(pedido, status, ok, mensagem) {
-    const resultado = criarResultado(pedido, status, ok, mensagem);
+  async function publicarResultado(pedido, status, ok, mensagem, extras) {
+    const resultado = criarResultado(pedido, status, ok, mensagem, extras);
     await gravarChave(CHAVES.resultado, resultado);
     emitirResultado(resultado);
     return resultado;
@@ -2108,6 +2341,7 @@
       await gravarChave(CHAVES.pedido, null);
       await gravarChave(CHAVES.consumidor, null);
       await gravarChave(CHAVES.lockProcesso, null);
+      await gravarChave(CHAVES.navegacao, null);
       await gravarChave(CHAVES.resultado, null);
 
       window.alert("Bloqueio local removido. Nenhuma ação foi executada no Systextil. Uma nova solicitação poderá ser enviada.");
@@ -2353,7 +2587,11 @@
       "emissao-solicitada",
       "processando",
       "baixando",
-      "indeterminado"
+      "indeterminado",
+      // Lote: nenhum destes expira sozinho (já pode haver boleto emitido).
+      "lote-emitindo",
+      "lote-emitido",
+      "lote-baixando"
     ];
     if (!estadosAtivos.includes(execucao.status)) return false;
 
@@ -2373,6 +2611,174 @@
     }
 
     return instanteAtual - criadoEm <= MAX_IDADE_SOLICITACAO_MS;
+  }
+
+  /**
+   * Da Consulta de títulos até o registro ÚNICO conferido: limpa a tela se preciso, preenche número e parcela com a confirmação
+   * NXJ dos dois campos, aciona Find e confere título, parcela e cliente. Não emite nada. Devolve os campos lidos do ERP.
+   * Usada pelo pedido de um título e por cada título do lote.
+   */
+  async function consultarEConferirTitulo(pedido, pagina, monitor) {
+    let tela = lerEstadoSystextil(pagina);
+    if (!tela) throw new Error("Não foi possível identificar o estado atual da Consulta de títulos.");
+
+    const camposComSobra = () =>
+      [CAMPOS.titulo, CAMPOS.parcela].some(nome =>
+        String(pagina.document?.getElementsByName?.(nome)?.[0]?.value ?? "").trim() !== ""
+      );
+
+    if (!tela.busca || camposComSobra()) {
+      clicarBarraConsulta("limpar");
+      await pausa(200);
+      await aguardarOcioso(monitor, 20000);
+
+      const inicioBusca = Date.now();
+      while (Date.now() - inicioBusca < 5000) {
+        if (lerEstadoSystextil(pagina)?.busca === true) break;
+        await pausa(80);
+      }
+      if (lerEstadoSystextil(pagina)?.busca !== true) {
+        throw new Error("Não foi possível preparar a tela para uma nova consulta.");
+      }
+      if (camposComSobra()) {
+        throw new Error("O Systextil não limpou os campos de uma tentativa anterior. Consulta interrompida.");
+      }
+    }
+
+    statusOperacional("Preenchendo título e parcela diretamente nos campos do ERP.");
+    const preenchimento = await preencherCamposConsulta({
+      titulo: pedido.titulo,
+      parcela: pedido.parcela
+    });
+    if (!preenchimento) {
+      throw new Error("O preenchimento não retornou resultado verificável.");
+    }
+
+    // Barreira independente: nenhuma consulta é enviada sem confirmação
+    // NXJ explícita dos dois campos.
+    validarConfirmacoesNxj(preenchimento.confirmacoes);
+
+    const antesFind = lerCamposConsulta();
+    if (
+      !antesFind.parcela ||
+      normalizarCodigoComparacao(antesFind.parcela) !== normalizarCodigoComparacao(pedido.parcela)
+    ) {
+      throw new Error("A parcela não permaneceu correta no campo real do Systextil. A consulta foi bloqueada.");
+    }
+    if (
+      antesFind.titulo &&
+      normalizarCodigoComparacao(antesFind.titulo) !== normalizarCodigoComparacao(pedido.titulo)
+    ) {
+      throw new Error("O título exibido no Systextil diverge do título recebido do CRM. A consulta foi bloqueada.");
+    }
+
+    const estadoAntesFind = lerEstadoSystextil(pagina);
+    if (!estadoAntesFind?.busca) {
+      throw new Error("O Systextil não está em modo de consulta. Find não foi acionado.");
+    }
+
+    statusOperacional("Acionando Find para consultar o título no ERP.");
+    const totalAntesFind = monitor.total;
+    clicarBarraConsulta("find");
+
+    const inicioFind = Date.now();
+    while (monitor.total === totalAntesFind && Date.now() - inicioFind < 2500) {
+      await pausa(60);
+    }
+    if (monitor.total === totalAntesFind) {
+      throw new Error("O controle Find não gerou uma requisição NXJ. A emissão foi bloqueada.");
+    }
+
+    await aguardarOcioso(monitor, 20000);
+    const resultadoFind = await aguardarResultadoFind(pagina, 20000);
+
+    if (resultadoFind.acao !== "RECORDS_FOUND" || resultadoFind.total < 1) {
+      throw new Error("Nenhum título foi encontrado para o número e parcela recebidos. Nada foi emitido.");
+    }
+    if (resultadoFind.total !== 1) {
+      throw new Error("A consulta retornou " + resultadoFind.total + " registros. A emissão exige uma única correspondência.");
+    }
+
+    const campos = lerCamposConsulta();
+    if (
+      !campos.parcela ||
+      normalizarCodigoComparacao(campos.parcela) !== normalizarCodigoComparacao(pedido.parcela)
+    ) {
+      throw new Error("A parcela retornada pelo Systextil não corresponde exatamente à parcela do CRM.");
+    }
+    if (!campos.titulo) {
+      throw new Error("A consulta terminou sem disponibilizar o número do título para conferência.");
+    }
+    if (normalizarCodigoComparacao(campos.titulo) !== normalizarCodigoComparacao(pedido.titulo)) {
+      throw new Error("O título retornado pelo Systextil diverge do solicitado.");
+    }
+    if (!campos.cliente) {
+      throw new Error("O Systextil não identificou o cliente do título.");
+    }
+    return campos;
+  }
+
+  /**
+   * Emite UM título do lote, sem sair da Consulta de títulos. O registro conferido por `consultarEConferirTitulo` pode ter ficado
+   * minutos na tela esperando o intervalo entre emissões, então tudo é conferido de novo imediatamente antes do clique. Depois do
+   * clique, qualquer falha deixa a emissão como incerta (`emissaoClicada`): o lote nunca tenta de novo.
+   */
+  async function acionarEmissaoDoTitulo(item, pagina, monitor) {
+    const estado = lerEstadoSystextil(pagina);
+    if (!estado || estado.visao !== VISAO_CONSULTA || estado.busca !== false) {
+      throw new Error("A Consulta de títulos mudou depois da conferência. Nenhuma emissão foi solicitada.");
+    }
+
+    const atuais = lerCamposConsulta();
+    if (
+      !atuais.parcela ||
+      normalizarCodigoComparacao(atuais.parcela) !== normalizarCodigoComparacao(item.parcela) ||
+      !atuais.titulo ||
+      normalizarCodigoComparacao(atuais.titulo) !== normalizarCodigoComparacao(item.titulo) ||
+      !atuais.cliente
+    ) {
+      throw new Error("O registro na tela mudou depois da conferência. Nenhuma emissão foi solicitada.");
+    }
+
+    const chaveEmissao = PREFIXO_CHAVE_EMISSAO +
+      normalizarCodigoComparacao(item.titulo) + "." +
+      normalizarCodigoComparacao(item.parcela);
+    const emissaoAnterior = Number(pagina.sessionStorage.getItem(chaveEmissao));
+    if (
+      Number.isFinite(emissaoAnterior) &&
+      emissaoAnterior > 0 &&
+      Date.now() - emissaoAnterior < JANELA_BLOQUEIO_EMISSAO_MS
+    ) {
+      throw new Error("Este título/parcela já teve uma emissão solicitada nos últimos cinco minutos. A repetição foi bloqueada.");
+    }
+
+    const botaoEmitir = acharBotaoEmitir();
+    if (!botaoEmitir || botaoEmitir.disabled) {
+      throw new Error("O botão Emite boleto não está disponível. Nenhuma emissão foi solicitada.");
+    }
+
+    verificarCancelamento();
+    const solicitadoEm = Date.now();
+    let emissaoClicada = false;
+    try {
+      pagina.sessionStorage.setItem(chaveEmissao, String(solicitadoEm));
+      statusOperacional("Título e parcela conferidos. Solicitando emissão.");
+      emissaoClicada = true;
+      botaoEmitir.click();
+      try {
+        await aguardarOcioso(monitor, 20000);
+      } catch (erroEspera) {
+        statusOperacional("A solicitação de emissão foi acionada, mas o ERP não confirmou a ociosidade: " + erroEspera.message, "erro");
+      }
+    } catch (erro) {
+      erro.emissaoClicada = emissaoClicada;
+      if (!emissaoClicada) {
+        try { pagina.sessionStorage.removeItem(chaveEmissao); } catch (_) {}
+      }
+      throw erro;
+    }
+
+    return { solicitadoEm, titulo: atuais.titulo, parcela: atuais.parcela, cliente: atuais.cliente };
   }
 
   async function executarConsultaCrm(pedido, pagina) {
@@ -2408,102 +2814,7 @@
 
     let emissaoClicada = false;
     try {
-      let tela = lerEstadoSystextil(pagina);
-      if (!tela) throw new Error("Não foi possível identificar o estado atual da Consulta de títulos.");
-
-      const camposComSobra = () =>
-        [CAMPOS.titulo, CAMPOS.parcela].some(nome =>
-          String(pagina.document?.getElementsByName?.(nome)?.[0]?.value ?? "").trim() !== ""
-        );
-
-      if (!tela.busca || camposComSobra()) {
-        clicarBarraConsulta("limpar");
-        await pausa(200);
-        await aguardarOcioso(monitor, 20000);
-
-        const inicioBusca = Date.now();
-        while (Date.now() - inicioBusca < 5000) {
-          if (lerEstadoSystextil(pagina)?.busca === true) break;
-          await pausa(80);
-        }
-        if (lerEstadoSystextil(pagina)?.busca !== true) {
-          throw new Error("Não foi possível preparar a tela para uma nova consulta.");
-        }
-        if (camposComSobra()) {
-          throw new Error("O Systextil não limpou os campos de uma tentativa anterior. Consulta interrompida.");
-        }
-      }
-
-      statusOperacional("Preenchendo título e parcela diretamente nos campos do ERP.");
-      const preenchimento = await preencherCamposConsulta({
-        titulo: pedido.titulo,
-        parcela: pedido.parcela
-      });
-      if (!preenchimento) {
-        throw new Error("O preenchimento não retornou resultado verificável.");
-      }
-
-      // Barreira independente: nenhuma consulta é enviada sem confirmação
-      // NXJ explícita dos dois campos.
-      validarConfirmacoesNxj(preenchimento.confirmacoes);
-
-      const antesFind = lerCamposConsulta();
-      if (
-        !antesFind.parcela ||
-        normalizarCodigoComparacao(antesFind.parcela) !== normalizarCodigoComparacao(pedido.parcela)
-      ) {
-        throw new Error("A parcela não permaneceu correta no campo real do Systextil. A consulta foi bloqueada.");
-      }
-      if (
-        antesFind.titulo &&
-        normalizarCodigoComparacao(antesFind.titulo) !== normalizarCodigoComparacao(pedido.titulo)
-      ) {
-        throw new Error("O título exibido no Systextil diverge do título recebido do CRM. A consulta foi bloqueada.");
-      }
-
-      const estadoAntesFind = lerEstadoSystextil(pagina);
-      if (!estadoAntesFind?.busca) {
-        throw new Error("O Systextil não está em modo de consulta. Find não foi acionado.");
-      }
-
-      statusOperacional("Acionando Find para consultar o título no ERP.");
-      const totalAntesFind = monitor.total;
-      clicarBarraConsulta("find");
-
-      const inicioFind = Date.now();
-      while (monitor.total === totalAntesFind && Date.now() - inicioFind < 2500) {
-        await pausa(60);
-      }
-      if (monitor.total === totalAntesFind) {
-        throw new Error("O controle Find não gerou uma requisição NXJ. A emissão foi bloqueada.");
-      }
-
-      await aguardarOcioso(monitor, 20000);
-      const resultadoFind = await aguardarResultadoFind(pagina, 20000);
-
-      if (resultadoFind.acao !== "RECORDS_FOUND" || resultadoFind.total < 1) {
-        throw new Error("Nenhum título foi encontrado para o número e parcela recebidos. Nada foi emitido.");
-      }
-      if (resultadoFind.total !== 1) {
-        throw new Error("A consulta retornou " + resultadoFind.total + " registros. A emissão exige uma única correspondência.");
-      }
-
-      const campos = lerCamposConsulta();
-      if (
-        !campos.parcela ||
-        normalizarCodigoComparacao(campos.parcela) !== normalizarCodigoComparacao(pedido.parcela)
-      ) {
-        throw new Error("A parcela retornada pelo Systextil não corresponde exatamente à parcela do CRM.");
-      }
-      if (!campos.titulo) {
-        throw new Error("A consulta terminou sem disponibilizar o número do título para conferência.");
-      }
-      if (normalizarCodigoComparacao(campos.titulo) !== normalizarCodigoComparacao(pedido.titulo)) {
-        throw new Error("O título retornado pelo Systextil diverge do solicitado.");
-      }
-      if (!campos.cliente) {
-        throw new Error("O Systextil não identificou o cliente do título.");
-      }
+      const campos = await consultarEConferirTitulo(pedido, pagina, monitor);
 
       const solicitadoEm = Date.now();
       const execucaoCompleta = {
@@ -2572,6 +2883,342 @@
     }
   }
 
+  const TEMPOS_ABRIR_TELA = Object.freeze({
+    esperaOutraAba: 1200, // uma aba que JÁ está na Consulta de títulos pega o pedido antes de qualquer aba trocar de tela
+    antesDoEnvio: 300, // deixa o campo de busca registrar o texto escrito
+    abrirTela: 6000 // sem a tela depois disso, pede ao operador para abri-la
+  });
+  const PROGRAMA_CONSULTA_TITULOS = "crec_f090";
+  const MENSAGEM_ABRINDO_TELA = "Abrindo a Consulta de títulos (crec_f090) no Systextil…";
+  const MENSAGEM_ABRIR_TELA_MANUAL = "O Systextil não abriu a Consulta de títulos sozinho. Abra essa tela; a automação continua quando ela aparecer.";
+
+  /** Código do erro para o CRM, a partir da mensagem. Só devolve valores da lista fechada de CODIGOS_ERRO_RESULTADO. */
+  function codigoDoErro(mensagem) {
+    const texto = String(mensagem ?? "");
+    if (/expirou ou possui horário inválido/i.test(texto)) return "expirado";
+    if (/registro persistido de execução anterior/i.test(texto)) return "bloqueio-persistido";
+    if (/Já existe um título aguardando/i.test(texto)) return "pedido-pendente";
+    if (/Abra a Consulta de títulos/i.test(texto)) return "tela-ausente";
+    return undefined;
+  }
+
+  /** O campo "Buscar programas" do cabeçalho do Systextil (um <object id="nxj_header"> do mesmo domínio), ou null. */
+  function buscaDeProgramas() {
+    try {
+      const cabecalho = document.getElementById("nxj_header");
+      const doc = cabecalho && cabecalho.contentDocument;
+      const campo = doc && doc.getElementById("search");
+      return campo && campo.type === "search" ? campo : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /** Escreve como o operador escreveria (setter nativo + input/change) e confere que o valor ficou. */
+  function definirValorNoCampo(input, valor) {
+    if (!input || input.readOnly || input.disabled) return false;
+    const prototipo = Object.getPrototypeOf(input);
+    const descritor = Object.getOwnPropertyDescriptor(prototipo, "value") ||
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value");
+    input.focus();
+    descritor.set.call(input, valor);
+    const janela = (input.ownerDocument && input.ownerDocument.defaultView) || window;
+    input.dispatchEvent(new janela.Event("input", { bubbles: true }));
+    input.dispatchEvent(new janela.Event("change", { bubbles: true }));
+    return input.value === valor;
+  }
+
+  /**
+   * Garante a Consulta de títulos para o pedido. Numa aba em outra tela, depois de dar tempo a uma aba que já está na Consulta,
+   * escreve `crec_f090` no "Buscar programas" e envia SÓ o formulário da busca (o que o Enter do operador faz; o Enter simulado
+   * não abre a tela, diagnóstico de 27/11/2026). UMA tentativa por pedido, com marca no armazenamento compartilhado que
+   * sobrevive a recarregar a página. Se a tela não abrir, avisa uma vez e devolve null; o pedido continua válido e é retomado
+   * quando o operador abrir a tela. Nunca clica, nunca teclas F7/F9/F10, nunca envia outro formulário.
+   * Devolve o estado da tela, ou null se este pedido não deve ser consumido por esta aba agora.
+   */
+  function criarPortasDaTela(pagina) {
+    return {
+      estadoDaTela: () => lerEstadoSystextil(pagina),
+      aguardarConsulta: ms => aguardarVisao(pagina, VISAO_CONSULTA, ms),
+      buscaDeProgramas,
+      definirValor: definirValorNoCampo,
+      pausa
+    };
+  }
+
+  async function garantirConsultaDeTitulos(pedido, pagina, portas = criarPortasDaTela(pagina)) {
+    const aberta = portas.estadoDaTela();
+    if (aberta?.visao === VISAO_CONSULTA) return aberta;
+
+    const naTela = await portas.aguardarConsulta(TEMPOS_ABRIR_TELA.esperaOutraAba);
+    if (naTela) return naTela;
+
+    const pendente = await lerChave(CHAVES.pedido);
+    if (!pendente || pendente.id !== pedido.id) return null; // outra aba já consumiu o pedido
+    const consumidor = await lerChave(CHAVES.consumidor);
+    if (consumidor && Number(consumidor.expiraEm) > Date.now() && consumidor.tabId !== ABA_ID) return null;
+
+    const marca = await lerChave(CHAVES.navegacao);
+    if (marca && marca.id === pedido.id) {
+      if (!marca.avisou && Date.now() - Number(marca.em) >= TEMPOS_ABRIR_TELA.abrirTela) {
+        await gravarChave(CHAVES.navegacao, { ...marca, avisou: true });
+        await publicarResultado(pedido, "abrir-tela-manual", true, MENSAGEM_ABRIR_TELA_MANUAL);
+      }
+      return null;
+    }
+
+    const campoBusca = portas.buscaDeProgramas();
+    if (!campoBusca) {
+      // Sem o cabeçalho conhecido: só espera a tela, avisando o operador uma vez.
+      await gravarChave(CHAVES.navegacao, { id: pedido.id, aba: ABA_ID, em: Date.now(), avisou: true });
+      await publicarResultado(pedido, "abrir-tela-manual", true, MENSAGEM_ABRIR_TELA_MANUAL);
+      return null;
+    }
+
+    // Reserva da tentativa: só uma aba, uma vez por pedido.
+    const reserva = { id: pedido.id, aba: ABA_ID, em: Date.now(), avisou: false };
+    await gravarChave(CHAVES.navegacao, reserva);
+    await portas.pausa(60);
+    const confirmada = await lerChave(CHAVES.navegacao);
+    if (confirmada?.id !== pedido.id || confirmada?.aba !== ABA_ID) return null;
+
+    await publicarResultado(pedido, "abrindo-tela", true, MENSAGEM_ABRINDO_TELA);
+    if (portas.definirValor(campoBusca, PROGRAMA_CONSULTA_TITULOS)) {
+      await portas.pausa(TEMPOS_ABRIR_TELA.antesDoEnvio);
+      const formulario = campoBusca.isConnected ? campoBusca.form : null;
+      if (formulario && typeof formulario.requestSubmit === "function" && campoBusca.value === PROGRAMA_CONSULTA_TITULOS) {
+        formulario.requestSubmit();
+      }
+    }
+
+    const aposEnvio = await portas.aguardarConsulta(TEMPOS_ABRIR_TELA.abrirTela);
+    if (aposEnvio) return aposEnvio;
+    await gravarChave(CHAVES.navegacao, { ...reserva, avisou: true });
+    await publicarResultado(pedido, "abrir-tela-manual", true, MENSAGEM_ABRIR_TELA_MANUAL);
+    return null;
+  }
+
+  /** O estado de cada título como fica gravado no armazenamento: identificação do pedido e do ERP, sem nada além do necessário. */
+  function itensPersistidos(lote, estados) {
+    return estados.map((estado, indice) => ({
+      indice,
+      estado: estado.estado,
+      cnpj: lote.itens[indice].cnpj,
+      razaoSocial: lote.itens[indice].razaoSocial,
+      titulo: estado.titulo ?? lote.itens[indice].titulo,
+      parcela: estado.parcela ?? lote.itens[indice].parcela,
+      cliente: estado.cliente,
+      solicitadoEm: estado.solicitadoEm,
+      motivo: estado.motivo
+    }));
+  }
+
+  function resumoDoLote(estados) {
+    const contagem = estado => estados.filter(item => item.estado === estado).length;
+    return contagem("emitido") + " de " + estados.length + " título(s) emitido(s).";
+  }
+
+  /**
+   * Lote, fase 1: consulta e emite todos os títulos na Consulta de títulos (com o intervalo entre cliques) e só depois vai a
+   * Processos agendados, onde `executarDownloadsDoLote` baixa os PDFs. O pedido é apagado ao assumir o lote: uma recarga da
+   * página nunca emite de novo. Na primeira falha o lote para, e os que já foram emitidos seguem para o download.
+   */
+  function criarPortasDoLote(pagina) {
+    let monitor = null;
+    const monitorDaPagina = () => {
+      if (!monitor) monitor = obterMonitorRequisicoes(pagina);
+      return monitor;
+    };
+    return {
+      estadoDaTela: () => lerEstadoSystextil(pagina),
+      consultar: item => consultarEConferirTitulo(item, pagina, monitorDaPagina()),
+      emitir: item => acionarEmissaoDoTitulo(item, pagina, monitorDaPagina()),
+      irParaProcessos: async () => {
+        const botaoProcessos = acharPorId("procAgendados");
+        if (!botaoProcessos) {
+          throw new Error("Os boletos foram emitidos, mas o controle Processos agendados não foi localizado. O estado foi preservado para conferência.");
+        }
+        botaoProcessos.click();
+        // O ERP pode trocar a visão na mesma aba ou abrir outra. A aba que chegar a Processos agendados lê CHAVES.execucao e continua.
+        await aguardarVisao(pagina, VISAO_PROCESSOS, 12000);
+      },
+      esperar: pausa,
+      agora: Date.now,
+      estaCancelado: () => cancelado
+    };
+  }
+
+  async function executarLote(lote, pagina, portas = criarPortasDoLote(pagina)) {
+    const estadoTela = portas.estadoDaTela();
+    if (!estadoTela || estadoTela.visao !== VISAO_CONSULTA) {
+      throw new Error("Abra a Consulta de títulos no Systextil. Nenhum campo foi alterado.");
+    }
+
+    const base = { schema: 2, lote: true, pedidoId: lote.id, criadoEm: Date.now() };
+    const persistir = (status, estados) => gravarChave(CHAVES.execucao, { ...base, status, itens: itensPersistidos(lote, estados) });
+    const iniciais = lote.itens.map(() => ({ estado: "na-fila" }));
+
+    await persistir("lote-emitindo", iniciais);
+    await gravarChave(CHAVES.pedido, null);
+    await publicarResultado(lote, "processando", true, "Solicitação recebida. A consulta e a emissão dos títulos começaram automaticamente.", { itens: iniciais });
+
+    try {
+      const resultado = await executarLoteEmissao({
+        itens: lote.itens,
+        consultar: portas.consultar,
+        emitir: portas.emitir,
+        esperar: portas.esperar,
+        agora: portas.agora,
+        estaCancelado: portas.estaCancelado,
+        aoMudar: async estados => {
+          await persistir("lote-emitindo", estados);
+          await publicarResultado(lote, "processando", true, resumoDoLote(estados), { itens: itensPersistidos(lote, estados) });
+        }
+      });
+
+      const emitidos = resultado.itens.filter(item => item.estado === "emitido");
+      if (emitidos.length === 0) {
+        // Nada a baixar. Um clique incerto mantém o bloqueio até a conferência manual.
+        const final = consolidarResultadoLote(resultado.itens);
+        if (resultado.itens.some(item => item.estado === "indeterminado")) await persistir("indeterminado", resultado.itens);
+        else await gravarChave(CHAVES.execucao, null);
+        await publicarResultado(lote, final.status, final.ok, final.mensagem, { itens: itensPersistidos(lote, resultado.itens) });
+        return;
+      }
+
+      await persistir("lote-emitido", resultado.itens);
+      await publicarResultado(
+        lote,
+        "emissao-solicitada",
+        true,
+        resultado.interrompido
+          ? "A emissão parou em um dos títulos. Indo a Processos agendados baixar os PDFs dos já emitidos."
+          : "Todos os títulos foram emitidos. Indo a Processos agendados baixar os PDFs.",
+        { itens: itensPersistidos(lote, resultado.itens) }
+      );
+
+      await portas.irParaProcessos();
+    } catch (erro) {
+      const atual = await lerChave(CHAVES.execucao).catch(() => null);
+      if (!atual || atual.pedidoId !== lote.id) throw erro;
+      // Pode já haver boleto emitido: o estado vira "indeterminado" (bloqueia novas emissões) e o erro NÃO é relançado,
+      // para que `consumirPedido` não publique um `erro` por cima, que convidaria a repetir a emissão.
+      await gravarChave(CHAVES.execucao, { ...atual, status: "indeterminado", motivo: textoDoErro(erro) });
+      await publicarResultado(lote, "indeterminado", false, textoDoErro(erro) + " Confira Processos agendados e Downloads antes de qualquer nova emissão.", { itens: atual.itens });
+      statusOperacional(textoDoErro(erro), "erro");
+    } finally {
+      await gravarChave(CHAVES.navegacao, null).catch(() => {});
+    }
+  }
+
+  /**
+   * Lote, fase 2: em Processos agendados, identifica e baixa o PDF de cada título emitido (`executarLoteDownloads`). Usa o mesmo
+   * `aguardarProcessoDoItem` e o mesmo download validado do pedido de um título, em modo silencioso.
+   */
+  function criarPortasDeDownload(pagina) {
+    let monitor = null;
+    return {
+      estadoDaTela: () => lerEstadoSystextil(pagina),
+      // Identifica o processo do título e baixa o PDF validado. `aoDemorar` avisa que o ERP ainda está processando.
+      baixarUm: async (execucaoDoItem, { aoIniciar, aoDemorar }) => {
+        if (!monitor) monitor = obterMonitorRequisicoes(pagina);
+        const registro = await aguardarProcessoDoItem(pagina, monitor, execucaoDoItem, aoDemorar);
+        await iniciarDownloadAutomatico(execucaoDoItem, registro, pagina, { silencioso: true, aoIniciar });
+      },
+      estaCancelado: () => cancelado
+    };
+  }
+
+  async function executarDownloadsDoLote(pagina, execucaoInformada, portas = criarPortasDeDownload(pagina)) {
+    if (processamentoEmAndamento) return;
+    processamentoEmAndamento = true;
+    let lockAdquirido = false;
+    const id = execucaoInformada?.pedidoId;
+    const lote = { id: id || "" };
+
+    try {
+      if (!execucaoInformada?.lote || !id || !Array.isArray(execucaoInformada.itens)) {
+        throw new Error("Não há um lote registrado para identificar em Processos agendados.");
+      }
+
+      lockAdquirido = await adquirirLock(CHAVES.lockProcesso, id, TTL_LOCK_LOTE_MS);
+      if (!lockAdquirido) return;
+
+      const estadoAtual = portas.estadoDaTela();
+      if (!estadoAtual || estadoAtual.visao !== VISAO_PROCESSOS) {
+        throw new Error("A tela Processos agendados não está ativa.");
+      }
+
+      const itens = execucaoInformada.itens.map(item => ({ ...item }));
+      const base = { ...execucaoInformada };
+      const persistir = estados => gravarChave(CHAVES.execucao, { ...base, status: "lote-baixando", itens: estados });
+      const paraCrm = estados => ({ itens: resumirItensParaCrm(estados) });
+      await persistir(itens);
+      await publicarResultado(lote, "processando", true, "Aguardando os processos de emissão em Processos agendados.", paraCrm(itens));
+
+      const resultado = await executarLoteDownloads({
+        itens,
+        estaCancelado: portas.estaCancelado,
+        aoMudar: async estados => {
+          await persistir(estados);
+          const baixando = estados.some(item => item.estado === "baixando");
+          await publicarResultado(
+            lote,
+            baixando ? "baixando" : "processando",
+            true,
+            baixando ? "Emissão confirmada. Baixando os PDFs para a pasta Downloads." : "Aguardando os processos de emissão em Processos agendados.",
+            paraCrm(estados)
+          );
+        },
+        baixarUm: async (item, _indice, aoIniciarDownload) => {
+          const execucaoDoItem = {
+            schema: 1,
+            pedidoId: id,
+            cnpj: item.cnpj,
+            razaoSocial: item.razaoSocial,
+            titulo: item.titulo,
+            parcela: item.parcela,
+            cliente: item.cliente,
+            solicitadoEm: item.solicitadoEm,
+            status: "processando",
+            criadoEm: base.criadoEm
+          };
+          await portas.baixarUm(execucaoDoItem, {
+            aoIniciar: aoIniciarDownload,
+            aoDemorar: async () => {
+              await publicarResultado(lote, "processando", true, "O ERP ainda está processando as emissões. A consulta será atualizada automaticamente.", paraCrm(itens));
+            }
+          });
+        }
+      });
+
+      const final = consolidarResultadoLote(resultado.itens);
+      if (resultado.itens.some(item => item.estado === "indeterminado")) {
+        await gravarChave(CHAVES.execucao, { ...base, status: "indeterminado", itens: resultado.itens });
+      } else {
+        await gravarChave(CHAVES.execucao, null);
+      }
+      await publicarResultado(lote, final.status, final.ok, final.mensagem, paraCrm(resultado.itens));
+      statusOperacional(final.mensagem, final.ok ? "info" : "erro");
+    } catch (erro) {
+      const atual = await lerChave(CHAVES.execucao).catch(() => null);
+      if (atual && atual.pedidoId === id) {
+        await gravarChave(CHAVES.execucao, { ...atual, status: "indeterminado", motivo: textoDoErro(erro) });
+      }
+      await publicarResultado(lote, "indeterminado", false, textoDoErro(erro) + " Confira Processos agendados e Downloads antes de qualquer nova emissão.", { itens: atual?.itens });
+      statusOperacional(textoDoErro(erro), "erro");
+    } finally {
+      if (lockAdquirido && id) await liberarLock(CHAVES.lockProcesso, id);
+      processamentoEmAndamento = false;
+    }
+  }
+
+  function retomarProcessos(pagina, execucao) {
+    return execucao?.lote === true
+      ? executarDownloadsDoLote(pagina, execucao)
+      : executarProcessosAutomaticamente(pagina, execucao);
+  }
+
   async function consumirPedido(pedidoInformado, pagina) {
     if (!NA_PAGINA_SYSTEXTIL || consumoEmAndamento) return;
     consumoEmAndamento = true;
@@ -2579,15 +3226,14 @@
     let lockAdquirido = false;
 
     try {
-      pedido = validarPedido(pedidoInformado);
+      pedido = validarQualquerPedido(pedidoInformado);
       const pendente = await lerChave(CHAVES.pedido);
       if (!pendente || pendente.id !== pedido.id) return;
 
-      const view = await aguardarVisao(pagina, VISAO_CONSULTA, 25000);
-      if (!view) {
-        await publicarResultado(pedido, "erro", false, "Abra a Consulta de títulos no Systextil para iniciar a automação.");
-        return;
-      }
+      // Fora da Consulta de títulos, abre a tela pelo "Buscar programas" (uma tentativa por pedido) ou avisa o operador;
+      // não publica mais erro terminal: o pedido segue válido até expirar e é retomado quando a tela aparecer.
+      const view = await garantirConsultaDeTitulos(pedido, pagina);
+      if (!view) return;
 
       const execucaoAtual = await lerChave(CHAVES.execucao);
       if (obterExecucaoAtiva(execucaoAtual)) {
@@ -2595,22 +3241,27 @@
           pedido,
           "erro",
           false,
-          "Existe um registro persistido de execução anterior (estado: " + String(execucaoAtual.status || "desconhecido") + "). Confira Processos agendados e Downloads antes de tentar novamente. Se não houver emissão pendente, use o comando do Tampermonkey para liberar o bloqueio após conferência manual."
+          "Existe um registro persistido de execução anterior (estado: " + String(execucaoAtual.status || "desconhecido") + "). Confira Processos agendados e Downloads antes de tentar novamente. Se não houver emissão pendente, use o comando do Tampermonkey para liberar o bloqueio após conferência manual.",
+          { codigo: "bloqueio-persistido" }
         );
         return;
       }
 
-      lockAdquirido = await adquirirLock(CHAVES.consumidor, pedido.id, TTL_LOCK_TRANSFER_MS);
+      lockAdquirido = await adquirirLock(CHAVES.consumidor, pedido.id, pedido.schema === 2 ? TTL_LOCK_LOTE_MS : TTL_LOCK_TRANSFER_MS);
       if (!lockAdquirido) return;
 
       const pedidoAtual = await lerChave(CHAVES.pedido);
       if (!pedidoAtual || pedidoAtual.id !== pedido.id) return;
 
-      await publicarResultado(pedido, "processando", true, "Solicitação recebida. O preenchimento e a consulta começaram automaticamente.");
-      await executarConsultaCrm(pedido, pagina);
+      if (pedido.schema === 2) {
+        await executarLote(pedido, pagina);
+      } else {
+        await publicarResultado(pedido, "processando", true, "Solicitação recebida. O preenchimento e a consulta começaram automaticamente.");
+        await executarConsultaCrm(pedido, pagina);
+      }
     } catch (erro) {
       const seguro = pedido || (pedidoInformado && typeof pedidoInformado.id === "string" ? pedidoInformado : { id: "" });
-      await publicarResultado(seguro, "erro", false, erro?.message || "Não foi possível iniciar a segunda via.");
+      await publicarResultado(seguro, "erro", false, erro?.message || "Não foi possível iniciar a segunda via.", { codigo: codigoDoErro(erro?.message) });
       statusOperacional(erro?.message || "Falha não identificada.", "erro");
     } finally {
       if (pedido && lockAdquirido) {
@@ -2678,7 +3329,9 @@
     }
   }
 
-  async function iniciarDownloadAutomatico(execucao, registro, pagina) {
+  async function iniciarDownloadAutomatico(execucao, registro, pagina, ganchos = {}) {
+    // `silencioso` (lote): quem chama acompanha o andamento; aqui nada é gravado nem publicado no nível do pedido.
+    const silencioso = ganchos.silencioso === true;
     const localizado = localizarFormularioProcessos();
     const janelaPagina = localizarJanelaPagina(localizado.documento);
     const preparado = prepararUrlDownloadProcesso(
@@ -2696,8 +3349,11 @@
     const chaveDownload = montarChaveDownload(execucao, registro);
     reservarDownload(armazenamento, chaveDownload, Date.now());
 
-    await gravarChave(CHAVES.execucao, { ...execucao, status: "baixando" });
-    await publicarResultado({ id: execucao.pedidoId }, "baixando", true, "Emissão confirmada. Baixando o PDF para a pasta Downloads.");
+    if (!silencioso) {
+      await gravarChave(CHAVES.execucao, { ...execucao, status: "baixando" });
+      await publicarResultado({ id: execucao.pedidoId }, "baixando", true, "Emissão confirmada. Baixando o PDF para a pasta Downloads.");
+    }
+    if (typeof ganchos.aoIniciar === "function") await ganchos.aoIniciar();
 
     return new Promise((resolve, reject) => {
       let finalizado = false;
@@ -2708,12 +3364,14 @@
         if (tipo === "sucesso") {
           try {
             concluirDownload(armazenamento, chaveDownload, Date.now());
-            await gravarChave(CHAVES.execucao, null);
-            await publicarResultado({ id: execucao.pedidoId }, "concluido", true, "Segunda via concluída. PDF salvo na pasta Downloads do navegador.");
+            if (!silencioso) {
+              await gravarChave(CHAVES.execucao, null);
+              await publicarResultado({ id: execucao.pedidoId }, "concluido", true, "Segunda via concluída. PDF salvo na pasta Downloads do navegador.");
+            }
             statusOperacional("Segunda via concluída. PDF enviado para Downloads.");
             resolve();
           } catch (falha) {
-            await publicarResultado({ id: execucao.pedidoId }, "erro", false, "O download terminou, mas não foi possível registrar a proteção contra duplicidade: " + falha.message);
+            if (!silencioso) await publicarResultado({ id: execucao.pedidoId }, "erro", false, "O download terminou, mas não foi possível registrar a proteção contra duplicidade: " + falha.message);
             reject(falha);
           }
           return;
@@ -2724,8 +3382,10 @@
 
         if (falhaAntesDeIniciar) {
           liberarDownload(armazenamento, chaveDownload);
-          await gravarChave(CHAVES.execucao, { ...execucao, status: "falha", motivo: codigoErro });
-          await publicarResultado({ id: execucao.pedidoId }, "erro", false, "O Tampermonkey não iniciou o download: " + codigoErro + ". Verifique as permissões de download.");
+          if (!silencioso) {
+            await gravarChave(CHAVES.execucao, { ...execucao, status: "falha", motivo: codigoErro });
+            await publicarResultado({ id: execucao.pedidoId }, "erro", false, "O Tampermonkey não iniciou o download: " + codigoErro + ". Verifique as permissões de download.");
+          }
           reject(new Error("O Tampermonkey não iniciou o download (" + codigoErro + ")."));
           return;
         }
@@ -2735,8 +3395,10 @@
         } catch (_) {
           // Mantém a reserva existente caso não consiga marcar o estado.
         }
-        await gravarChave(CHAVES.execucao, { ...execucao, status: "indeterminado", motivo: String(erro?.message || erro?.error || "resultado-indeterminado").slice(0, 240) });
-        await publicarResultado({ id: execucao.pedidoId }, "indeterminado", false, "O navegador não confirmou o download. Confira a pasta Downloads antes de solicitar outra emissão.");
+        if (!silencioso) {
+          await gravarChave(CHAVES.execucao, { ...execucao, status: "indeterminado", motivo: String(erro?.message || erro?.error || "resultado-indeterminado").slice(0, 240) });
+          await publicarResultado({ id: execucao.pedidoId }, "indeterminado", false, "O navegador não confirmou o download. Confira a pasta Downloads antes de solicitar outra emissão.");
+        }
         reject(new Error("Resultado do download indeterminado. Confira a pasta Downloads antes de repetir."));
       };
 
@@ -2751,6 +3413,53 @@
         void finalizar("erro", { error: "not_succeeded", message: erro.message });
       }
     });
+  }
+
+  /**
+   * Em Processos agendados, espera o processo de UM título (identificado por nome e horário, um único candidato) concluir com
+   * sucesso e devolve o registro. `aoDemorar` é chamado quando o ERP ainda está processando depois de 15 s.
+   */
+  async function aguardarProcessoDoItem(pagina, monitor, execucao, aoDemorar) {
+    const inicio = Date.now();
+    let registroConcluido = null;
+
+    // A primeira leitura também ocorre depois de atualizar pelo sininho:
+    // a grade pode abrir com registros anteriores à emissão.
+    await atualizarGradeProcessos(pagina, monitor);
+
+    while (!registroConcluido) {
+      verificarCancelamento();
+      if (Date.now() - inicio >= 180000) {
+        throw new Error("Tempo esgotado aguardando o processo de emissão. A solicitação foi preservada para conferência.");
+      }
+
+      let registros;
+      try {
+        registros = lerRegistrosProcessos();
+      } catch (erro) {
+        const telaAindaCarregando =
+          /grade não contém registros legíveis|Formulário de Processos agendados não identificado/i
+            .test(String(erro?.message || ""));
+        if (!telaAindaCarregando) throw erro;
+        registros = [];
+      }
+
+      const analise = analisarProcessos(registros, execucao, Date.now());
+      if (analise.status === "sucesso" && analise.registro) {
+        registroConcluido = analise.registro;
+        break;
+      }
+      if (!["nao-encontrado", "em-andamento"].includes(analise.status)) {
+        throw new Error(analise.mensagem || "O processo não pôde ser identificado com segurança.");
+      }
+
+      if (Date.now() - inicio > 15000) {
+        await aoDemorar();
+      }
+      await atualizarGradeProcessos(pagina, monitor);
+    }
+
+    return registroConcluido;
   }
 
   async function executarProcessosAutomaticamente(pagina, execucaoInformada) {
@@ -2777,44 +3486,9 @@
       await publicarResultado({ id: execucao.pedidoId }, "processando", true, "Aguardando a conclusão da emissão em Processos agendados.");
 
       const monitor = obterMonitorRequisicoes(pagina);
-      const inicio = Date.now();
-      let registroConcluido = null;
-
-      // A primeira leitura também ocorre depois de atualizar pelo sininho:
-      // a grade pode abrir com registros anteriores à emissão.
-      await atualizarGradeProcessos(pagina, monitor);
-
-      while (!registroConcluido) {
-        verificarCancelamento();
-        if (Date.now() - inicio >= 180000) {
-          throw new Error("Tempo esgotado aguardando o processo de emissão. A solicitação foi preservada para conferência.");
-        }
-
-        let registros;
-        try {
-          registros = lerRegistrosProcessos();
-        } catch (erro) {
-          const telaAindaCarregando =
-            /grade não contém registros legíveis|Formulário de Processos agendados não identificado/i
-              .test(String(erro?.message || ""));
-          if (!telaAindaCarregando) throw erro;
-          registros = [];
-        }
-
-        const analise = analisarProcessos(registros, execucao, Date.now());
-        if (analise.status === "sucesso" && analise.registro) {
-          registroConcluido = analise.registro;
-          break;
-        }
-        if (!["nao-encontrado", "em-andamento"].includes(analise.status)) {
-          throw new Error(analise.mensagem || "O processo não pôde ser identificado com segurança.");
-        }
-
-        if (Date.now() - inicio > 15000) {
-          await publicarResultado({ id: execucao.pedidoId }, "processando", true, "O ERP ainda está processando a emissão. A consulta será atualizada automaticamente.");
-        }
-        await atualizarGradeProcessos(pagina, monitor);
-      }
+      const registroConcluido = await aguardarProcessoDoItem(pagina, monitor, execucao, async () => {
+        await publicarResultado({ id: execucao.pedidoId }, "processando", true, "O ERP ainda está processando a emissão. A consulta será atualizada automaticamente.");
+      });
 
       await iniciarDownloadAutomatico(execucao, registroConcluido, pagina);
     } catch (erro) {
@@ -2846,11 +3520,11 @@
     let pedidoInformado;
     try {
       pedidoInformado = typeof evento?.detail === "string" ? JSON.parse(evento.detail) : evento?.detail;
-      const pedido = validarPedido(pedidoInformado);
+      const pedido = validarQualquerPedido(pedidoInformado);
       const anterior = await lerChave(CHAVES.pedido);
       if (anterior) {
         try {
-          validarPedido(anterior);
+          validarQualquerPedido(anterior);
           throw new Error("Já existe um título aguardando processamento. Aguarde a conclusão antes de enviar outro.");
         } catch (erro) {
           if (/Já existe um título aguardando/.test(erro.message)) throw erro;
@@ -2873,7 +3547,7 @@
       const pedidoSeguro = pedidoInformado && typeof pedidoInformado.id === "string"
         ? pedidoInformado
         : { id: "" };
-      emitirResultado(criarResultado(pedidoSeguro, "erro", false, erro?.message || "Solicitação recusada."));
+      emitirResultado(criarResultado(pedidoSeguro, "erro", false, erro?.message || "Solicitação recusada.", { codigo: codigoDoErro(erro?.message) }));
     }
   }
 
@@ -2907,11 +3581,11 @@
         }
       });
       GM_addValueChangeListener(CHAVES.execucao, (_chave, _anterior, novo, remoto) => {
-        if (remoto && novo?.status === "emissao-solicitada") {
+        if (remoto && (novo?.status === "emissao-solicitada" || novo?.status === "lote-emitido")) {
           const estado = lerEstadoSystextil(pagina);
           if (estado?.visao === VISAO_PROCESSOS) {
             cancelado = false;
-            void executarProcessosAutomaticamente(pagina, novo);
+            void retomarProcessos(pagina, novo);
           }
         }
       });
@@ -2921,9 +3595,9 @@
 
     if (estadoInicial?.visao === VISAO_PROCESSOS) {
       const execucao = await lerChave(CHAVES.execucao);
-      if (execucao?.status === "emissao-solicitada" || execucao?.status === "processando") {
+      if (["emissao-solicitada", "processando", "lote-emitido", "lote-baixando"].includes(execucao?.status)) {
         cancelado = false;
-        void executarProcessosAutomaticamente(pagina, execucao);
+        void retomarProcessos(pagina, execucao);
       }
     } else {
       const pedido = await lerChave(CHAVES.pedido);
@@ -2942,9 +3616,9 @@
       ultimaVisao = atual.visao;
       if (atual.visao === VISAO_PROCESSOS && !processamentoEmAndamento) {
         const execucao = await lerChave(CHAVES.execucao).catch(() => null);
-        if (execucao?.status === "emissao-solicitada" || execucao?.status === "processando") {
+        if (["emissao-solicitada", "processando", "lote-emitido", "lote-baixando"].includes(execucao?.status)) {
           cancelado = false;
-          void executarProcessosAutomaticamente(pagina, execucao);
+          void retomarProcessos(pagina, execucao);
         }
       } else if (atual.visao === VISAO_CONSULTA && !consumoEmAndamento) {
         const pedido = await lerChave(CHAVES.pedido).catch(() => null);
@@ -2959,7 +3633,25 @@
   if (EM_NODE) {
     module.exports = Object.freeze({
       VERSION,
+      MAX_ITENS_LOTE,
+      INTERVALO_ENTRE_EMISSOES_MS,
+      TOLERANCIA_HORARIO_PROCESSO_MS,
+      MAX_IDADE_SOLICITACAO_MS,
       validarPedido,
+      validarPedidoLote,
+      validarQualquerPedido,
+      resumirItensParaCrm,
+      consolidarResultadoLote,
+      classificarFalhaDownload,
+      executarLoteEmissao,
+      executarLoteDownloads,
+      executarLote,
+      executarDownloadsDoLote,
+      garantirConsultaDeTitulos,
+      CHAVES,
+      obterExecucaoAtiva,
+      criarResultado,
+      codigoDoErro,
       extrairValoresPendentesNxj,
       valorConfere,
       validarConfirmacoesNxj,

@@ -4,7 +4,7 @@ Userscripts para reduzir trabalho repetitivo no Systextil, mantendo uma autoriza
 
 ## Segunda via automática — SmartTable → Systextil
 
-**Instalação única:** [userscripts/systextil-segunda-via.user.js](userscripts/systextil-segunda-via.user.js) · v1.0.8 (proposta na branch `fix/nxj-aguarda-ocioso-por-campo`).
+**Instalação única:** [userscripts/systextil-segunda-via.user.js](userscripts/systextil-segunda-via.user.js) · v1.1.0 (proposta: lote de títulos e abertura automática da Consulta de títulos; a `main` traz a 1.0.8).
 
 O mesmo userscript funciona no CRM e no Systextil. O clique em **Enviar ao Systextil** no SmartTable é a única autorização humana necessária. Depois disso, o script:
 
@@ -21,7 +21,7 @@ Não são criados painéis flutuantes, campos auxiliares, janelas de conferênci
 
 **Instalação e atualização:** instale somente `systextil-segunda-via.user.js` no Tampermonkey e habilite-o no CRM e no Systextil. Os três userscripts antigos foram desativados por metadados e não devem ser reativados. Depois de instalar o novo, remova ou desative as entradas antigas no Tampermonkey para evitar confusão.
 
-**Conferência da versão instalada:** a `main` integra a v1.0.7 pela PR #44. A branch `fix/nxj-aguarda-ocioso-por-campo` propõe a v1.0.8. Enquanto a proposta não for integrada, a versão publicada na `main` continua sendo 1.0.7. Confira o cabeçalho `@version` da entrada instalada, desative/remova cópias antigas e confirme a versão efetivamente instalada; não infira a versão pelo nome do arquivo.
+**Conferência da versão instalada:** a `main` (commit `09864bc`) traz o `@version` 1.0.8. A v1.1.0 (lote e abertura automática da tela, ver [docs/transferencia-crm-systextil.md](docs/transferencia-crm-systextil.md)) está proposta em branch. Enquanto ela não for integrada, a versão publicada na `main` continua sendo a que está no cabeçalho dela. Confira o cabeçalho `@version` da entrada instalada, desative/remova cópias antigas e confirme a versão efetivamente instalada; não infira a versão pelo nome do arquivo.
 
 **Proteções operacionais:** confirmação NXJ obrigatória dos dois campos antes do Find, correspondência única, conferência de título/parcela/cliente, trava contra emissão repetida, identificação inequívoca do processo, validação do PDF e bloqueio de repetição quando o resultado do download é indeterminado. Um timeout após clicar em **Emite boleto** não prova que a emissão falhou; nesses casos o fluxo não emite novamente. Um resultado de download indeterminado exige conferir a pasta Downloads antes de uma nova tentativa.
 

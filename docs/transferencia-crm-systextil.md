@@ -1,8 +1,37 @@
 # Segunda via automática — SmartTable → Systextil
 
 **Userscript único:** `userscripts/systextil-segunda-via.user.js`  
-**Versão proposta:** 1.0.8 (`fix/nxj-aguarda-ocioso-por-campo`)  
-**Status:** v1.0.7 integrada à `main` pela PR #44 em 11/11/2026. A v1.0.8 nesta branch espera o POST NXJ de saída, sua resposta HTTP 2xx e a ociosidade subsequente entre etapas de foco. A homologação operacional no Chrome/Tampermonkey/Systextil real permanece pendente.
+**Versão proposta:** 1.1.0 (lote de títulos e abertura automática da Consulta de títulos; ver a seção "Lote e abertura automática da tela — v1.1.0" abaixo)  
+**Status:** a `main` (commit `09864bc`) já traz a 1.0.8 (espera o POST NXJ de saída, sua resposta HTTP 2xx e a ociosidade entre etapas de foco). A 1.1.0 é uma proposta em branch, sem PR integrada. A homologação operacional no Chrome/Tampermonkey/Systextil real permanece pendente, inclusive para o lote.
+
+## Lote e abertura automática da tela — v1.1.0 (27/11/2026)
+
+**Pedido do usuário:** emitir vários boletos de uma vez, incluir títulos não vencidos e fazer o Systextil abrir sozinho a Consulta de títulos. O fluxo descrito pelo usuário: o Systextil consulta e emite todos os boletos na Consulta de títulos e, **depois**, vai a Processos agendados e baixa os PDFs. O SmartTable (v1.142.0, repositório SmartTable) envia o lote; esta versão o executa.
+
+**Pedido em lote (schema 2).** `{ schema: 2, id, createdAt, source: "smarttable-crm", itens: [...] }`, de 1 a **6** títulos, cada um validado como o pedido de um título. Título e parcela repetidos no mesmo lote (comparados sem zeros à esquerda) são recusados. O pedido de um título (schema 1) continua aceito e segue o fluxo da 1.0.8 sem mudança de comportamento.
+
+**Por que 6 e por que 3 min 05 s entre emissões (inferido do código, não observado no ERP):**
+- Todo processo de emissão se chama "Emissão de boletos com registro" e só se distingue pelo horário: `analisarProcessos` aceita um processo dentro de ±90 s do clique e exige um único candidato. Dois cliques com menos de duas janelas (180 s) de diferença deixariam os dois processos na mesma janela e o script pararia por ambiguidade. Escolher "a linha de cima" seria adivinhar, o que este repositório proíbe. Por isso o lote espera `INTERVALO_ENTRE_EMISSOES_MS = 2 × 90 s + 5 s` entre um clique em **Emite boleto** e o seguinte. A consulta do título seguinte acontece durante a espera; o clique, só depois dela.
+- `analisarProcessos` recusa solicitação com mais de 30 min. Como o primeiro PDF só é baixado depois da última emissão, o teto de títulos precisa caber: 6 títulos ≈ 15 min de intervalos mais consultas e navegação. Com 10 estouraria. Um teste trava essa conta (`MAX_ITENS_LOTE`, `INTERVALO_ENTRE_EMISSOES_MS`, `MAX_IDADE_SOLICITACAO_MS`).
+- Se um processo rodar mais de ~95 s depois do clique, o título seguinte pode ver dois processos na sua janela: o resultado é `indeterminado` (falha segura), nunca um PDF trocado.
+
+**Fase 1, emissão (na Consulta de títulos).** Para cada título, na ordem: `consultarEConferirTitulo` (a mesma sequência do pedido de um título: Nova consulta se houver resíduo, preenchimento com confirmação NXJ dos dois campos, Find, registro único, conferência de título, parcela e cliente), espera do intervalo e `acionarEmissaoDoTitulo`, que **reconfere** a tela, o registro e a trava de 5 min por título/parcela imediatamente antes de clicar em **Emite boleto** uma única vez (o registro pode ter ficado minutos na tela esperando o intervalo). Na primeira falha o lote **para**: os títulos que faltam ficam `nao-emitido`. Um erro depois do clique deixa o título `indeterminado` (a emissão é incerta e nunca é repetida). Esc interrompe sem emitir os que faltam.
+
+**Fase 2, download (em Processos agendados).** Só depois da fase 1, se algum título foi emitido: aciona `procAgendados` e, para cada título emitido, identifica o processo pela **própria** solicitação (horário, número e parcela), valida e baixa o PDF com as mesmas validações da 1.0.8 (`aguardarProcessoDoItem` e `iniciarDownloadAutomatico`, este em modo silencioso). Baixar não duplica emissão: a falha de um título não impede os outros, **exceto** se a tela de Processos agendados falhar (aí os demais ficam `indeterminado`).
+
+**Estados.** Por título (lista fechada, é o que o CRM recebe): `na-fila`, `consultando`, `aguardando-intervalo`, `emitido`, `nao-emitido`, `baixando`, `concluido`, `indeterminado`, `erro`. O CRM recebe só `{ indice, estado }`, nunca título, CNPJ, nome nem mensagem. Resultado final: `concluido` com `ok: true` só se TODOS salvaram o PDF; com algum `indeterminado`, `indeterminado`; senão `concluido` com `ok: false`. A execução gravada usa `lote-emitindo`, `lote-emitido` e `lote-baixando`; **nenhum expira sozinho** e, com título `indeterminado`, o bloqueio permanece até a conferência manual.
+
+**Retomada e bloqueio.** O pedido é apagado do armazenamento ao assumir o lote, antes da primeira consulta: recarregar a página não emite de novo. Recarregar durante a fase 1 deixa `lote-emitindo` gravado (bloqueio): confira Processos agendados e Downloads e use **Segunda via: liberar bloqueio após conferência manual**. Recarregar na fase 2 retoma os títulos `emitido` e marca como `indeterminado` o que estava `baixando` (o PDF pode ter sido salvo).
+
+**Abertura automática da Consulta de títulos.** Numa aba em outra tela, depois de 1,2 s (tempo para uma aba que já está na Consulta pegar o pedido), o script escreve `crec_f090` no campo "Buscar programas" do cabeçalho (`<object id="nxj_header">`, mesmo domínio) e envia **só o formulário da busca** (`requestSubmit()`, o que o Enter do operador faz; o Enter simulado não abre a tela, diagnóstico de 27/11/2026 do SmartTable, e por isso não há teclas simuladas). **Uma tentativa por pedido**, entre todas as abas, com marca no armazenamento que sobrevive à recarga. Se a tela não abrir em 6 s, publica `abrir-tela-manual` uma vez e o pedido segue válido (5 min) até o operador abrir a tela. Nunca clica, nunca F7, F9 nem F10, nunca envia outro formulário. Isto **não** vira mais `erro` terminal: abas fora da tela não publicam erro. Risco aceito: a aba que troca de tela pode perder algo não salvo nela.
+
+**Códigos de erro.** Os resultados `erro` podem trazer `codigo`: `pedido-pendente`, `bloqueio-persistido`, `expirado` ou `tela-ausente` (lista fechada; a mensagem não muda).
+
+**Fato confirmado pelo usuário (27/11/2026):** digitar `crec_f090` no "Buscar programas" e apertar Enter abre a Consulta de títulos.
+
+**NÃO homologado no Systextil real (não repetir como fato):** (1) o envio do formulário (`requestSubmit`) abrir a tela, o que a ponte do celular do SmartTable também só supõe; (2) **Nova consulta** entre títulos e **Emite boleto** repetido sem sair da Consulta; (3) a Consulta continuar utilizável durante a espera de ~3 min com um registro carregado; (4) os processos com ~3 min de intervalo serem reconhecidos um a um; (5) a tela de Processos agendados listar os vários processos como esperado; (6) os downloads em sequência com o Tampermonkey. Primeiro teste real sugerido: um lote de 2 títulos que seriam emitidos de qualquer jeito, nunca emissão extra.
+
+**Testes:** `tests/segunda-via-lote.test.js` (relógio falso e armazenamento falso: validação do lote, intervalo, ordem consulta/espera/clique, parada na falha, Esc, as duas fases, retomada, abertura da tela, estados e códigos; mais asserções de código-fonte para o que depende da página). Mutações conferidas: 27 defeitos reintroduzidos (intervalo, teto, ordem, parada, clique incerto, duplicados, vazamento de dados no resultado, pedido apagado depois do laço, relançamento do erro, nova tentativa de abertura, envio sem conferir o texto, travas de consumo e de processos, reconferências antes do clique e as listas de retomada); cada um derruba pelo menos um teste. **Não coberto por execução:** o código que lê e aciona a página real (consulta, clique, grade, download); ele reaproveita por extração mecânica o código da 1.0.8 e fica coberto por asserções de ordem no fonte.
 
 ## Objetivo e autorização
 
@@ -74,7 +103,7 @@ Os dados de referência do CRM são usados para conduzir a operação e nomear o
 - `Esc` interrompe a automação local. Não cancela uma emissão já enviada ao ERP.
 - O script clica no controle **Find** (`btnFind.`) da barra de consulta e aguarda a confirmação da requisição e do resultado do ERP. Não simula eventos de teclado F7 nem usa `.submit()`.
 
-Se a tela não for **Consulta de títulos** quando a solicitação chegar, o userscript informa a falha ao CRM e não emite. Abra a tela correta e envie o título novamente. Não repita uma solicitação quando o resultado da emissão ou do download estiver indeterminado sem antes conferir Processos agendados e a pasta Downloads.
+Se a tela não for **Consulta de títulos** quando a solicitação chegar, a partir da 1.1.0 o userscript tenta abri-la pelo "Buscar programas" (uma tentativa por pedido) ou pede ao operador que a abra, e não emite enquanto ela não estiver aberta. Nesse intervalo o pedido continua válido até expirar. Não repita uma solicitação quando o resultado da emissão ou do download estiver indeterminado sem antes conferir Processos agendados e a pasta Downloads.
 
 ## Recuperação manual de bloqueio persistido
 

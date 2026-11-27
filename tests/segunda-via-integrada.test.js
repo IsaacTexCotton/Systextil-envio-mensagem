@@ -36,7 +36,7 @@ function formatarDataHora(timestamp) {
 }
 
 test('expõe a versão unificada e valida a transferência recebida do SmartTable', () => {
-  assert.equal(api.VERSION, '1.0.8');
+  assert.equal(api.VERSION, '1.1.0');
   const pedido = api.validarPedido(pedidoValido());
   assert.equal(pedido.titulo, '00001234');
   assert.equal(pedido.parcela, '03');
@@ -289,8 +289,9 @@ test('atualiza Processos agendados pelo sininho e aguarda a grade', () => {
 });
 
 test('atualiza a grade antes da primeira leitura dos processos', () => {
-  const inicio = SOURCE.indexOf('async function executarProcessosAutomaticamente');
-  const fim = SOURCE.indexOf('async function receberPedidoCrm', inicio);
+  // A espera pelo processo de um título fica em `aguardarProcessoDoItem`, usada pelo pedido de um título e pelo lote.
+  const inicio = SOURCE.indexOf('async function aguardarProcessoDoItem');
+  const fim = SOURCE.indexOf('async function executarProcessosAutomaticamente', inicio);
   const trecho = SOURCE.slice(inicio, fim);
   const primeiraAtualizacao = trecho.indexOf('await atualizarGradeProcessos(pagina, monitor)');
   const primeiraLeitura = trecho.indexOf('lerRegistrosProcessos()');
