@@ -1,7 +1,7 @@
 # Segunda via automática — SmartTable → Systextil
 
 **Userscript único:** `userscripts/systextil-segunda-via.user.js`  
-**Versão:** 1.1.1 (lote de títulos e abertura automática da Consulta de títulos, v1.1.0; Enter no título e motivo por título, v1.1.1; ver as seções abaixo)  
+**Versão:** 1.1.2 (lote de títulos e abertura automática da Consulta de títulos, v1.1.0; Enter no título e motivo por título, v1.1.1; saída do título refeita sem o comando, sinal de vida na espera e Web Lock, v1.1.2; ver as seções abaixo)  
 **Status:** a `main` (commit `09864bc`) já traz a 1.0.8 (espera o POST NXJ de saída, sua resposta HTTP 2xx e a ociosidade entre etapas de foco). A 1.1.0 é uma proposta em branch, sem PR integrada. A homologação operacional no Chrome/Tampermonkey/Systextil real permanece pendente, inclusive para o lote.
 
 ## Lote e abertura automática da tela — v1.1.0 (27/11/2026)
@@ -32,6 +32,30 @@
 **NÃO homologado no Systextil real (não repetir como fato):** (1) o envio do formulário (`requestSubmit`) abrir a tela, o que a ponte do celular do SmartTable também só supõe; (2) **Nova consulta** entre títulos e **Emite boleto** repetido sem sair da Consulta; (3) a Consulta continuar utilizável durante a espera de ~3 min com um registro carregado; (4) os processos com ~3 min de intervalo serem reconhecidos um a um; (5) a tela de Processos agendados listar os vários processos como esperado; (6) os downloads em sequência com o Tampermonkey. Primeiro teste real sugerido: um lote de 2 títulos que seriam emitidos de qualquer jeito, nunca emissão extra.
 
 **Testes:** `tests/segunda-via-lote.test.js` (relógio falso e armazenamento falso: validação do lote, intervalo, ordem consulta/espera/clique, parada na falha, Esc, as duas fases, retomada, abertura da tela, estados e códigos; mais asserções de código-fonte para o que depende da página). Mutações conferidas: 27 defeitos reintroduzidos (intervalo, teto, ordem, parada, clique incerto, duplicados, vazamento de dados no resultado, pedido apagado depois do laço, relançamento do erro, nova tentativa de abertura, envio sem conferir o texto, travas de consumo e de processos, reconferências antes do clique e as listas de retomada); cada um derruba pelo menos um teste. **Não coberto por execução:** o código que lê e aciona a página real (consulta, clique, grade, download); ele reaproveita por extração mecânica o código da 1.0.8 e fica coberto por asserções de ordem no fonte.
+
+## Correções da v1.1.2 — saída do título, sinal de vida na espera e Web Lock (27/11/2026)
+
+**Dois relatos de teste real com a 1.1.1 (o usuário confirmou a versão 1.1.1 no Tampermonkey):**
+1. O 1º boleto saiu, o 2º título foi consultado e a linha dele ficou em **"Aguardando intervalo" por mais de 4 minutos**, sem emitir e sem erro. Esse estado deveria durar ~3 min (185 s).
+2. Em outro teste, **nem o 1º título saiu**: motivo mostrado no painel: "Preenchimento interrompido. NÃO execute a consulta manualmente… O Systextil não enviou CLICKONFIELD/NEXT_FIELD ao sair do campo número do t…" (o texto foi cortado nos 200 caracteres da época, justamente antes do diagnóstico NXJ).
+
+**O que isso mostra (fato lido do código):** a confirmação da saída do título espera até 20 s por um POST `CLICKONFIELD`/`NEXT_FIELD` iniciado depois da marca; sem ele o script para antes do Find. O relato 2 é esse limite estourando.
+
+**Hipóteses, NENHUMA confirmada:**
+- *Relato 2:* com o Enter simulado, às vezes o ERP já trata a saída do campo por conta própria (muda o foco sem emitir esse comando); o `focus()` na parcela deixa então de disparar o evento e o comando de saída nunca chega. Isso também seria compatível com o "às vezes vai, às vezes trava" desde a 1.1.0.
+- *Relato 1:* a espera entre emissões usa só temporizadores do navegador. Uma aba em segundo plano (o operador olha o painel na aba do CRM) tem os temporizadores atrasados e, depois de alguns minutos, o Chrome pode **congelar** a aba. Seria compatível com a linha parada.
+
+**O que mudou:**
+- **Saída do título refeita sem depender do Enter.** Depois do Enter e da espera, se nenhum comando de saída (`CLICKONFIELD`/`NEXT_FIELD`) foi observado desde a marca (`houveComandoSaida`), o script volta ao título, espera o ERP assentar, toma uma marca nova e vai para a parcela pela troca de foco, a sequência original da 1.1.0. Se o Enter já gerou o comando, nada muda. A confirmação NXJ continua exigida antes do Find e da emissão.
+- **Sinal de vida na espera entre emissões.** A cada 10 s a linha do título leva ao CRM o tempo que falta (`restanteSegundos`) e se a aba do Systêxtil está em segundo plano (`segundoPlano`, de `document.visibilityState`). Somem quando o título é emitido. Assim, "parado" deixa de ser mudo: o contador anda, ou para (o que também é informação).
+- **Motivo inteiro.** O limite do motivo enviado ao CRM subiu de 200 para 800 caracteres, para caber o diagnóstico NXJ (só nomes de comando e comprimentos de valores, nunca os valores).
+- **Web Lock durante o lote (tentativa, NÃO verificada).** Enquanto o lote roda, a aba segura um Web Lock (`navigator.locks`), uma das exceções documentadas do congelamento de abas pelo Chrome. Melhor esforço: sem a API, nada muda. Não há como reproduzir o congelamento aqui, então não se sabe se resolve.
+
+**Para o operador, enquanto isso (workaround, não é correção):** deixe a aba do Systêxtil **visível, de preferência em uma janela própria**, até o lote terminar.
+
+**Não homologado no Systêxtil real:** se o Enter simulado gera o comando de saída; se o refoco resolve o relato 2; se o Web Lock evita o congelamento; e a causa real do relato 1. Se o relato 1 se repetir, o painel mostra o contador e a marca de segundo plano.
+
+**Testes:** `tests/segunda-via-lote.test.js` e `tests/segunda-via-integrada.test.js` (refoco depois do Enter e marca nova, `houveComandoSaida`, sinais de vida com relógio falso, campos enviados ao CRM validados, motivo de 800 caracteres, Web Lock pedido e solto nas duas fases, aba em segundo plano medida de verdade). Mutações conferidas: 11; cada uma derruba pelo menos um teste (a G10 sobreviveu na 1ª rodada e ganhou asserção).
 
 ## Correções da v1.1.1 — Enter no título e motivo de cada título (27/11/2026)
 

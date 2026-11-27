@@ -161,7 +161,7 @@ test('o resultado leva ao CRM a posição, o estado e o motivo de cada título, 
   ]);
   assert.equal(resultado.codigo, 'expirado');
   assert.doesNotMatch(JSON.stringify(resultado), /00001001|EMPRESA|12345678000190/);
-  assert.equal(api.motivoParaCrm('x'.repeat(500)).length, 200);
+  assert.equal(api.motivoParaCrm('x'.repeat(2000)).length, 800, 'cabe o diagnóstico NXJ inteiro (só nomes de comando e comprimentos)');
   assert.equal(api.motivoParaCrm(undefined), '');
 });
 
@@ -318,13 +318,99 @@ test('reporta cada mudança de estado para o acompanhamento', async () => {
     itens, ...dep, agora: relogio.agora, esperar: relogio.esperar,
     aoMudar: async estados => { historico.push(estados.map(e => e.estado).join(',')); }
   });
-  assert.deepEqual(historico, [
+  // Durante a espera do intervalo há sinais de vida repetidos do mesmo estado: aqui conta a sequência sem repetições.
+  const semRepeticao = historico.filter((estado, i) => i === 0 || estado !== historico[i - 1]);
+  assert.deepEqual(semRepeticao, [
     'consultando,na-fila',
     'emitido,na-fila',
     'emitido,consultando',
     'emitido,aguardando-intervalo',
     'emitido,emitido'
   ]);
+});
+
+test('durante a espera entre emissões há um sinal de vida a cada 10 s, com o tempo que falta e se a aba está em segundo plano', async () => {
+  const relogio = relogioFalso();
+  const dep = dependenciasDeEmissao(relogio);
+  const itens = api.validarPedidoLote(loteValido(2)).itens;
+  const sinais = [];
+  let segundoPlano = true;
+  await api.executarLoteEmissao({
+    itens, ...dep, agora: relogio.agora, esperar: relogio.esperar,
+    observar: () => ({ segundoPlano }),
+    aoMudar: async (estados) => {
+      if (estados[1].estado === 'aguardando-intervalo') sinais.push({ em: relogio.agora(), restante: estados[1].restanteSegundos, segundoPlano: estados[1].segundoPlano });
+    }
+  });
+  assert.ok(sinais.length >= 17 && sinais.length <= 20, 'cerca de 185 s / 10 s sinais: ' + sinais.length);
+  assert.equal(sinais[0].restante, Math.ceil(api.INTERVALO_ENTRE_EMISSOES_MS / 1000));
+  for (let i = 1; i < sinais.length; i += 1) {
+    assert.ok(sinais[i].restante < sinais[i - 1].restante, 'o tempo restante só diminui');
+    const passo = sinais[i].em - sinais[i - 1].em;
+    assert.ok(passo >= 9000 && passo <= 11000, 'um sinal a cada ~10 s: ' + passo);
+  }
+  assert.equal(sinais.every((s) => s.segundoPlano === true), true);
+  assert.ok(sinais[sinais.length - 1].restante <= 10);
+  segundoPlano = false;
+});
+
+test('os sinais de vida somem do título quando ele é emitido e não vazam dados', async () => {
+  const relogio = relogioFalso();
+  const dep = dependenciasDeEmissao(relogio);
+  const itens = api.validarPedidoLote(loteValido(2)).itens;
+  const r = await api.executarLoteEmissao({ itens, ...dep, agora: relogio.agora, esperar: relogio.esperar, observar: () => ({ segundoPlano: false }) });
+  assert.equal('restanteSegundos' in r.itens[1], false);
+  assert.equal('segundoPlano' in r.itens[1], false);
+});
+
+test('o CRM só recebe tempo restante inteiro e segundo plano booleano', () => {
+  const r = api.resumirItensParaCrm([
+    { indice: 0, estado: 'aguardando-intervalo', restanteSegundos: 95, segundoPlano: true },
+    { indice: 1, estado: 'aguardando-intervalo', restanteSegundos: -3, segundoPlano: 'sim' },
+    { indice: 2, estado: 'aguardando-intervalo', restanteSegundos: 'x', segundoPlano: false },
+    { indice: 3, estado: 'aguardando-intervalo', restanteSegundos: 99999 },
+  ]);
+  assert.deepEqual(r, [
+    { indice: 0, estado: 'aguardando-intervalo', restanteSegundos: 95, segundoPlano: true },
+    { indice: 1, estado: 'aguardando-intervalo' },
+    { indice: 2, estado: 'aguardando-intervalo', segundoPlano: false },
+    { indice: 3, estado: 'aguardando-intervalo' },
+  ]);
+});
+
+test('manterAbaAtiva segura um Web Lock enquanto o lote roda e o solta no fim; sem a API, nada muda', async () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const estado = { pedidos: [], liberou: false };
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { locks: { request: (nome, callback) => {
+    estado.pedidos.push(nome);
+    return Promise.resolve(callback()).then(() => { estado.liberou = true; });
+  } } } });
+  try {
+    const soltar = api.manterAbaAtiva();
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(estado.pedidos, ['smarttable-systextil-segunda-via']);
+    assert.equal(estado.liberou, false, 'o lock fica preso até o fim do lote');
+    soltar();
+    await new Promise((r) => setImmediate(r));
+    assert.equal(estado.liberou, true);
+    // Soltar ANTES de o navegador conceder o lock também libera (sem lock preso para sempre).
+    estado.liberou = false;
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { locks: { request: (nome, callback) => new Promise((resolve) => setImmediate(() => resolve(callback()))).then(() => { estado.liberou = true; }) } } });
+    const logo = api.manterAbaAtiva();
+    logo();
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(estado.liberou, true);
+    // Sem Web Locks.
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {} });
+    assert.doesNotThrow(() => api.manterAbaAtiva()());
+  } finally {
+    if (original) Object.defineProperty(globalThis, 'navigator', original); else delete globalThis.navigator;
+  }
+});
+
+test('o Web Lock é pedido e solto nas duas fases do lote', () => {
+  assert.equal((FONTE.match(/const soltarAba = manterAbaAtiva\(\);/g) || []).length, 2);
+  assert.equal((FONTE.match(/^\s+soltarAba\(\);$/gm) || []).length, 2, 'solto no finally das duas fases');
 });
 
 /* ---------------------------------------------------------------------
@@ -526,7 +612,8 @@ test('lote: o CRM recebe só posição e estado de cada título, e "emissao-soli
   assert.equal(resultados[0].status, 'processando');
   const todo = JSON.stringify(resultados);
   assert.doesNotMatch(todo, /00001001|00001002|EMPRESA|12345678000190|CLIENTE/);
-  resultados.forEach(r => (r.itens || []).forEach(i => assert.deepEqual(Object.keys(i).sort(), ['estado', 'indice'])));
+  const permitidas = new Set(['estado', 'indice', 'motivo', 'restanteSegundos', 'segundoPlano']);
+  resultados.forEach(r => (r.itens || []).forEach(i => Object.keys(i).forEach(chave => assert.ok(permitidas.has(chave), 'campo inesperado enviado ao CRM: ' + chave))));
 });
 
 test('lote: falha no 2º título para a emissão, mas vai a Processos agendados para baixar o 1º', async () => {
@@ -542,6 +629,21 @@ test('lote: falha no 2º título para a emissão, mas vai a Processos agendados 
   const ultimo = gm.publicados().pop();
   assert.equal(ultimo.status, 'emissao-solicitada');
   assert.match(ultimo.mensagem, /parou em um dos títulos/);
+});
+
+test('lote: o tempo restante e o aviso de aba em segundo plano chegam ao CRM durante a espera entre emissões', async () => {
+  const gm = armazenamentoFalso();
+  const relogio = relogioFalso();
+  const portas = portasDoLote(relogio);
+  portas.observar = () => ({ segundoPlano: true });
+  await api.executarLote(api.validarPedidoLote(loteValido(2)), {}, portas);
+
+  const esperas = gm.publicados().map((r) => (r.itens || [])[1]).filter((i) => i && i.estado === 'aguardando-intervalo');
+  assert.ok(esperas.length >= 17, 'um sinal a cada ~10 s durante os ~185 s: ' + esperas.length);
+  assert.equal(esperas.every((i) => i.segundoPlano === true && Number.isInteger(i.restanteSegundos)), true);
+  assert.ok(esperas[0].restanteSegundos > esperas[esperas.length - 1].restanteSegundos);
+  const depois = gm.publicados().map((r) => (r.itens || [])[1]).filter((i) => i && i.estado === 'emitido');
+  assert.equal(depois.every((i) => !('restanteSegundos' in i) && !('segundoPlano' in i)), true, 'depois de emitido não sobra sinal de espera');
 });
 
 test('lote: se nenhum título foi emitido, não vai a Processos agendados e libera o bloqueio', async () => {
@@ -997,4 +1099,9 @@ test('o motivo de cada título também vai ao console, uma vez, sem número de t
   assert.match(corpo, /"Título " \+ \(posicao \+ 1\) \+ " do lote: "/);
   assert.doesNotMatch(corpo, /\.titulo|\.parcela|\.cliente|\.cnpj|razaoSocial/);
   assert.equal((FONTE.match(/registrarMotivosNoConsole\(estados, jaRegistrados\);/g) || []).length, 2, 'nas duas fases do lote');
+});
+
+test('a porta padrão do lote mede de verdade se a aba do Systextil está em segundo plano', () => {
+  const corpo = corpoDaFuncao('criarPortasDoLote');
+  assert.match(corpo, /observar: \(\) => \(\{ segundoPlano: typeof document !== "undefined" && document\.visibilityState === "hidden" \}\)/);
 });

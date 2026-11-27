@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Segunda Via Automática CRM
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      1.1.1
+// @version      1.1.2
 // @description  Recebe títulos do SmartTable e automatiza a segunda via com recuperação manual de bloqueio persistido.
 // @match        https://texhub.texcotton.com.br/crm/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -23,7 +23,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "1.1.1";
+  const VERSION = "1.1.2";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const DATA_VIEW_PROCESSOS = "forms.systextil.batch";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
@@ -102,6 +102,8 @@
   const ESTADOS_ITEM_LOTE = Object.freeze([
     "na-fila", "consultando", "aguardando-intervalo", "emitido", "nao-emitido", "baixando", "concluido", "indeterminado", "erro"
   ]);
+  const LIMITE_MOTIVO_CRM = 800;
+  const INTERVALO_SINAL_MS = 10 * 1000;
   const CODIGOS_ERRO_RESULTADO = Object.freeze(["pedido-pendente", "bloqueio-persistido", "expirado", "tela-ausente"]);
 
   /**
@@ -654,6 +656,15 @@
       return registro.comando;
     }
 
+    /** Já houve, depois da marca, um POST de saída de campo (CLICKONFIELD/NEXT_FIELD)? Não espera nem lança. */
+    function houveComandoSaida(sequenciaMinima) {
+      return requisicoes.some(requisicao =>
+        requisicao.sequencia > sequenciaMinima &&
+        requisicao.metodo === "POST" &&
+        COMANDOS_NXJ_CONFIRMACAO.has(requisicao.comando)
+      );
+    }
+
     function confirmou(valorEsperado, sequenciaMinima) {
       return requisicoes.some(requisicao =>
         requisicao.sequencia > sequenciaMinima &&
@@ -689,6 +700,7 @@
       },
       confirmou,
       resumo,
+      houveComandoSaida,
       aguardarOcioso,
       aguardarComandoSaida,
       remover() {
@@ -833,7 +845,7 @@
 
       // A troca de foco deve produzir um comando NXJ de saída. Esperamos o
       // POST e sua resposta sem exigir correspondência literal do título aqui.
-      const sequenciaAntesDaSaidaTitulo = monitor.obterSequencia();
+      let sequenciaAntesDaSaidaTitulo = monitor.obterSequencia();
 
       // Enter no título: é ele que faz o ERP assumir o número (confirmado pelo usuário em 27/11/2026). Só depois a sequência
       // segue para a parcela. A marca acima vem ANTES do Enter: o comando de saída pode ser o do próprio Enter.
@@ -843,6 +855,18 @@
       validarVisaoConsultaTitulos(pagina);
       if (lerEstadoSystextil(pagina)?.busca === false) {
         throw new Error("O Enter acionou a consulta antes da hora. Nada foi emitido; confira a tela.");
+      }
+      // Relato do teste real (27/11/2026): às vezes o comando de saída do título nunca chega. Se o Enter simulado não o gerou (o ERP pode
+      // ter mudado o foco por conta própria, e aí o foco na parcela abaixo não dispara mais nada), refaz a saída do campo pela troca de
+      // foco, a sequência original: volta ao título e vai para a parcela com uma marca nova.
+      if (!monitor.houveComandoSaida(sequenciaAntesDaSaidaTitulo)) {
+        campoTitulo = obterCampoAtual(CAMPOS.titulo);
+        validarCampoEditavel(campoTitulo);
+        campoTitulo.focus();
+        await pausa(atrasoFocoInicialMs);
+        await monitor.aguardarOcioso();
+        validarVisaoConsultaTitulos(pagina);
+        sequenciaAntesDaSaidaTitulo = monitor.obterSequencia();
       }
       // O ERP pode recriar a parcela ao processar o Enter: usa o controle atual.
       campoParcela = obterCampoAtual(CAMPOS.parcela);
@@ -2097,6 +2121,8 @@
       };
       const motivo = motivoParaCrm(item?.motivo);
       if (motivo) resumo.motivo = motivo;
+      if (Number.isInteger(item?.restanteSegundos) && item.restanteSegundos >= 0 && item.restanteSegundos <= 3600) resumo.restanteSegundos = item.restanteSegundos;
+      if (typeof item?.segundoPlano === "boolean") resumo.segundoPlano = item.segundoPlano;
       return resumo;
     });
   }
@@ -2107,7 +2133,7 @@
    */
   function motivoParaCrm(valor) {
     if (typeof valor !== "string") return "";
-    return valor.replace(/\d{6,}/g, "…").replace(/\s+/g, " ").trim().slice(0, 200);
+    return valor.replace(/\d{6,}/g, "…").replace(/\s+/g, " ").trim().slice(0, LIMITE_MOTIVO_CRM);
   }
 
   /** O resultado final do lote, a partir dos estados finais dos títulos. `concluido` com ok=true só se TODOS salvaram o PDF. */
@@ -2161,7 +2187,7 @@
    */
   async function executarLoteEmissao({
     itens, consultar, emitir, esperar, agora = Date.now, intervaloMs = INTERVALO_ENTRE_EMISSOES_MS,
-    aoMudar = async () => {}, estaCancelado = () => false
+    aoMudar = async () => {}, estaCancelado = () => false, observar = () => ({}), intervaloSinalMs = INTERVALO_SINAL_MS
   }) {
     const estados = itens.map((_, indice) => ({ indice, estado: "na-fila" }));
     let ultimoCliqueEm = null;
@@ -2197,10 +2223,23 @@
 
       if (ultimoCliqueEm !== null) {
         atual.estado = "aguardando-intervalo";
+        atual.restanteSegundos = Math.max(0, Math.ceil((intervaloMs - (agora() - ultimoCliqueEm)) / 1000));
+        Object.assign(atual, observar());
         await aoMudar(estados);
+        // Sinal de vida a cada `intervaloSinalMs`: o CRM mostra o tempo que falta e, se a aba do Systextil estiver em segundo plano
+        // (o navegador atrasa ou congela os temporizadores dela), o operador vê isso em vez de um "Aguardando" parado.
+        let ultimoSinalEm = agora();
         while (!estaCancelado() && agora() - ultimoCliqueEm < intervaloMs) {
+          if (agora() - ultimoSinalEm >= intervaloSinalMs) {
+            ultimoSinalEm = agora();
+            atual.restanteSegundos = Math.max(0, Math.ceil((intervaloMs - (agora() - ultimoCliqueEm)) / 1000));
+            Object.assign(atual, observar());
+            await aoMudar(estados);
+          }
           await esperar(Math.max(1, Math.min(1000, intervaloMs - (agora() - ultimoCliqueEm))));
         }
+        delete atual.restanteSegundos;
+        delete atual.segundoPlano;
         if (estaCancelado()) {
           await pararEm(posicao, "nao-emitido", "Interrompido pelo operador (Esc).");
           break;
@@ -3066,7 +3105,9 @@
       parcela: estado.parcela ?? lote.itens[indice].parcela,
       cliente: estado.cliente,
       solicitadoEm: estado.solicitadoEm,
-      motivo: estado.motivo
+      motivo: estado.motivo,
+      restanteSegundos: estado.restanteSegundos,
+      segundoPlano: estado.segundoPlano
     }));
   }
 
@@ -3091,6 +3132,31 @@
    * Processos agendados, onde `executarDownloadsDoLote` baixa os PDFs. O pedido é apagado ao assumir o lote: uma recarga da
    * página nunca emite de novo. Na primeira falha o lote para, e os que já foram emitidos seguem para o download.
    */
+  /**
+   * Segura um Web Lock enquanto o lote roda. HIPÓTESE NÃO VERIFICADA: o Chrome pode congelar uma aba em segundo plano depois de alguns
+   * minutos (os temporizadores param e o lote "trava" esperando), e uma página que segura um Web Lock é uma das exceções do
+   * congelamento. Melhor esforço: se a API não existir, nada muda. Devolve a função que solta o lock.
+   */
+  function manterAbaAtiva() {
+    let liberado = false;
+    let resolver = null;
+    try {
+      if (typeof navigator !== "undefined" && typeof navigator.locks?.request === "function") {
+        const pedido = navigator.locks.request("smarttable-systextil-segunda-via", () => new Promise(resolve => {
+          resolver = resolve;
+          if (liberado) resolve();
+        }));
+        if (pedido && typeof pedido.catch === "function") pedido.catch(() => {});
+      }
+    } catch (_) {
+      // Sem Web Locks, o comportamento é o de antes.
+    }
+    return () => {
+      liberado = true;
+      if (resolver) resolver();
+    };
+  }
+
   function criarPortasDoLote(pagina) {
     let monitor = null;
     const monitorDaPagina = () => {
@@ -3112,6 +3178,7 @@
       },
       esperar: pausa,
       agora: Date.now,
+      observar: () => ({ segundoPlano: typeof document !== "undefined" && document.visibilityState === "hidden" }),
       estaCancelado: () => cancelado
     };
   }
@@ -3127,6 +3194,7 @@
     const iniciais = lote.itens.map(() => ({ estado: "na-fila" }));
     const jaRegistrados = new Set();
 
+    const soltarAba = manterAbaAtiva();
     await persistir("lote-emitindo", iniciais);
     await gravarChave(CHAVES.pedido, null);
     await publicarResultado(lote, "processando", true, "Solicitação recebida. A consulta e a emissão dos títulos começaram automaticamente.", { itens: iniciais });
@@ -3138,6 +3206,7 @@
         emitir: portas.emitir,
         esperar: portas.esperar,
         agora: portas.agora,
+        observar: portas.observar,
         estaCancelado: portas.estaCancelado,
         aoMudar: async estados => {
           registrarMotivosNoConsole(estados, jaRegistrados);
@@ -3177,6 +3246,7 @@
       await publicarResultado(lote, "indeterminado", false, textoDoErro(erro) + " Confira Processos agendados e Downloads antes de qualquer nova emissão.", { itens: atual.itens });
       statusOperacional(textoDoErro(erro), "erro");
     } finally {
+      soltarAba();
       await gravarChave(CHAVES.navegacao, null).catch(() => {});
     }
   }
@@ -3205,6 +3275,7 @@
     let lockAdquirido = false;
     const id = execucaoInformada?.pedidoId;
     const lote = { id: id || "" };
+    const soltarAba = manterAbaAtiva();
 
     try {
       if (!execucaoInformada?.lote || !id || !Array.isArray(execucaoInformada.itens)) {
@@ -3280,6 +3351,7 @@
       await publicarResultado(lote, "indeterminado", false, textoDoErro(erro) + " Confira Processos agendados e Downloads antes de qualquer nova emissão.", { itens: atual?.itens });
       statusOperacional(textoDoErro(erro), "erro");
     } finally {
+      soltarAba();
       if (lockAdquirido && id) await liberarLock(CHAVES.lockProcesso, id);
       processamentoEmAndamento = false;
     }
@@ -3726,6 +3798,7 @@
       codigoDoErro,
       pressionarEnterNoCampo,
       motivoParaCrm,
+      manterAbaAtiva,
       extrairValoresPendentesNxj,
       valorConfere,
       validarConfirmacoesNxj,

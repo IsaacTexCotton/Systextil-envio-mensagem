@@ -36,7 +36,7 @@ function formatarDataHora(timestamp) {
 }
 
 test('expõe a versão unificada e valida a transferência recebida do SmartTable', () => {
-  assert.equal(api.VERSION, '1.1.1');
+  assert.equal(api.VERSION, '1.1.2');
   const pedido = api.validarPedido(pedidoValido());
   assert.equal(pedido.titulo, '00001234');
   assert.equal(pedido.parcela, '03');
@@ -259,7 +259,7 @@ test('aguarda um POST NXJ de saída e a resposta antes de editar o próximo camp
   assert.ok(escritaTitulo > ociosoAposFocoTitulo);
 
   const focoParcela = trecho.indexOf('campoParcela.focus();', escritaTitulo);
-  const baselineSaidaTitulo = trecho.indexOf('const sequenciaAntesDaSaidaTitulo', escritaTitulo);
+  const baselineSaidaTitulo = trecho.indexOf('let sequenciaAntesDaSaidaTitulo', escritaTitulo);
   const esperaSaidaTitulo = trecho.indexOf('await monitor.aguardarComandoSaida(', focoParcela);
   const escritaParcela = trecho.indexOf('atribuirValorCampo(campoParcela, parcela)', focoParcela);
   assert.ok(baselineSaidaTitulo > escritaTitulo && baselineSaidaTitulo < focoParcela);
@@ -376,7 +376,7 @@ test('a única tecla simulada é o Enter, em um só lugar; nunca F7, F9 nem F10'
 test('o Enter do título vem depois da marca do comando de saída e antes de ir para a parcela, e a consulta que já aconteceu bloqueia', () => {
   const inicio = SOURCE.indexOf('async function preencherCamposConsulta');
   const corpo = SOURCE.slice(inicio, SOURCE.indexOf('function normalizarTextoProcesso', inicio));
-  const marca = corpo.indexOf('const sequenciaAntesDaSaidaTitulo = monitor.obterSequencia()');
+  const marca = corpo.indexOf('let sequenciaAntesDaSaidaTitulo = monitor.obterSequencia()');
   const enter = corpo.indexOf('pressionarEnterNoCampo(campoTitulo)');
   const ocioso = corpo.indexOf('await monitor.aguardarOcioso();', enter);
   const parcela = corpo.indexOf('campoParcela.focus()', enter);
@@ -386,4 +386,22 @@ test('o Enter do título vem depois da marca do comando de saída e antes de ir 
   assert.ok(saida > parcela, 'a confirmação NXJ da saída continua exigida');
   assert.match(corpo.slice(enter, parcela), /busca === false[\s\S]*O Enter acionou a consulta antes da hora/);
   assert.match(corpo.slice(enter, parcela), /campoParcela = obterCampoAtual\(CAMPOS\.parcela\);\s+validarCampoEditavel\(campoParcela\);/, 'o ERP pode recriar a parcela ao processar o Enter: usa o controle atual');
+});
+
+test('se o Enter não gerou o comando de saída, a saída do título é refeita pela troca de foco, com marca nova, antes da parcela', () => {
+  const inicio = SOURCE.indexOf('async function preencherCamposConsulta');
+  const corpo = SOURCE.slice(inicio, SOURCE.indexOf('function normalizarTextoProcesso', inicio));
+  const enter = corpo.indexOf('pressionarEnterNoCampo(campoTitulo)');
+  const checagem = corpo.indexOf('if (!monitor.houveComandoSaida(sequenciaAntesDaSaidaTitulo))', enter);
+  const refocoTitulo = corpo.indexOf('campoTitulo.focus();', checagem);
+  const marcaNova = corpo.indexOf('sequenciaAntesDaSaidaTitulo = monitor.obterSequencia();', refocoTitulo);
+  const focoParcela = corpo.indexOf('campoParcela.focus();', enter);
+  const espera = corpo.indexOf('await monitor.aguardarComandoSaida(', focoParcela);
+  assert.ok(enter >= 0 && checagem > enter, 'a checagem vem depois do Enter');
+  assert.ok(refocoTitulo > checagem && marcaNova > refocoTitulo, 'volta ao título e toma uma marca nova');
+  assert.ok(focoParcela > marcaNova, 'só então vai para a parcela');
+  assert.ok(espera > focoParcela, 'e a confirmação NXJ da saída continua exigida');
+  const monitor = SOURCE.slice(SOURCE.indexOf('function criarMonitorComandosNxj'), SOURCE.indexOf('async function preencherCamposConsulta'));
+  assert.match(monitor, /function houveComandoSaida\(sequenciaMinima\) \{\s+return requisicoes\.some/);
+  assert.match(monitor, /^\s+houveComandoSaida,$/m);
 });
