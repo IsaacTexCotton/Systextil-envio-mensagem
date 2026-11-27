@@ -145,17 +145,24 @@ test('o despachante aceita o pedido antigo (schema 1) e o lote (schema 2)', () =
 /* ---------------------------------------------------------------------
  * O que vai ao CRM
  * --------------------------------------------------------------------- */
-test('o resultado leva ao CRM só a posição e o estado de cada título, nunca dados do cliente', () => {
+test('o resultado leva ao CRM a posição, o estado e o motivo de cada título, nunca dados do cliente', () => {
   const resultado = api.criarResultado({ id: 'lote-12345678' }, 'processando', true, 'Andamento.', {
     itens: [
-      { indice: 0, estado: 'emitido', titulo: '00001001', parcela: '1', cliente: 'EMPRESA TESTE LTDA', cnpj: '12345678000190', motivo: 'texto' },
-      { indice: 1, estado: 'estado-inventado' }
+      { indice: 0, estado: 'emitido', titulo: '00001001', parcela: '1', cliente: 'EMPRESA TESTE LTDA', cnpj: '12345678000190', razaoSocial: 'EMPRESA TESTE LTDA' },
+      { indice: 1, estado: 'estado-inventado' },
+      { indice: 2, estado: 'nao-emitido', motivo: 'Nenhum título foi encontrado.  Nada foi emitido. Ref 00001001 e 12345678000190' }
     ],
     codigo: 'expirado'
   });
-  assert.deepEqual(resultado.itens, [{ indice: 0, estado: 'emitido' }, { indice: 1, estado: 'erro' }]);
+  assert.deepEqual(resultado.itens, [
+    { indice: 0, estado: 'emitido' },
+    { indice: 1, estado: 'erro' },
+    { indice: 2, estado: 'nao-emitido', motivo: 'Nenhum título foi encontrado. Nada foi emitido. Ref … e …' }
+  ]);
   assert.equal(resultado.codigo, 'expirado');
-  assert.doesNotMatch(JSON.stringify(resultado), /00001001|EMPRESA|12345678000190|texto/);
+  assert.doesNotMatch(JSON.stringify(resultado), /00001001|EMPRESA|12345678000190/);
+  assert.equal(api.motivoParaCrm('x'.repeat(500)).length, 200);
+  assert.equal(api.motivoParaCrm(undefined), '');
 });
 
 test('o código do erro é de uma lista fechada e os extras são opcionais', () => {
@@ -715,7 +722,7 @@ test('lote, download: pedido que não é um lote não grava estado de execução
 /* ---------------------------------------------------------------------
  * Abrir a Consulta de títulos sozinho
  * --------------------------------------------------------------------- */
-function portasDaTela({ aguardar = [], campo = 'ok', envios = [] } = {}) {
+function portasDaTela({ aguardar = [], campo = 'ok', envios = [], enters = [] } = {}) {
   const sequencia = [...aguardar];
   const campoBusca = campo === 'ausente' ? null : {
     type: 'search', value: '', readOnly: campo === 'somente-leitura', disabled: false, isConnected: true,
@@ -723,7 +730,9 @@ function portasDaTela({ aguardar = [], campo = 'ok', envios = [] } = {}) {
   };
   return {
     envios,
+    enters,
     campoBusca,
+    pressionarEnter: () => { enters.push('enter'); },
     estadoDaTela: () => ({ visao: VISAO_PROCESSOS }),
     aguardarConsulta: async () => (sequencia.length ? sequencia.shift() : null),
     buscaDeProgramas: () => campoBusca,
@@ -778,7 +787,7 @@ test('tela: pedido já consumido por outra aba, ou trava de consumo alheia, não
   assert.equal(gm.log.length, 0);
 });
 
-test('tela: escreve crec_f090 no Buscar programas, envia só o formulário da busca e segue quando a tela abre', async () => {
+test('tela: escreve crec_f090 no Buscar programas, dá Enter e segue quando a tela abre (sem enviar o formulário)', async () => {
   const gm = armazenamentoFalso();
   const pedido = await prepararPedidoPendente(gm);
   const portas = portasDaTela({ aguardar: [null, { visao: VISAO_CONSULTA }] });
@@ -786,6 +795,21 @@ test('tela: escreve crec_f090 no Buscar programas, envia só o formulário da bu
 
   assert.equal(tela.visao, VISAO_CONSULTA);
   assert.equal(portas.campoBusca.value, 'crec_f090');
+  assert.deepEqual(portas.enters, ['enter'], 'o Enter vem primeiro');
+  assert.deepEqual(portas.envios, [], 'a tela abriu com o Enter: o formulário não é enviado');
+  assert.deepEqual(gm.publicados().map(r => r.status), ['abrindo-tela']);
+  assert.match(gm.publicados()[0].mensagem, /Abrindo a Consulta de títulos \(crec_f090\) no Systextil/);
+});
+
+test('tela: se o Enter não abre a tela, envia SÓ o formulário da busca, uma vez, e segue quando ela abre', async () => {
+  const gm = armazenamentoFalso();
+  const pedido = await prepararPedidoPendente(gm);
+  const portas = portasDaTela({ aguardar: [null, null, { visao: VISAO_CONSULTA }] });
+  const tela = await api.garantirConsultaDeTitulos(pedido, {}, portas);
+
+  assert.equal(tela.visao, VISAO_CONSULTA);
+  assert.equal(portas.campoBusca.value, 'crec_f090');
+  assert.deepEqual(portas.enters, ['enter']);
   assert.deepEqual(portas.envios, ['envio'], 'um único envio, só do formulário da busca');
   assert.deepEqual(gm.publicados().map(r => r.status), ['abrindo-tela']);
   assert.match(gm.publicados()[0].mensagem, /Abrindo a Consulta de títulos \(crec_f090\) no Systextil/);
@@ -802,11 +826,13 @@ test('tela: se a tela não abre, avisa UMA vez e nunca tenta de novo para o mesm
   assert.deepEqual(gm.publicados().map(r => r.status), ['abrindo-tela', 'abrir-tela-manual']);
   assert.match(gm.publicados()[1].mensagem, /Abra essa tela; a automação continua quando ela aparecer/);
   assert.equal(portas.envios.length, 1);
+  assert.equal(portas.enters.length, 1);
 
   // Segunda tentativa do mesmo pedido (por exemplo, a sonda da próxima mudança de tela): nada de novo.
   assert.equal(await api.garantirConsultaDeTitulos(pedido, {}, portas), null);
   assert.equal(await api.garantirConsultaDeTitulos(pedido, {}, portas), null);
   assert.equal(portas.envios.length, 1, 'uma tentativa por pedido');
+  assert.equal(portas.enters.length, 1, 'um Enter por pedido');
   assert.deepEqual(gm.publicados().map(r => r.status), ['abrindo-tela', 'abrir-tela-manual'], 'o aviso não se repete');
 });
 
@@ -818,6 +844,7 @@ test('tela: sem o campo Buscar programas avisa uma vez e não envia nada', async
   assert.equal(await api.garantirConsultaDeTitulos(pedido, {}, portas), null);
   assert.deepEqual(gm.publicados().map(r => r.status), ['abrir-tela-manual']);
   assert.equal(portas.envios.length, 0);
+  assert.equal(portas.enters.length, 0);
 });
 
 test('tela: campo de busca que não aceita escrita não recebe envio', async () => {
@@ -826,6 +853,7 @@ test('tela: campo de busca que não aceita escrita não recebe envio', async () 
   const portas = portasDaTela({ campo: 'somente-leitura' });
   assert.equal(await api.garantirConsultaDeTitulos(pedido, {}, portas), null);
   assert.equal(portas.envios.length, 0);
+  assert.equal(portas.enters.length, 0, 'sem texto no campo não há Enter');
   assert.deepEqual(gm.publicados().map(r => r.status), ['abrindo-tela', 'abrir-tela-manual']);
 });
 
@@ -836,6 +864,7 @@ test('tela: se o texto escrito não ficou no campo, o formulário não é enviad
   portas.definirValor = () => true; // diz que escreveu, mas o campo continua vazio
   assert.equal(await api.garantirConsultaDeTitulos(pedido, {}, portas), null);
   assert.equal(portas.envios.length, 0);
+  assert.equal(portas.enters.length, 0, 'campo vazio: nada de Enter');
 });
 
 test('tela: tentativa de outra aba para o mesmo pedido: esta aba só avisa depois do prazo, uma vez', async () => {
@@ -936,4 +965,36 @@ test('o lote é retomado nos três pontos em que o pedido de um título já era 
 test('o intervalo entre emissões é o padrão da fase de emissão e a recuperação manual limpa a marca de navegação', () => {
   assert.match(FONTE, /intervaloMs = INTERVALO_ENTRE_EMISSOES_MS/);
   assert.match(corpoDaFuncao('recuperarBloqueioManual'), /gravarChave\(CHAVES\.navegacao, null\)/);
+});
+
+/* ---------------------------------------------------------------------
+ * O Enter simulado (a única tecla do script)
+ * --------------------------------------------------------------------- */
+test('pressionarEnterNoCampo envia keydown, keypress e keyup de Enter, só ao campo recebido', () => {
+  const eventos = [];
+  class Teclado { constructor(tipo, init) { this.type = tipo; Object.assign(this, init); } }
+  const campo = { ownerDocument: { defaultView: { KeyboardEvent: Teclado } }, dispatchEvent: (e) => eventos.push(e) };
+  api.pressionarEnterNoCampo(campo);
+  assert.deepEqual(eventos.map((e) => e.type), ['keydown', 'keypress', 'keyup']);
+  eventos.forEach((e) => {
+    assert.deepEqual([e.key, e.code, e.keyCode, e.which, e.bubbles, e.cancelable], ['Enter', 'Enter', 13, 13, true, true]);
+  });
+});
+
+test('pressionarEnterNoCampo garante o keyCode 13 mesmo quando o navegador o zera, e recusa campo sem janela', () => {
+  const eventos = [];
+  class TecladoSemKeyCode { constructor(tipo) { this.type = tipo; this.keyCode = 0; this.which = 0; } }
+  const campo = { ownerDocument: { defaultView: { KeyboardEvent: TecladoSemKeyCode } }, dispatchEvent: (e) => eventos.push(e) };
+  api.pressionarEnterNoCampo(campo);
+  assert.deepEqual(eventos.map((e) => [e.keyCode, e.which]), [[13, 13], [13, 13], [13, 13]]);
+  assert.throws(() => api.pressionarEnterNoCampo({ dispatchEvent() {} }), /Não foi possível enviar o Enter/);
+  assert.throws(() => api.pressionarEnterNoCampo(null), /Não foi possível enviar o Enter/);
+});
+
+test('o motivo de cada título também vai ao console, uma vez, sem número de título', () => {
+  const corpo = corpoDaFuncao('registrarMotivosNoConsole');
+  assert.match(corpo, /jaRegistrados\.has\(chave\)/);
+  assert.match(corpo, /"Título " \+ \(posicao \+ 1\) \+ " do lote: "/);
+  assert.doesNotMatch(corpo, /\.titulo|\.parcela|\.cliente|\.cnpj|razaoSocial/);
+  assert.equal((FONTE.match(/registrarMotivosNoConsole\(estados, jaRegistrados\);/g) || []).length, 2, 'nas duas fases do lote');
 });

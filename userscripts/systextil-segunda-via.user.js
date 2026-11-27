@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Systextil — Segunda Via Automática CRM
 // @namespace    https://github.com/IsaacTexCotton/Systextil-envio-mensagem
-// @version      1.1.0
+// @version      1.1.1
 // @description  Recebe títulos do SmartTable e automatiza a segunda via com recuperação manual de bloqueio persistido.
 // @match        https://texhub.texcotton.com.br/crm/*
 // @match        http://systextil.texcotton.com.br/systextil/*
@@ -23,7 +23,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "1.1.0";
+  const VERSION = "1.1.1";
   const DATA_VIEW_CONSULTA_TITULOS = "forms.crec.crec_f090";
   const DATA_VIEW_PROCESSOS = "forms.systextil.batch";
   const ENDPOINT_COMANDO_NXJ = /(?:^|\/)UnifyNXJ\.jsp(?:[?#]|$)/i;
@@ -703,6 +703,27 @@
     };
   }
 
+  /**
+   * Enter no campo do TÍTULO da Consulta de títulos. À mão, o Enter é o que faz o ERP assumir o número digitado (confirmado
+   * pelo usuário em 27/11/2026); só escrever e trocar o foco deixava o valor sem efeito. Também é usado no "Buscar programas".
+   * É a ÚNICA tecla simulada deste script: nunca F7, F9 nem F10. Se o ERP não aceitar a tecla simulada, a barreira de confirmação
+   * NXJ impede o Find e a emissão.
+   */
+  function pressionarEnterNoCampo(campo) {
+    const janela = campo?.ownerDocument?.defaultView;
+    if (!janela || typeof janela.KeyboardEvent !== "function" || typeof campo.dispatchEvent !== "function") {
+      throw new Error("Não foi possível enviar o Enter ao campo do Systextil.");
+    }
+    ["keydown", "keypress", "keyup"].forEach(tipo => {
+      const evento = new janela.KeyboardEvent(tipo, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true });
+      if (evento.keyCode !== 13) {
+        Object.defineProperty(evento, "keyCode", { get: () => 13 });
+        Object.defineProperty(evento, "which", { get: () => 13 });
+      }
+      campo.dispatchEvent(evento);
+    });
+  }
+
   async function preencherCamposConsulta(dados, configuracaoTeste = {}) {
     configuracaoTeste = configuracaoTeste && typeof configuracaoTeste === "object"
       ? configuracaoTeste
@@ -736,6 +757,7 @@
     const atrasoFocoInicialMs = obterAtrasoConfigurado("atrasoFocoInicialMs", 500);
     const atrasoAntesDeSairCampoMs = obterAtrasoConfigurado("atrasoAntesDeSairCampoMs", 500);
     const atrasoAposSairCampoMs = obterAtrasoConfigurado("atrasoAposSairCampoMs", 800);
+    const atrasoAposEnterMs = obterAtrasoConfigurado("atrasoAposEnterMs", 300);
 
     function pausa(ms) {
       return new Promise(resolve => setTimeout(resolve, ms));
@@ -812,6 +834,20 @@
       // A troca de foco deve produzir um comando NXJ de saída. Esperamos o
       // POST e sua resposta sem exigir correspondência literal do título aqui.
       const sequenciaAntesDaSaidaTitulo = monitor.obterSequencia();
+
+      // Enter no título: é ele que faz o ERP assumir o número (confirmado pelo usuário em 27/11/2026). Só depois a sequência
+      // segue para a parcela. A marca acima vem ANTES do Enter: o comando de saída pode ser o do próprio Enter.
+      pressionarEnterNoCampo(campoTitulo);
+      await pausa(atrasoAposEnterMs);
+      await monitor.aguardarOcioso();
+      validarVisaoConsultaTitulos(pagina);
+      if (lerEstadoSystextil(pagina)?.busca === false) {
+        throw new Error("O Enter acionou a consulta antes da hora. Nada foi emitido; confira a tela.");
+      }
+      // O ERP pode recriar a parcela ao processar o Enter: usa o controle atual.
+      campoParcela = obterCampoAtual(CAMPOS.parcela);
+      validarCampoEditavel(campoParcela);
+
       campoParcela.focus();
       await pausa(atrasoAposSairCampoMs);
       await monitor.aguardarComandoSaida(
@@ -2054,10 +2090,24 @@
 
   /** O que vai ao CRM sobre cada título do lote: só a posição e o estado de uma lista fechada. Nunca título, CNPJ, nome nem mensagem. */
   function resumirItensParaCrm(itens) {
-    return (Array.isArray(itens) ? itens : []).map((item, posicao) => ({
-      indice: Number.isInteger(item?.indice) ? item.indice : posicao,
-      estado: ESTADOS_ITEM_LOTE.includes(item?.estado) ? item.estado : "erro"
-    }));
+    return (Array.isArray(itens) ? itens : []).map((item, posicao) => {
+      const resumo = {
+        indice: Number.isInteger(item?.indice) ? item.indice : posicao,
+        estado: ESTADOS_ITEM_LOTE.includes(item?.estado) ? item.estado : "erro"
+      };
+      const motivo = motivoParaCrm(item?.motivo);
+      if (motivo) resumo.motivo = motivo;
+      return resumo;
+    });
+  }
+
+  /**
+   * Por que um título não foi emitido ou ficou incerto, para o operador ver na linha. São textos FIXOS deste script (nenhum insere
+   * título, CNPJ ou nome); por segurança, sequências longas de dígitos são mascaradas e o texto é limitado.
+   */
+  function motivoParaCrm(valor) {
+    if (typeof valor !== "string") return "";
+    return valor.replace(/\d{6,}/g, "…").replace(/\s+/g, " ").trim().slice(0, 200);
   }
 
   /** O resultado final do lote, a partir dos estados finais dos títulos. `concluido` com ok=true só se TODOS salvaram o PDF. */
@@ -2886,6 +2936,7 @@
   const TEMPOS_ABRIR_TELA = Object.freeze({
     esperaOutraAba: 1200, // uma aba que JÁ está na Consulta de títulos pega o pedido antes de qualquer aba trocar de tela
     antesDoEnvio: 300, // deixa o campo de busca registrar o texto escrito
+    enviarBusca: 1500, // o Enter nem sempre abre a tela: depois disso envia o formulário da busca, uma vez
     abrirTela: 6000 // sem a tela depois disso, pede ao operador para abri-la
   });
   const PROGRAMA_CONSULTA_TITULOS = "crec_f090";
@@ -2942,6 +2993,7 @@
       aguardarConsulta: ms => aguardarVisao(pagina, VISAO_CONSULTA, ms),
       buscaDeProgramas,
       definirValor: definirValorNoCampo,
+      pressionarEnter: pressionarEnterNoCampo,
       pausa
     };
   }
@@ -2983,15 +3035,20 @@
     if (confirmada?.id !== pedido.id || confirmada?.aba !== ABA_ID) return null;
 
     await publicarResultado(pedido, "abrindo-tela", true, MENSAGEM_ABRINDO_TELA);
-    if (portas.definirValor(campoBusca, PROGRAMA_CONSULTA_TITULOS)) {
+    if (portas.definirValor(campoBusca, PROGRAMA_CONSULTA_TITULOS) && campoBusca.value === PROGRAMA_CONSULTA_TITULOS) {
       await portas.pausa(TEMPOS_ABRIR_TELA.antesDoEnvio);
-      const formulario = campoBusca.isConnected ? campoBusca.form : null;
-      if (formulario && typeof formulario.requestSubmit === "function" && campoBusca.value === PROGRAMA_CONSULTA_TITULOS) {
-        formulario.requestSubmit();
-      }
+      portas.pressionarEnter(campoBusca);
     }
 
-    const aposEnvio = await portas.aguardarConsulta(TEMPOS_ABRIR_TELA.abrirTela);
+    let aposEnvio = await portas.aguardarConsulta(TEMPOS_ABRIR_TELA.enviarBusca);
+    if (aposEnvio) return aposEnvio;
+
+    // O Enter simulado nem sempre abre a tela (o formulário da busca abre o programa pelo envio): envia SÓ este formulário, uma vez.
+    const formulario = campoBusca.isConnected ? campoBusca.form : null;
+    if (formulario && typeof formulario.requestSubmit === "function" && campoBusca.value === PROGRAMA_CONSULTA_TITULOS) {
+      formulario.requestSubmit();
+    }
+    aposEnvio = await portas.aguardarConsulta(TEMPOS_ABRIR_TELA.abrirTela - TEMPOS_ABRIR_TELA.enviarBusca);
     if (aposEnvio) return aposEnvio;
     await gravarChave(CHAVES.navegacao, { ...reserva, avisou: true });
     await publicarResultado(pedido, "abrir-tela-manual", true, MENSAGEM_ABRIR_TELA_MANUAL);
@@ -3011,6 +3068,17 @@
       solicitadoEm: estado.solicitadoEm,
       motivo: estado.motivo
     }));
+  }
+
+  /** O motivo de cada título que não foi emitido ou ficou incerto, uma vez só, sem número de título nem dado do cliente. */
+  function registrarMotivosNoConsole(estados, jaRegistrados) {
+    estados.forEach((item, posicao) => {
+      if (!["nao-emitido", "indeterminado", "erro"].includes(item?.estado) || !item.motivo) return;
+      const chave = posicao + ":" + item.estado + ":" + item.motivo;
+      if (jaRegistrados.has(chave)) return;
+      jaRegistrados.add(chave);
+      statusOperacional("Título " + (posicao + 1) + " do lote: " + item.estado + ". " + motivoParaCrm(item.motivo), "erro");
+    });
   }
 
   function resumoDoLote(estados) {
@@ -3057,6 +3125,7 @@
     const base = { schema: 2, lote: true, pedidoId: lote.id, criadoEm: Date.now() };
     const persistir = (status, estados) => gravarChave(CHAVES.execucao, { ...base, status, itens: itensPersistidos(lote, estados) });
     const iniciais = lote.itens.map(() => ({ estado: "na-fila" }));
+    const jaRegistrados = new Set();
 
     await persistir("lote-emitindo", iniciais);
     await gravarChave(CHAVES.pedido, null);
@@ -3071,6 +3140,7 @@
         agora: portas.agora,
         estaCancelado: portas.estaCancelado,
         aoMudar: async estados => {
+          registrarMotivosNoConsole(estados, jaRegistrados);
           await persistir("lote-emitindo", estados);
           await publicarResultado(lote, "processando", true, resumoDoLote(estados), { itens: itensPersistidos(lote, estados) });
         }
@@ -3150,6 +3220,7 @@
       }
 
       const itens = execucaoInformada.itens.map(item => ({ ...item }));
+      const jaRegistrados = new Set();
       const base = { ...execucaoInformada };
       const persistir = estados => gravarChave(CHAVES.execucao, { ...base, status: "lote-baixando", itens: estados });
       const paraCrm = estados => ({ itens: resumirItensParaCrm(estados) });
@@ -3160,6 +3231,7 @@
         itens,
         estaCancelado: portas.estaCancelado,
         aoMudar: async estados => {
+          registrarMotivosNoConsole(estados, jaRegistrados);
           await persistir(estados);
           const baixando = estados.some(item => item.estado === "baixando");
           await publicarResultado(
@@ -3652,6 +3724,8 @@
       obterExecucaoAtiva,
       criarResultado,
       codigoDoErro,
+      pressionarEnterNoCampo,
+      motivoParaCrm,
       extrairValoresPendentesNxj,
       valorConfere,
       validarConfirmacoesNxj,

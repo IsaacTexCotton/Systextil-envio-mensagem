@@ -1,7 +1,7 @@
 # Segunda via automática — SmartTable → Systextil
 
 **Userscript único:** `userscripts/systextil-segunda-via.user.js`  
-**Versão proposta:** 1.1.0 (lote de títulos e abertura automática da Consulta de títulos; ver a seção "Lote e abertura automática da tela — v1.1.0" abaixo)  
+**Versão:** 1.1.1 (lote de títulos e abertura automática da Consulta de títulos, v1.1.0; Enter no título e motivo por título, v1.1.1; ver as seções abaixo)  
 **Status:** a `main` (commit `09864bc`) já traz a 1.0.8 (espera o POST NXJ de saída, sua resposta HTTP 2xx e a ociosidade entre etapas de foco). A 1.1.0 é uma proposta em branch, sem PR integrada. A homologação operacional no Chrome/Tampermonkey/Systextil real permanece pendente, inclusive para o lote.
 
 ## Lote e abertura automática da tela — v1.1.0 (27/11/2026)
@@ -32,6 +32,25 @@
 **NÃO homologado no Systextil real (não repetir como fato):** (1) o envio do formulário (`requestSubmit`) abrir a tela, o que a ponte do celular do SmartTable também só supõe; (2) **Nova consulta** entre títulos e **Emite boleto** repetido sem sair da Consulta; (3) a Consulta continuar utilizável durante a espera de ~3 min com um registro carregado; (4) os processos com ~3 min de intervalo serem reconhecidos um a um; (5) a tela de Processos agendados listar os vários processos como esperado; (6) os downloads em sequência com o Tampermonkey. Primeiro teste real sugerido: um lote de 2 títulos que seriam emitidos de qualquer jeito, nunca emissão extra.
 
 **Testes:** `tests/segunda-via-lote.test.js` (relógio falso e armazenamento falso: validação do lote, intervalo, ordem consulta/espera/clique, parada na falha, Esc, as duas fases, retomada, abertura da tela, estados e códigos; mais asserções de código-fonte para o que depende da página). Mutações conferidas: 27 defeitos reintroduzidos (intervalo, teto, ordem, parada, clique incerto, duplicados, vazamento de dados no resultado, pedido apagado depois do laço, relançamento do erro, nova tentativa de abertura, envio sem conferir o texto, travas de consumo e de processos, reconferências antes do clique e as listas de retomada); cada um derruba pelo menos um teste. **Não coberto por execução:** o código que lê e aciona a página real (consulta, clique, grade, download); ele reaproveita por extração mecânica o código da 1.0.8 e fica coberto por asserções de ordem no fonte.
+
+## Correções da v1.1.1 — Enter no título e motivo de cada título (27/11/2026)
+
+**Relato do usuário (teste real da 1.1.0):** (1) "ele digita o número do título mas não dá Enter, então não insere o número de verdade"; (2) "o segundo título não está emitindo"; (3) "às vezes a pesquisa da tela não dá o Enter" (no "Buscar programas").
+
+**Fato confirmado pelo usuário (27/11/2026):** à mão, o que faz o ERP assumir o número do título na Consulta de títulos é o **Enter** (não basta sair do campo). Isto contradiz o comentário antigo do código, que dizia que a sequência só com troca de foco tinha sido confirmada.
+
+**O que mudou:**
+- **Enter no campo do título.** Depois de escrever o número e esperar a pausa de sempre, o script dá Enter no campo do título (`pressionarEnterNoCampo`: `keydown`, `keypress` e `keyup`, `keyCode` 13), espera o ERP assentar e só então segue para a parcela (relendo o campo, porque o ERP pode recriá-lo). A marca do comando de saída é tomada antes do Enter. Se o Enter acionar a consulta antes da hora (a tela deixa de estar em modo de consulta), o script para sem emitir. **A parcela não recebe Enter** (o relato foi só sobre o título). Vale para o pedido de um título e para cada título do lote.
+- **"Buscar programas".** Primeiro o Enter simulado; se a tela não abrir em 1,5 s, o envio do formulário da busca (`requestSubmit`), uma vez; sem tela em 6 s, o aviso manual. É a ponte do celular 0.3.1. Só dá Enter se o texto `crec_f090` ficou no campo. (A 1.1.0 só enviava o formulário, sem Enter.)
+- **Motivo de cada título.** Cada título que não foi emitido ou ficou incerto passa a levar o motivo ao CRM (campo `motivo` dentro de `itens`; texto fixo do script, com sequências de 6 ou mais dígitos mascaradas e no máximo 200 caracteres) e ao console da aba do Systêxtil (`[Systextil Segunda Via] Título N do lote: <estado>. <motivo>`), uma vez cada, sem número de título nem dado do cliente. Antes o motivo ficava só no armazenamento do Tampermonkey e ninguém via por que um título não saiu.
+
+**Salvaguardas que não mudaram:** o Enter é a ÚNICA tecla simulada do script (nunca F7, F9 nem F10), e a barreira de confirmação NXJ continua exigida antes do Find e da emissão. Se o ERP não aceitar o Enter simulado, a confirmação não chega e o script para sem consultar nem emitir.
+
+**Sobre "o segundo título não emite":** a causa NÃO foi achada, e não foi corrigida às cegas. O segundo título só é emitido cerca de 3 minutos depois do primeiro (intervalo do lote, por desenho). Pode ter a mesma causa do Enter (o título não assentado impede a confirmação NXJ). O motivo por título (acima) mostra o que de fato aconteceu no próximo teste.
+
+**Não homologado no Systêxtil real:** o ERP aceitar o Enter simulado (keydown, keypress e keyup com `keyCode` 13) no campo do título; o efeito do Enter na parcela (que não é enviado); e o Enter simulado no "Buscar programas" (o diagnóstico de 27/11/2026 do SmartTable dizia que ele não abria a tela; por isso o envio do formulário continua como segunda tentativa).
+
+**Testes:** `tests/segunda-via-lote.test.js` e `tests/segunda-via-integrada.test.js` (o teste que proibia `KeyboardEvent` no código inteiro virou "só o Enter, em um lugar, nunca F7, F9 nem F10"; asserções de ordem do Enter no fonte; o Enter e o `keyCode` em execução; abertura da tela com Enter, com Enter + envio e sem abrir; motivo no resultado e no console). Mutações conferidas: 12; cada uma derruba pelo menos um teste (E10 sobreviveu na 1ª rodada, por um teste que estava quebrado, e ganhou asserção própria).
 
 ## Objetivo e autorização
 

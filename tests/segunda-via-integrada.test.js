@@ -36,7 +36,7 @@ function formatarDataHora(timestamp) {
 }
 
 test('expõe a versão unificada e valida a transferência recebida do SmartTable', () => {
-  assert.equal(api.VERSION, '1.1.0');
+  assert.equal(api.VERSION, '1.1.1');
   const pedido = api.validarPedido(pedidoValido());
   assert.equal(pedido.titulo, '00001234');
   assert.equal(pedido.parcela, '03');
@@ -73,7 +73,7 @@ test('encontra o valor exato do campo NXJ mesmo quando outros segmentos vêm dep
 test('usa o controle Find do ERP em vez de simular a tecla F7', () => {
   assert.match(SOURCE, /find:\s*"btnFind\."/);
   assert.match(SOURCE, /clicarBarraConsulta\("find"\)/);
-  assert.doesNotMatch(SOURCE, /pressionarF7|KeyboardEvent|key:\s*["']F7["']/);
+  assert.doesNotMatch(SOURCE, /pressionarF7|key:\s*["']F\d+["']|keyCode:\s*1(1[2-9]|2[0-3])\b/);
 });
 
 test('normaliza zeros à esquerda somente durante a comparação dos códigos', () => {
@@ -356,7 +356,34 @@ test('entrega um único userscript, sem painéis auxiliares nem serviço Windows
   assert.match(SOURCE, /saveAs:\s*false/);
   assert.match(SOURCE, /titulo:\s*"num_duplicata\."/);
   assert.match(SOURCE, /parcela:\s*"seq_duplicatas\."/);
-  assert.doesNotMatch(SOURCE, /pressionarF7|KeyboardEvent|key:\s*["']F7["']/);
+  assert.doesNotMatch(SOURCE, /pressionarF7|key:\s*["']F\d+["']|keyCode:\s*1(1[2-9]|2[0-3])\b/);
   assert.doesNotMatch(SOURCE, /127\.0\.0\.1:17834|BoletoHelper\.ps1|PowerShell/);
   assert.doesNotMatch(SOURCE, /window\.__systextilSegundaViaAutomatica\s*=\s*Object\.freeze\(\{[\s\S]*?preencherCamposConsulta/);
+});
+
+test('a única tecla simulada é o Enter, em um só lugar; nunca F7, F9 nem F10', () => {
+  assert.equal((SOURCE.match(/KeyboardEvent/g) || []).length, 2, 'só o construtor e a checagem dentro de pressionarEnterNoCampo');
+  const inicio = SOURCE.indexOf('function pressionarEnterNoCampo');
+  const fim = SOURCE.indexOf('async function preencherCamposConsulta', inicio);
+  const corpo = SOURCE.slice(inicio, fim);
+  assert.match(corpo, /key: "Enter", code: "Enter", keyCode: 13, which: 13/);
+  assert.doesNotMatch(SOURCE, /key: "(?!Enter)[A-Za-z0-9]+", code:/);
+  assert.equal((SOURCE.match(/pressionarEnterNoCampo\(campoTitulo\)/g) || []).length, 1, 'Enter no campo do título, uma vez');
+  assert.equal((SOURCE.match(/pressionarEnterNoCampo\(campoParcela\)/g) || []).length, 0, 'a parcela não recebe Enter (não foi pedido)');
+  assert.equal((SOURCE.match(/portas\.pressionarEnter\(campoBusca\)/g) || []).length, 1, 'e uma vez no Buscar programas');
+});
+
+test('o Enter do título vem depois da marca do comando de saída e antes de ir para a parcela, e a consulta que já aconteceu bloqueia', () => {
+  const inicio = SOURCE.indexOf('async function preencherCamposConsulta');
+  const corpo = SOURCE.slice(inicio, SOURCE.indexOf('function normalizarTextoProcesso', inicio));
+  const marca = corpo.indexOf('const sequenciaAntesDaSaidaTitulo = monitor.obterSequencia()');
+  const enter = corpo.indexOf('pressionarEnterNoCampo(campoTitulo)');
+  const ocioso = corpo.indexOf('await monitor.aguardarOcioso();', enter);
+  const parcela = corpo.indexOf('campoParcela.focus()', enter);
+  const saida = corpo.indexOf('monitor.aguardarComandoSaida(', parcela);
+  assert.ok(marca >= 0 && enter > marca, 'a marca vem antes do Enter');
+  assert.ok(ocioso > enter && parcela > ocioso, 'espera o ERP assentar antes de ir para a parcela');
+  assert.ok(saida > parcela, 'a confirmação NXJ da saída continua exigida');
+  assert.match(corpo.slice(enter, parcela), /busca === false[\s\S]*O Enter acionou a consulta antes da hora/);
+  assert.match(corpo.slice(enter, parcela), /campoParcela = obterCampoAtual\(CAMPOS\.parcela\);\s+validarCampoEditavel\(campoParcela\);/, 'o ERP pode recriar a parcela ao processar o Enter: usa o controle atual');
 });
